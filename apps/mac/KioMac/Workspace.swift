@@ -51,6 +51,7 @@ final class KioWorkspace: ObservableObject {
         if let restored = ConversationPersistence.restore() {
             conversation = restored.items
             activeOutput = restored.activeOutput
+            ConversationPersistence.saveActiveOutput(restored.activeOutput)
             lastOperation = restored.operation
             lastPlan = restored.plan
             if restored.hadUnavailableActiveOutput {
@@ -83,6 +84,7 @@ final class KioWorkspace: ObservableObject {
         guard !isWorking else { return }
         attachments = []
         activeOutput = nil
+        ConversationPersistence.saveActiveOutput(nil)
         lastOperation = nil
         lastPlan = nil
         latestError = nil
@@ -163,6 +165,7 @@ final class KioWorkspace: ObservableObject {
         guard !request.isEmpty, !isWorking else { return }
         if remote == nil, attachments.isEmpty, let answer = fastResponseResolver.response(to: request) {
             activeOutput = nil
+            ConversationPersistence.saveActiveOutput(nil)
             lastOperation = nil
             lastPlan = nil
             latestError = nil
@@ -174,6 +177,7 @@ final class KioWorkspace: ObservableObject {
         }
         if activeOutput != nil, activeOutput?.refreshedFromDisk() == nil {
             activeOutput = nil
+            ConversationPersistence.saveActiveOutput(nil)
             lastOperation = nil
             lastPlan = nil
             ConversationPersistence.saveLastPlan(nil)
@@ -291,6 +295,7 @@ final class KioWorkspace: ObservableObject {
                 artifactSnapshot.record(outputs, for: step)
                 lastOperation = step.operation
                 activeOutput = outputs.last
+                ConversationPersistence.saveActiveOutput(activeOutput)
                 publishExecution(for: plan, status: .running, stepIndex: stepIndex, operation: step.operation,
                                  agent: step.owner, text: "Finished step \(stepIndex + 1) of \(plan.steps.count).",
                                  completed: stepIndex + 1, total: plan.steps.count, output: outputs.last)

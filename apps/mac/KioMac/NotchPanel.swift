@@ -513,6 +513,9 @@ private struct NotchContents: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollIndicators(.hidden)
+            .onAppear {
+                if let last = recent.last { proxy.scrollTo(last.id, anchor: .bottom) }
+            }
             .onChange(of: workspace.conversation.count) { _, _ in
                 if let last = recent.last { withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo(last.id, anchor: .bottom) } }
             }

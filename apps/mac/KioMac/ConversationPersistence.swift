@@ -32,6 +32,8 @@ struct RestoredConversation {
 enum ConversationPersistence {
     private static let container: ModelContainer? = try? ModelContainer(for: StoredConversationEntry.self)
     private static let maximumEntries = 500
+    private static let activeOutputKey = "kio.activeOutput"
+    private static let activeOutputClearedKey = "kio.activeOutputWasCleared"
 
     static func restore() -> RestoredConversation? {
         guard let container else { return nil }
@@ -41,12 +43,45 @@ enum ConversationPersistence {
         let items = entries.map { entry in
             ConversationItem(id: entry.id, speaker: entry.speaker, message: entry.message, artifact: entry.artifactData.flatMap { try? JSONDecoder().decode(ArtifactRef.self, from: $0) })
         }
-        let latestOutput = items.reversed().compactMap(\.artifact).first
-        let output = latestOutput?.refreshedFromDisk()
-        let operation = output == nil ? nil : entries.reversed().compactMap { $0.operationRawValue }.first.flatMap(ToolOperation.init(rawValue:))
         let plan = UserDefaults.standard.data(forKey: "kio.previousPlan").flatMap { try? JSONDecoder().decode(TaskPlan.self, from: $0) }
+        let latestOutputIndex = entries.lastIndex { $0.artifactData != nil }
+        let latestOutput = latestOutputIndex.flatMap { index -> ArtifactRef? in
+            guard let data = entries[index].artifactData else { return nil }
+            return try? JSONDecoder().decode(ArtifactRef.self, from: data)
+        }
+        let hasUnrelatedRequestAfterOutput = latestOutputIndex.map { index in
+            entries.suffix(from: index + 1).contains { entry in
+                (entry.speaker == "You" || entry.speaker == "Phone") && entry.operationRawValue == nil
+            }
+        } ?? false
+        let defaults = UserDefaults.standard
+        let storedOutput = defaults.data(forKey: activeOutputKey).flatMap { try? JSONDecoder().decode(ArtifactRef.self, from: $0) }
+        let restoredOutput: ArtifactRef?
+        if defaults.bool(forKey: activeOutputClearedKey) {
+            restoredOutput = nil
+        } else if let storedOutput {
+            restoredOutput = storedOutput
+        } else if plan != nil, !hasUnrelatedRequestAfterOutput {
+            // Migrate existing conversations that predate explicit active-result persistence.
+            restoredOutput = latestOutput
+        } else {
+            restoredOutput = nil
+        }
+        let output = restoredOutput?.refreshedFromDisk()
+        let operation = output == nil ? nil : latestOutputIndex.flatMap { ToolOperation(rawValue: entries[$0].operationRawValue ?? "") }
         return RestoredConversation(items: items, activeOutput: output, operation: operation, plan: output == nil ? nil : plan,
-                                    hadUnavailableActiveOutput: latestOutput != nil && output == nil)
+                                    hadUnavailableActiveOutput: restoredOutput != nil && output == nil)
+    }
+
+    static func saveActiveOutput(_ output: ArtifactRef?) {
+        let defaults = UserDefaults.standard
+        guard let output, let data = try? JSONEncoder().encode(output) else {
+            defaults.removeObject(forKey: activeOutputKey)
+            defaults.set(true, forKey: activeOutputClearedKey)
+            return
+        }
+        defaults.set(data, forKey: activeOutputKey)
+        defaults.set(false, forKey: activeOutputClearedKey)
     }
 
     static func saveLastPlan(_ plan: TaskPlan?) {
@@ -73,6 +108,8 @@ enum ConversationPersistence {
 
     static func clear() {
         UserDefaults.standard.removeObject(forKey: "kio.previousPlan")
+        UserDefaults.standard.removeObject(forKey: activeOutputKey)
+        UserDefaults.standard.removeObject(forKey: activeOutputClearedKey)
         guard let container else { return }
         let context = ModelContext(container)
         let descriptor = FetchDescriptor<StoredConversationEntry>()
