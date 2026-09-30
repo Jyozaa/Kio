@@ -1,0 +1,38 @@
+{
+  "stages": {
+    "cua_observation": {
+      "count": 5,
+      "median_ms": 741.9479170348495,
+      "p90_ms": 766.470665927045,
+      "first_ms": 766.470665927045,
+      "warm_median_ms": 727.1508540143259
+    },
+    "screenshot_capture": {
+      "count": 5,
+      "median_ms": 969.2581249400973,
+      "p90_ms": 1104.6189999906346,
+      "first_ms": 1104.6189999906346,
+      "warm_median_ms": 960.7597294379957
+    },
+    "ocr": {
+      "count": 5,
+      "median_ms": 120.04700000397861,
+      "p90_ms": 227.95400000177324,
+      "first_ms": 227.95400000177324,
+      "warm_median_ms": 118.85506252292544
+    },
+    "perception_merge": {
+      "count": 10,
+      "median_ms": 0.18122949404641986,
+      "p90_ms": 0.21608301904052496,
+      "first_ms": 0.36687508691102266,
+      "warm_median_ms": 0.15537498984485865
+    }
+  },
+  "regions": 8,
+  "candidates": 6,
+  "laya_seconds": 0.25806216709315777,
+  "actions": 0,
+  "gemini_calls": 0,
+  "execution": "unsupported: no capture-bound pixel authority"
+}

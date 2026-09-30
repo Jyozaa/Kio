@@ -1,0 +1,85 @@
+{
+  "schema_version": "kio-video-parity-v1",
+  "id": "jev-laya-reference-video-2026-09",
+  "training_eligible": false,
+  "source": "user-provided vid.mp4",
+  "mode": "one continuous conversational session",
+  "steps": [
+    {
+      "utterance": "Alright, can you open up the Notes app for me?",
+      "expected_direct": "app",
+      "expected_semantic": "OPEN",
+      "expected_object": "APP",
+      "expected_app": "Notes"
+    },
+    {
+      "utterance": "And once you're there, can you create a new note?",
+      "expected_direct": null,
+      "expected_semantic": "CREATE",
+      "expected_object": "NOTE",
+      "expected_app_from_context": "Notes",
+      "effect_count": 1
+    },
+    {
+      "utterance": "And inside this new note, let's make the title say Hello.",
+      "expected_direct": null,
+      "expected_semantic": "SET_FIELD",
+      "expected_object": "FIELD",
+      "expected_parameters": {"field": "title", "text": "Hello"},
+      "referent": "most recently created note"
+    },
+    {
+      "utterance": "Great, great. Okay, let's move on and can you open up the Arc browser?",
+      "expected_direct": "app",
+      "expected_semantic": "OPEN",
+      "expected_object": "APP",
+      "expected_app": "Arc",
+      "test_adaptation": {"if_uninstalled": "Chrome", "reason": "Use installed browser only in the acceptance test; never hardcode this substitution in production."}
+    },
+    {
+      "utterance": "And once you're there, can you Google search Norbert Wiener?",
+      "expected_direct": "url",
+      "expected_semantic": "SEARCH",
+      "expected_object": "WEB_PAGE",
+      "expected_parameters": {"query": "Norbert Wiener", "search_scope": "GLOBAL_WEB"},
+      "reuse_current_browser": true
+    },
+    {
+      "utterance": "Now can you open up X dot com?",
+      "expected_direct": "url",
+      "expected_semantic": "NAVIGATE",
+      "expected_object": "WEB_PAGE",
+      "expected_parameters": {"url": "https://x.com/"},
+      "reuse_current_browser": true
+    },
+    {
+      "utterance": "Nice, nice. Okay, now can you open up Photo Booth?",
+      "expected_direct": "app",
+      "expected_semantic": "OPEN",
+      "expected_object": "APP",
+      "expected_app": "Photo Booth"
+    },
+    {
+      "utterance": "And let's take a picture of me.",
+      "expected_direct": null,
+      "expected_semantic": "CAPTURE",
+      "expected_object": "PHOTO",
+      "one_shot": true,
+      "capture_live_authorized": false
+    },
+    {
+      "utterance": "Cool, awesome. Thank you.",
+      "expected_direct": null,
+      "expected_semantic": null,
+      "expected_request_mode": "ANSWER_ONLY",
+      "expected_action_count": 0
+    }
+  ],
+  "acceptance_facts": {
+    "single_session": true,
+    "no_duplicate_note": true,
+    "exact_literal": "Hello",
+    "no_duplicate_capture": true,
+    "physical_voice_required_for_full_product_parity": true
+  }
+}

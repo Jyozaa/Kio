@@ -1,0 +1,78 @@
+{
+  "stages": {
+    "cua_observation": {
+      "count": 25,
+      "median_ms": 708.1091249128804,
+      "p90_ms": 757.235583034344,
+      "first_ms": 1427.4259590310976,
+      "warm_median_ms": 706.6981874522753
+    },
+    "goal_verifier": {
+      "count": 13,
+      "median_ms": 0.0391670037060976,
+      "p90_ms": 0.07462501525878906,
+      "first_ms": 0.40904106572270393,
+      "warm_median_ms": 0.03597897011786699
+    },
+    "candidate_build": {
+      "count": 24,
+      "median_ms": 0.0596875324845314,
+      "p90_ms": 0.14741590712219477,
+      "first_ms": 0.1824999926611781,
+      "warm_median_ms": 0.059125013649463654
+    },
+    "laya": {
+      "count": 12,
+      "median_ms": 270.37039602873847,
+      "p90_ms": 790.388833032921,
+      "first_ms": 2685.8628330519423,
+      "warm_median_ms": 263.65941704716533
+    },
+    "fresh_observation": {
+      "count": 12,
+      "median_ms": 706.9289999781176,
+      "p90_ms": 757.3592909611762,
+      "first_ms": 934.5197499496862,
+      "warm_median_ms": 705.6242079706863
+    },
+    "cua_action": {
+      "count": 12,
+      "median_ms": 1644.1772084799595,
+      "p90_ms": 1676.4542909804732,
+      "first_ms": 3228.3944580703974,
+      "warm_median_ms": 1639.0999580034986
+    },
+    "screenshot_capture": {
+      "count": 1,
+      "median_ms": 989.896500017494,
+      "p90_ms": 989.896500017494,
+      "first_ms": 989.896500017494,
+      "warm_median_ms": null
+    },
+    "ocr": {
+      "count": 1,
+      "median_ms": 608.8932920247316,
+      "p90_ms": 608.8932920247316,
+      "first_ms": 608.8932920247316,
+      "warm_median_ms": null
+    },
+    "perception_merge": {
+      "count": 2,
+      "median_ms": 0.6818124675191939,
+      "p90_ms": 0.8574170060455799,
+      "first_ms": 0.8574170060455799,
+      "warm_median_ms": 0.5062079289928079
+    },
+    "task_total": {
+      "count": 1,
+      "median_ms": 48124.56004100386,
+      "p90_ms": 48124.56004100386,
+      "first_ms": 48124.56004100386,
+      "warm_median_ms": null
+    }
+  },
+  "cold_model_seconds": 6.067660875036381,
+  "status": "completed",
+  "actions": 12,
+  "gemini_calls": 0
+}

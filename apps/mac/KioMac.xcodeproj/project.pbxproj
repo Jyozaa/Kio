@@ -1,0 +1,200 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* KioMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* KioMacApp.swift */; };
+		A10000000000000000000002 /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* Workspace.swift */; };
+		A10000000000000000000003 /* NotchPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* NotchPanel.swift */; };
+		A10000000000000000000004 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ChatView.swift */; };
+		A10000000000000000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* SettingsView.swift */; };
+		A10000000000000000000006 /* ConversationPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ConversationPersistence.swift */; };
+		A10000000000000000000011 /* KioCore in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000001 /* KioCore */; };
+		A10000000000000000000012 /* KioModel in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000002 /* KioModel */; };
+		A10000000000000000000013 /* KioTools in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000003 /* KioTools */; };
+		A10000000000000000000014 /* KioUI in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000004 /* KioUI */; };
+		A10000000000000000000015 /* KioInference in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000005 /* KioInference */; };
+		A10000000000000000000016 /* KioSync in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000006 /* KioSync */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* KioMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KioMacApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* NotchPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPanel.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* ConversationPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationPersistence.swift; sourceTree = "<group>"; };
+		A30000000000000000000001 /* Kio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A50000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000011 /* KioCore in Frameworks */,
+				A10000000000000000000012 /* KioModel in Frameworks */,
+				A10000000000000000000013 /* KioTools in Frameworks */,
+				A10000000000000000000014 /* KioUI in Frameworks */,
+				A10000000000000000000015 /* KioInference in Frameworks */,
+				A10000000000000000000016 /* KioSync in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A60000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A60000000000000000000002 /* KioMac */,
+				A60000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A60000000000000000000002 /* KioMac */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* KioMacApp.swift */,
+				A20000000000000000000002 /* Workspace.swift */,
+				A20000000000000000000003 /* NotchPanel.swift */,
+				A20000000000000000000004 /* ChatView.swift */,
+				A20000000000000000000005 /* SettingsView.swift */,
+				A20000000000000000000006 /* ConversationPersistence.swift */,
+			);
+			path = KioMac;
+			sourceTree = "<group>";
+		};
+		A60000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (A30000000000000000000001 /* Kio.app */, );
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A70000000000000000000001 /* KioMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "KioMac" */;
+			buildPhases = (
+				A50000000000000000000002 /* Sources */,
+				A50000000000000000000001 /* Frameworks */,
+				A50000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = KioMac;
+			packageProductDependencies = (
+				A40000000000000000000001 /* KioCore */,
+				A40000000000000000000002 /* KioModel */,
+				A40000000000000000000003 /* KioTools */,
+				A40000000000000000000004 /* KioUI */,
+				A40000000000000000000005 /* KioInference */,
+				A40000000000000000000006 /* KioSync */,
+			);
+			productName = KioMac;
+			productReference = A30000000000000000000001 /* Kio.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A50000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* KioMacApp.swift in Sources */,
+				A10000000000000000000002 /* Workspace.swift in Sources */,
+				A10000000000000000000003 /* NotchPanel.swift in Sources */,
+				A10000000000000000000004 /* ChatView.swift in Sources */,
+				A10000000000000000000005 /* SettingsView.swift in Sources */,
+				A10000000000000000000006 /* ConversationPersistence.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A50000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 2660; LastUpgradeCheck = 2660; TargetAttributes = { A70000000000000000000001 = { CreatedOnToolsVersion = 26.6; }; }; };
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXProject "KioMac" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base, );
+			mainGroup = A60000000000000000000001;
+			packageReferences = (AA000000000000000000001 /* KioKit */, );
+			productRefGroup = A60000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A70000000000000000000001 /* KioMac */, );
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		A80000000000000000000001 /* Project config list */ = {isa = XCConfigurationList; buildConfigurations = (AB000000000000000000001 /* Debug */, AB000000000000000000002 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A80000000000000000000002 /* Target config list */ = {isa = XCConfigurationList; buildConfigurations = (AB000000000000000000003 /* Debug */, AB000000000000000000004 /* Release */, ); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AB000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Debug; };
+		AB000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; MACOSX_DEPLOYMENT_TARGET = 14.0; SDKROOT = macosx; SWIFT_VERSION = 6.0; }; name = Release; };
+		AB000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Kio;
+				INFOPLIST_KEY_LSUIElement = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kio.mac;
+				PRODUCT_NAME = Kio;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			}; name = Debug; };
+		AB000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Kio;
+				INFOPLIST_KEY_LSUIElement = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = app.kio.mac;
+				PRODUCT_NAME = Kio;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA000000000000000000001 /* KioKit */ = {isa = XCLocalSwiftPackageReference; relativePath = ../../Packages/KioKit; };
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A40000000000000000000001 /* KioCore */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioCore; };
+		A40000000000000000000002 /* KioModel */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioModel; };
+		A40000000000000000000003 /* KioTools */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioTools; };
+		A40000000000000000000004 /* KioUI */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioUI; };
+		A40000000000000000000005 /* KioInference */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioInference; };
+		A40000000000000000000006 /* KioSync */ = {isa = XCSwiftPackageProductDependency; package = AA000000000000000000001 /* KioKit */; productName = KioSync; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}

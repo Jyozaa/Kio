@@ -1,0 +1,10 @@
+{
+  "workspaceID": "fixture-workspace",
+  "macPrivateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE",
+  "phonePrivateKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI",
+  "nonce": "WlpaWlpaWlpaWlpa",
+  "plaintext": "{\"type\":\"request\",\"text\":\"Merge these PDFs\"}",
+  "macPublicKey": "BGsX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU",
+  "phonePublicKey": "BHzyexiNA09-ilI4AwS1GsPAiWnid_IbNaYLSPxHZpl4B3dVENuO0EApPZrGn3Qw27p9reY86YIpngS3nSJ4c9E",
+  "ciphertext": "sa7wg9-5BqUWkOso7Zbb32eQMVXBGL33slDDALUMs6wPl39H813KJTLpkNHEs5LO8EL4oCdMHX5bKHES"
+}

@@ -1,0 +1,2884 @@
+[
+  {
+    "id": "validation-AX",
+    "split": "validation",
+    "category": "AX",
+    "goal": "Click Review report",
+    "elements": [
+      {
+        "label": "Review report",
+        "role": "AXButton"
+      },
+      {
+        "label": "Help",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Review report",
+    "history": []
+  },
+  {
+    "id": "validation-DOM",
+    "split": "validation",
+    "category": "DOM",
+    "goal": "Click Review article",
+    "elements": [
+      {
+        "label": "Review article",
+        "role": "button",
+        "source": "DOM"
+      },
+      {
+        "label": "Home",
+        "role": "link",
+        "source": "DOM"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Review article",
+    "history": []
+  },
+  {
+    "id": "validation-OCR",
+    "split": "validation",
+    "category": "OCR",
+    "goal": "Click Review settings",
+    "elements": [
+      {
+        "label": "Review settings",
+        "role": "AXStaticText",
+        "source": "OCR"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-repeated",
+    "split": "validation",
+    "category": "repeated",
+    "goal": "Delete the selected file",
+    "elements": [
+      {
+        "label": "Delete",
+        "role": "AXButton"
+      },
+      {
+        "label": "Delete",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-scroll",
+    "split": "validation",
+    "category": "scroll",
+    "goal": "Scroll down to find the next section",
+    "elements": [
+      {
+        "label": "Window",
+        "role": "AXWindow"
+      }
+    ],
+    "expected_operation": "SCROLL_DOWN",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-typing",
+    "split": "validation",
+    "category": "typing",
+    "goal": "Enter \"hello\" into Review field",
+    "elements": [
+      {
+        "label": "Review",
+        "role": "AXTextField"
+      },
+      {
+        "label": "Send",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "TYPE_TEXT",
+    "expected_label": "Review",
+    "history": []
+  },
+  {
+    "id": "validation-selection",
+    "split": "validation",
+    "category": "selection",
+    "goal": "Choose Option B",
+    "elements": [
+      {
+        "label": "Delivery",
+        "role": "AXPopUpButton",
+        "value": "Option A"
+      }
+    ],
+    "expected_operation": "SELECT",
+    "expected_label": "Delivery",
+    "history": []
+  },
+  {
+    "id": "validation-done",
+    "split": "validation",
+    "category": "done",
+    "goal": "Reach Success",
+    "elements": [
+      {
+        "label": "Success",
+        "role": "AXStaticText"
+      }
+    ],
+    "expected_operation": "DONE",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-blocked",
+    "split": "validation",
+    "category": "blocked",
+    "goal": "Proceed with an unavailable control",
+    "elements": [
+      {
+        "label": "Application unavailable",
+        "role": "AXStaticText"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-uncertain",
+    "split": "validation",
+    "category": "uncertain",
+    "goal": "Choose the appropriate unlabeled control",
+    "elements": [
+      {
+        "label": "",
+        "role": "AXButton"
+      },
+      {
+        "label": "Container",
+        "role": "AXGroup"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-financial",
+    "split": "validation",
+    "category": "financial",
+    "goal": "Buy now",
+    "elements": [
+      {
+        "label": "Buy now",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "validation-large",
+    "split": "validation",
+    "category": "large",
+    "goal": "Click Review save",
+    "elements": [
+      {
+        "label": "Review save",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 0",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 1",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 2",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 3",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 4",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 5",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 6",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 7",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 8",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 9",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 10",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 11",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 12",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 13",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 14",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 15",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 16",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 17",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 18",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 19",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 20",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 21",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 22",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 23",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 24",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 25",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 26",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 27",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 28",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 29",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 30",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 31",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 32",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 33",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 34",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 35",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 36",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 37",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 38",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 39",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 40",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 41",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 42",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 43",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 44",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 45",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 46",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 47",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 48",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 49",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 50",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 51",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 52",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 53",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 54",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 55",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 56",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 57",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 58",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 59",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 60",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 61",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 62",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 63",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 64",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 65",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 66",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 67",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 68",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 69",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 70",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 71",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 72",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 73",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 74",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 75",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 76",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 77",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 78",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 79",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 80",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 81",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 82",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 83",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 84",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 85",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 86",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 87",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 88",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 89",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 90",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 91",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 92",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 93",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 94",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 95",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 96",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 97",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 98",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 99",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 100",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 101",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 102",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 103",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 104",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 105",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 106",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 107",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 108",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 109",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 110",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 111",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 112",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 113",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 114",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 115",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 116",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 117",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 118",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 119",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 120",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 121",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 122",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 123",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 124",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 125",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 126",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 127",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 128",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 129",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 130",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 131",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 132",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 133",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 134",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 135",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 136",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 137",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 138",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 139",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 140",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 141",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 142",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 143",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 144",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 145",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 146",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 147",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 148",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 149",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 150",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 151",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 152",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 153",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 154",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 155",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 156",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 157",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 158",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 159",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 160",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 161",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 162",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 163",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 164",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 165",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 166",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 167",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 168",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 169",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 170",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 171",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 172",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 173",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 174",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 175",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 176",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 177",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 178",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 179",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 180",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 181",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 182",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 183",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 184",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 185",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 186",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 187",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 188",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 189",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 190",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 191",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 192",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 193",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 194",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 195",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 196",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 197",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 198",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 199",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 200",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 201",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 202",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 203",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 204",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 205",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 206",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 207",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 208",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 209",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 210",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 211",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 212",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 213",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 214",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 215",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 216",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 217",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 218",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 219",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 220",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 221",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 222",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 223",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 224",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 225",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 226",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 227",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 228",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 229",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 230",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 231",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 232",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 233",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 234",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 235",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 236",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 237",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 238",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 239",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 240",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 241",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 242",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 243",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 244",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 245",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 246",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 247",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 248",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 249",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 250",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 251",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 252",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 253",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 254",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 255",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 256",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 257",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 258",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 259",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 260",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 261",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 262",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 263",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 264",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 265",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 266",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 267",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 268",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 269",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 270",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 271",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 272",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 273",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 274",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 275",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 276",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 277",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 278",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 279",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 280",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 281",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 282",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 283",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 284",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 285",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 286",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 287",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 288",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 289",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 290",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 291",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 292",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 293",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 294",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 295",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 296",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 297",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 298",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 299",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Review save",
+    "history": []
+  },
+  {
+    "id": "validation-history",
+    "split": "validation",
+    "category": "history",
+    "goal": "Click Review finish",
+    "elements": [
+      {
+        "label": "Review finish",
+        "role": "AXButton"
+      },
+      {
+        "label": "Start",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Review finish",
+    "history": [
+      "CLICK: Start (AXButton; value=)"
+    ]
+  },
+  {
+    "id": "validation-literal_done",
+    "split": "validation",
+    "category": "literal_done",
+    "goal": "Enter \"hello\" into Review field",
+    "elements": [
+      {
+        "label": "Review",
+        "role": "AXTextField",
+        "value": "hello"
+      }
+    ],
+    "expected_operation": "DONE",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-AX",
+    "split": "test",
+    "category": "AX",
+    "goal": "Click Final report",
+    "elements": [
+      {
+        "label": "Final report",
+        "role": "AXButton"
+      },
+      {
+        "label": "Help",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Final report",
+    "history": []
+  },
+  {
+    "id": "test-DOM",
+    "split": "test",
+    "category": "DOM",
+    "goal": "Click Final article",
+    "elements": [
+      {
+        "label": "Final article",
+        "role": "button",
+        "source": "DOM"
+      },
+      {
+        "label": "Home",
+        "role": "link",
+        "source": "DOM"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Final article",
+    "history": []
+  },
+  {
+    "id": "test-OCR",
+    "split": "test",
+    "category": "OCR",
+    "goal": "Click Final settings",
+    "elements": [
+      {
+        "label": "Final settings",
+        "role": "AXStaticText",
+        "source": "OCR"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-repeated",
+    "split": "test",
+    "category": "repeated",
+    "goal": "Delete the selected file",
+    "elements": [
+      {
+        "label": "Delete",
+        "role": "AXButton"
+      },
+      {
+        "label": "Delete",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-scroll",
+    "split": "test",
+    "category": "scroll",
+    "goal": "Scroll down to find the next section",
+    "elements": [
+      {
+        "label": "Window",
+        "role": "AXWindow"
+      }
+    ],
+    "expected_operation": "SCROLL_DOWN",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-typing",
+    "split": "test",
+    "category": "typing",
+    "goal": "Enter \"hello\" into Final field",
+    "elements": [
+      {
+        "label": "Final",
+        "role": "AXTextField"
+      },
+      {
+        "label": "Send",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "TYPE_TEXT",
+    "expected_label": "Final",
+    "history": []
+  },
+  {
+    "id": "test-selection",
+    "split": "test",
+    "category": "selection",
+    "goal": "Choose Option B",
+    "elements": [
+      {
+        "label": "Delivery",
+        "role": "AXPopUpButton",
+        "value": "Option A"
+      }
+    ],
+    "expected_operation": "SELECT",
+    "expected_label": "Delivery",
+    "history": []
+  },
+  {
+    "id": "test-done",
+    "split": "test",
+    "category": "done",
+    "goal": "Reach Success",
+    "elements": [
+      {
+        "label": "Success",
+        "role": "AXStaticText"
+      }
+    ],
+    "expected_operation": "DONE",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-blocked",
+    "split": "test",
+    "category": "blocked",
+    "goal": "Proceed with an unavailable control",
+    "elements": [
+      {
+        "label": "Application unavailable",
+        "role": "AXStaticText"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-uncertain",
+    "split": "test",
+    "category": "uncertain",
+    "goal": "Choose the appropriate unlabeled control",
+    "elements": [
+      {
+        "label": "",
+        "role": "AXButton"
+      },
+      {
+        "label": "Container",
+        "role": "AXGroup"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-financial",
+    "split": "test",
+    "category": "financial",
+    "goal": "Buy now",
+    "elements": [
+      {
+        "label": "Buy now",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "BLOCKED",
+    "expected_label": "",
+    "history": []
+  },
+  {
+    "id": "test-large",
+    "split": "test",
+    "category": "large",
+    "goal": "Click Final save",
+    "elements": [
+      {
+        "label": "Final save",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 0",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 1",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 2",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 3",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 4",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 5",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 6",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 7",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 8",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 9",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 10",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 11",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 12",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 13",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 14",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 15",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 16",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 17",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 18",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 19",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 20",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 21",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 22",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 23",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 24",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 25",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 26",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 27",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 28",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 29",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 30",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 31",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 32",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 33",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 34",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 35",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 36",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 37",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 38",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 39",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 40",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 41",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 42",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 43",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 44",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 45",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 46",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 47",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 48",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 49",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 50",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 51",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 52",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 53",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 54",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 55",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 56",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 57",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 58",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 59",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 60",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 61",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 62",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 63",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 64",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 65",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 66",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 67",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 68",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 69",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 70",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 71",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 72",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 73",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 74",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 75",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 76",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 77",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 78",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 79",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 80",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 81",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 82",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 83",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 84",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 85",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 86",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 87",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 88",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 89",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 90",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 91",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 92",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 93",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 94",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 95",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 96",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 97",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 98",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 99",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 100",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 101",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 102",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 103",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 104",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 105",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 106",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 107",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 108",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 109",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 110",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 111",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 112",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 113",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 114",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 115",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 116",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 117",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 118",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 119",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 120",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 121",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 122",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 123",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 124",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 125",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 126",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 127",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 128",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 129",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 130",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 131",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 132",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 133",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 134",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 135",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 136",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 137",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 138",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 139",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 140",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 141",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 142",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 143",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 144",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 145",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 146",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 147",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 148",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 149",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 150",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 151",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 152",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 153",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 154",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 155",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 156",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 157",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 158",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 159",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 160",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 161",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 162",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 163",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 164",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 165",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 166",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 167",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 168",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 169",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 170",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 171",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 172",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 173",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 174",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 175",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 176",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 177",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 178",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 179",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 180",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 181",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 182",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 183",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 184",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 185",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 186",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 187",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 188",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 189",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 190",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 191",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 192",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 193",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 194",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 195",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 196",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 197",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 198",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 199",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 200",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 201",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 202",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 203",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 204",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 205",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 206",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 207",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 208",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 209",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 210",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 211",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 212",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 213",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 214",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 215",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 216",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 217",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 218",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 219",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 220",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 221",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 222",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 223",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 224",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 225",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 226",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 227",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 228",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 229",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 230",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 231",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 232",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 233",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 234",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 235",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 236",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 237",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 238",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 239",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 240",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 241",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 242",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 243",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 244",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 245",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 246",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 247",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 248",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 249",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 250",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 251",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 252",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 253",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 254",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 255",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 256",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 257",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 258",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 259",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 260",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 261",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 262",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 263",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 264",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 265",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 266",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 267",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 268",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 269",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 270",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 271",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 272",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 273",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 274",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 275",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 276",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 277",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 278",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 279",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 280",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 281",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 282",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 283",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 284",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 285",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 286",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 287",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 288",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 289",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 290",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 291",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 292",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 293",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 294",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 295",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 296",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 297",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 298",
+        "role": "AXButton"
+      },
+      {
+        "label": "Details 299",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Final save",
+    "history": []
+  },
+  {
+    "id": "test-history",
+    "split": "test",
+    "category": "history",
+    "goal": "Click Final finish",
+    "elements": [
+      {
+        "label": "Final finish",
+        "role": "AXButton"
+      },
+      {
+        "label": "Start",
+        "role": "AXButton"
+      }
+    ],
+    "expected_operation": "CLICK",
+    "expected_label": "Final finish",
+    "history": [
+      "CLICK: Start (AXButton; value=)"
+    ]
+  },
+  {
+    "id": "test-literal_done",
+    "split": "test",
+    "category": "literal_done",
+    "goal": "Enter \"hello\" into Final field",
+    "elements": [
+      {
+        "label": "Final",
+        "role": "AXTextField",
+        "value": "hello"
+      }
+    ],
+    "expected_operation": "DONE",
+    "expected_label": "",
+    "history": []
+  }
+]

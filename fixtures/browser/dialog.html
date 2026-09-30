@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Kio local dialog fixture</title>
+<style>
+body{font:18px system-ui;max-width:700px;margin:40px auto;color:#123}
+button{font:inherit;padding:10px;margin:5px}
+</style>
+<h1>Kio local dialog fixture</h1>
+<p>This page opens a native browser confirmation; it performs no external action.</p>
+<button id="continue">Continue</button>
+<p id="result" role="status">Waiting</p>
+<script>
+document.getElementById('continue').addEventListener('click',()=>{
+  if(window.confirm('Continue to the local success state?')){
+    document.getElementById('result').textContent='Success';
+    document.title='Success';
+  }
+});
+</script>
+</html>

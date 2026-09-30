@@ -1,0 +1,12 @@
+[
+ {"goal":"Open Settings", "buttons":["Settings","Help","Quit"], "expected_operation":"CLICK", "expected_label":"Settings"},
+ {"goal":"Click Search", "buttons":["Home","Search","Contact"], "expected_operation":"CLICK", "expected_label":"Search"},
+ {"goal":"Enter hello world into the message field", "fields":[["Message",""]], "expected_operation":"TYPE_TEXT", "expected_label":"Message"},
+ {"goal":"Find the Contact button further down the page", "buttons":["Home"], "text":"More content below the viewport. Contact is not visible yet.", "expected_operation":"SCROLL_DOWN"},
+ {"goal":"Enter hello world into the Message field", "fields":[["Message","hello world"]], "text":"Message contains hello world. The requested text has been entered.", "expected_operation":"DONE"},
+ {"goal":"Open Help", "buttons":["Settings","Help","Quit"], "expected_operation":"CLICK", "expected_label":"Help"},
+ {"goal":"Enter Alice into the Name field", "fields":[["Name",""]], "buttons":["Continue"], "expected_operation":"TYPE_TEXT", "expected_label":"Name"},
+ {"goal":"Select option B from the Delivery dropdown", "selects":["Delivery"], "expected_operation":"SELECT", "expected_label":"Delivery"},
+ {"goal":"Click Continue", "buttons":["Back","Continue","Cancel"], "expected_operation":"CLICK", "expected_label":"Continue"},
+ {"goal":"Open the Preferences panel", "buttons":["Preferences","Help","Quit"], "expected_operation":"CLICK", "expected_label":"Preferences"}
+]

@@ -1,0 +1,10 @@
+{
+  "name": "Kio — your Mac assistant",
+  "short_name": "Kio",
+  "description": "Send requests to your paired Mac and get results back.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f4f0",
+  "theme_color": "#f5f4f0",
+  "icons": [{ "src": "/kio.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

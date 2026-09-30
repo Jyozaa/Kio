@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>Kio scroll fixture</title>
+<style>
+body { font: 20px system-ui; max-width: 700px; margin: 40px auto; color: #123; }
+.spacer { height: 1400px; border-left: 2px solid #789; padding: 12px; }
+</style>
+<h1>Local scroll workflow</h1>
+<p>Scroll this local page to its end. Nothing leaves this fixture.</p>
+<div class="spacer" aria-label="Scrollable information">
+  <p>Local setup information begins here.</p>
+</div>
+<p id="end">End of local information.</p>
+<p id="result" role="status">Not complete</p>
+<script>
+document.addEventListener('scroll', () => {
+  if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 8) {
+    document.getElementById('result').textContent = 'Success';
+    document.title = 'Success';
+  }
+});
+</script>
+</html>

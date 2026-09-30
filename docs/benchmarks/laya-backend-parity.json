@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "comparisons": {
+    "legacy_test": {
+      "representation": "legacy",
+      "split": "test",
+      "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+      "matching_choices": 20,
+      "total_choices": 20,
+      "choice_parity": 1.0,
+      "max_probability_delta": 0.0005000000000000004,
+      "mean_probability_delta": 5.306122448979652e-05,
+      "within_0_02_tolerance": true
+    },
+    "legacy_validation": {
+      "representation": "legacy",
+      "split": "validation",
+      "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+      "matching_choices": 20,
+      "total_choices": 20,
+      "choice_parity": 1.0,
+      "max_probability_delta": 0.0005999999999999894,
+      "mean_probability_delta": 6.326530612244824e-05,
+      "within_0_02_tolerance": true
+    },
+    "v1_test": {
+      "representation": "v1",
+      "split": "test",
+      "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+      "matching_choices": 22,
+      "total_choices": 22,
+      "choice_parity": 1.0,
+      "max_probability_delta": 0.0008000000000000229,
+      "mean_probability_delta": 0.00012337662337662071,
+      "within_0_02_tolerance": true
+    },
+    "v1_validation": {
+      "representation": "v1",
+      "split": "validation",
+      "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+      "matching_choices": 22,
+      "total_choices": 22,
+      "choice_parity": 1.0,
+      "max_probability_delta": 0.0030000000000000027,
+      "mean_probability_delta": 0.0002428571428571415,
+      "within_0_02_tolerance": true
+    }
+  }
+}

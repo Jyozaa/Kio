@@ -1,0 +1,366 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "016fee94ff364f089b0e64cb65508328",
+  "task": {
+    "id": "016fee94ff364f089b0e64cb65508328",
+    "goal": "Click Start, then click Continue, then reach Success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Click Start",
+      "observation": {
+        "id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+        "fingerprint": "83023a88ef506900b75820ddda3ebc288b72e6a144fe6220868ced062cb4112a",
+        "title": "Companion harmless smoke - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Companion harmless smoke - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Companion harmless smoke",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Companion smoke",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Companion smoke",
+            "role": "AXStaticText",
+            "value": "Companion smoke",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Step 1: click Start to reveal Continue.",
+            "role": "AXStaticText",
+            "value": "Step 1: click Start to reveal Continue.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+            "label": "Start",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_7b23d0c7a805_0",
+          "operation": "CLICK",
+          "description": "Start (AXButton; value=)",
+          "element_id": "e_0038"
+        },
+        {
+          "id": "c_7b23d0c7a805_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_7b23d0c7a805_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_7b23d0c7a805_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_7b23d0c7a805_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_7b23d0c7a805_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_7b23d0c7a805_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_7b23d0c7a805_0",
+        "snapshot_id": "5a7160a6c2bf49bfb88b9ae0bdbabfaf",
+        "operation": "CLICK",
+        "confidence": 0.9918,
+        "latency_seconds": 0.2695072910282761,
+        "operation_probability": 0.9918,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3559047500602901,
+        "laya": 0.2695072910282761,
+        "action": 2.4085348329972476
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 1,
+      "goal": "click Continue",
+      "observation": {
+        "id": "a5ab4b99b8ef47a5907f964ff6594051",
+        "fingerprint": "84e371a1726e8f7bc10e01b033f9ba975c24669272be57e689aa0c987f788fa7",
+        "title": "Companion harmless smoke - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Companion harmless smoke - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Companion harmless smoke",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Companion smoke",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Companion smoke",
+            "role": "AXStaticText",
+            "value": "Companion smoke",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Step 2: click Continue to reach Success.",
+            "role": "AXStaticText",
+            "value": "Step 2: click Continue to reach Success.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_0bb70aa2b484_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0038"
+        },
+        {
+          "id": "c_0bb70aa2b484_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0bb70aa2b484_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0bb70aa2b484_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_0bb70aa2b484_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_0bb70aa2b484_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_0bb70aa2b484_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_0bb70aa2b484_0",
+        "snapshot_id": "a5ab4b99b8ef47a5907f964ff6594051",
+        "operation": "CLICK",
+        "confidence": 0.9848,
+        "latency_seconds": 0.1799146659905091,
+        "operation_probability": 0.9848,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Start (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": "Success"
+          }
+        ],
+        "reason": "All requested outcomes observed."
+      },
+      "latencies": {
+        "perception": 0.3125063329935074,
+        "laya": 0.1799146659905091,
+        "action": 2.086253250017762
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "completed",
+    "reason": "Verified the requested state.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "VERIFIED",
+      "evidence": [
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": "Success"
+        }
+      ],
+      "reason": "All requested outcomes observed."
+    }
+  }
+}

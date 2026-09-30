@@ -1,0 +1,9 @@
+{
+  "source": "upstream public JFK sample, not microphone",
+  "runs": 5,
+  "first_ms": 635.342999943532,
+  "median_ms": 284.03733402956277,
+  "p90_ms": 635.342999943532,
+  "warm_median_ms": 281.7058964865282,
+  "all_transcripts_verified": true
+}

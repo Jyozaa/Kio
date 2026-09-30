@@ -1,0 +1,215 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "ab42a8b07b614bfe957d57ebd82e9f5e",
+  "task": {
+    "id": "ab42a8b07b614bfe957d57ebd82e9f5e",
+    "goal": "Scroll down until Success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Scroll down until Success",
+      "observation": {
+        "id": "db8d61f0dfbb413dba6683f1b908d648",
+        "fingerprint": "658e86fc4cef3c0107b7f0452960d7d0d9190bd88971edcc4ad812227475e004",
+        "title": "Kio scroll fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Kio scroll fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Kio scroll fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Local scroll workflow",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Local scroll workflow",
+            "role": "AXStaticText",
+            "value": "Local scroll workflow",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Scroll this local page to its end. Nothing leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "Scroll this local page to its end. Nothing leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Local setup information begins here.",
+            "role": "AXStaticText",
+            "value": "Local setup information begins here.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "End of local information.",
+            "role": "AXStaticText",
+            "value": "End of local information.",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_979149641f5f_0",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_979149641f5f_1",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_979149641f5f_2",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_979149641f5f_3",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_979149641f5f_4",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_979149641f5f_5",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_979149641f5f_1",
+        "snapshot_id": "db8d61f0dfbb413dba6683f1b908d648",
+        "operation": "SCROLL_DOWN",
+        "confidence": 0.7873,
+        "latency_seconds": 0.289381041075103,
+        "operation_probability": 0.7873,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": "Success"
+          }
+        ],
+        "reason": "All requested outcomes observed."
+      },
+      "latencies": {
+        "perception": 0.33426754095125943,
+        "laya": 0.289381041075103,
+        "action": 2.668905667029321
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "completed",
+    "reason": "Verified the requested state.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "VERIFIED",
+      "evidence": [
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": "Success"
+        }
+      ],
+      "reason": "All requested outcomes observed."
+    }
+  }
+}

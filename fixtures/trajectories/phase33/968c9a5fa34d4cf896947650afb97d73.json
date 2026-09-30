@@ -1,0 +1,307 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "968c9a5fa34d4cf896947650afb97d73",
+  "task": {
+    "id": "968c9a5fa34d4cf896947650afb97d73",
+    "goal": "Click Settings, then click Continue, then choose Option B, then reach Success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Click Settings",
+      "observation": {
+        "id": "1fecf13694a9447ab8073f0a3cf45a19",
+        "fingerprint": "added55b147daa277959bafa694a6e8e8bc68c97216d99fb23d662baf2e5f7e7",
+        "title": "Kio visual fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "Kio visual fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "Kio visual fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "r_2",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "ID • kfi",
+            "role": "AXStaticText",
+            "value": "ID • kfi",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_1",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "n n n CJ",
+            "role": "AXStaticText",
+            "value": "n n n CJ",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_3",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "e o o o o e e •••o••• QQQ •",
+            "role": "AXStaticText",
+            "value": "e o o o o e e •••o••• QQQ •",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_4",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "+ AskGqrninl",
+            "role": "AXStaticText",
+            "value": "+ AskGqrninl",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_0",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "DEA",
+            "role": "AXStaticText",
+            "value": "DEA",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_6",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "D l l O N¢wChiomgavalL3ble",
+            "role": "AXStaticText",
+            "value": "D l l O N¢wChiomgavalL3ble",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_5",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "4 e 0 127.0.0.1'.8765lvisual.html",
+            "role": "AXStaticText",
+            "value": "4 e 0 127.0.0.1'.8765lvisual.html",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_11",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "YouTvO¢ fr p)stE%)mifigt1¢",
+            "role": "AXStaticText",
+            "value": "YouTvO¢ fr p)stE%)mifigt1¢",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_7",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "AWS-DEA fl Rory ￿lfit Q RWI ¢tyl$n¥",
+            "role": "AXStaticText",
+            "value": "AWS-DEA fl Rory ￿lfit Q RWI ¢tyl$n¥",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_10",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "I m￿)11",
+            "role": "AXStaticText",
+            "value": "I m￿)11",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_8",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "¢1",
+            "role": "AXStaticText",
+            "value": "¢1",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_9",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "Fun",
+            "role": "AXStaticText",
+            "value": "Fun",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          },
+          {
+            "id": "r_12",
+            "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+            "label": "Settlngs",
+            "role": "AXStaticText",
+            "value": "Settlngs",
+            "enabled": true,
+            "visible": true,
+            "source": "OCR",
+            "sources": [
+              "OCR"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_10b5be5d9663_0",
+          "operation": "CLICK",
+          "description": "Settlngs (visual text; position=upper-left)",
+          "element_id": "r_12"
+        },
+        {
+          "id": "c_10b5be5d9663_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_10b5be5d9663_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_10b5be5d9663_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_10b5be5d9663_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_10b5be5d9663_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_10b5be5d9663_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_10b5be5d9663_0",
+        "snapshot_id": "1fecf13694a9447ab8073f0a3cf45a19",
+        "operation": "CLICK",
+        "confidence": 0.3289,
+        "latency_seconds": 0.4035664579132572,
+        "operation_probability": 0.3289,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "not_executed"
+      },
+      "state_changed": null,
+      "verification": null,
+      "latencies": {
+        "perception": 1.275508499937132,
+        "laya": 0.4035664579132572
+      },
+      "perception_sources": [
+        "AX",
+        "OCR"
+      ],
+      "ocr_used": true,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "needs_user",
+    "reason": "Decision confidence is too low.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "NOT_VERIFIED",
+      "evidence": [
+        {
+          "kind": "option",
+          "expected": "option B",
+          "observed": null
+        },
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": null
+        }
+      ],
+      "reason": "Requested outcome is not independently verified."
+    }
+  }
+}

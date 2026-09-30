@@ -1,0 +1,168 @@
+{
+  "rows": [
+    {
+      "id": "test-AX",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9978,
+      "seconds": 0.10677620803471655,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-DOM",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9959,
+      "seconds": 0.10805504198651761,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-OCR",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.7809,
+      "seconds": 0.05845237500034273,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-repeated",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.7168,
+      "seconds": 0.11693150002975017,
+      "operation": "CLICK",
+      "candidate_count": 8
+    },
+    {
+      "id": "test-scroll",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.9881,
+      "seconds": 0.054107500007376075,
+      "operation": "SCROLL_DOWN",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-typing",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9908,
+      "seconds": 0.10777245904318988,
+      "operation": "TYPE_TEXT",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-selection",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9868,
+      "seconds": 0.1076890000840649,
+      "operation": "SELECT",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.8588,
+      "seconds": 0.05761737492866814,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-blocked",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.375,
+      "seconds": 0.06053404090926051,
+      "operation": "BLOCKED",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-uncertain",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.487,
+      "seconds": 0.04974504199344665,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-financial",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.4905,
+      "seconds": 0.09486920794006437,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-large",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9904,
+      "seconds": 0.10387283295858651,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-history",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9951,
+      "seconds": 0.11538262490648776,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-literal_done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.4902,
+      "seconds": 0.05444666591938585,
+      "operation": "DONE",
+      "candidate_count": 6
+    }
+  ],
+  "operation_accuracy": 0.7142857142857143,
+  "target_accuracy": 1,
+  "combined_accuracy": 0.7142857142857143,
+  "false_high_confidence_errors": 0,
+  "ece": 0.19904999999999998,
+  "cold_load_seconds": 6.106446790974587,
+  "first_inference_seconds": 0.10677620803471655,
+  "warm_median_seconds": 0.09486920794006437,
+  "warm_p90_seconds": 0.11538262490648776,
+  "peak_rss_mib": 2062.828125
+}

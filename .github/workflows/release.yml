@@ -1,0 +1,22 @@
+name: Kio Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, test, and package
+        run: |
+          ./scripts/check.sh
+          ./scripts/package-dmg.sh
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/release/Kio-0.1.0.dmg build/release/Kio-0.1.0.dmg.sha256 --generate-notes

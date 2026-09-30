@@ -1,0 +1,493 @@
+{
+  "schema_version": 1,
+  "backend": "torch",
+  "backend_revision": "laya-0.3.20",
+  "environment": {
+    "python": "3.12.8",
+    "os": "macOS-27.0-arm64-arm-64bit",
+    "machine": "arm64",
+    "laya": "0.3.20",
+    "torch": "2.14.0"
+  },
+  "model": "convaiinnovations/laya@55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "checkpoint_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "representation": "legacy",
+  "options": {
+    "compile": false,
+    "cache_prompts": false,
+    "batch_size": null,
+    "dtype": null
+  },
+  "split": "test",
+  "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+  "cold_load_seconds": 3.1834353749873117,
+  "first_inference_seconds": 0.17304208292625844,
+  "warm_median_seconds": 0.09858224994968623,
+  "warm_p90_seconds": 0.11232166597619653,
+  "peak_rss_mib": 2850.375,
+  "operation_accuracy": 0.6666666666666666,
+  "operation_accuracy_all_rows": 0.7142857142857143,
+  "operation_rows_scored": 12,
+  "target_accuracy": 1,
+  "combined_accuracy": 0.7142857142857143,
+  "false_high_confidence_errors": 1,
+  "ece": 0.2022428571428571,
+  "candidate_recall": {
+    "target_rows": 6,
+    "perception_recall": 1.0,
+    "candidate_builder_recall": 1.0,
+    "production_candidate_recall": 1.0,
+    "rows": [
+      {
+        "id": "test-AX",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      },
+      {
+        "id": "test-DOM",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      },
+      {
+        "id": "test-typing",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 1
+      },
+      {
+        "id": "test-selection",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 1
+      },
+      {
+        "id": "test-large",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 301
+      },
+      {
+        "id": "test-history",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "test-AX",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9947,
+      "seconds": 0.11512849992141128,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9947,
+          "probabilities": {
+            "CLICK": 0.9947,
+            "SCROLL_UP": 0.0002,
+            "SCROLL_DOWN": 0.0003,
+            "WAIT": 0.0002,
+            "DONE": 0.0034,
+            "BLOCKED": 0.0007,
+            "REOBSERVE": 0.0004
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-DOM",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9929,
+      "seconds": 0.10610316693782806,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9929,
+          "probabilities": {
+            "CLICK": 0.9929,
+            "SCROLL_UP": 0.0003,
+            "SCROLL_DOWN": 0.0005,
+            "WAIT": 0.0003,
+            "DONE": 0.0042,
+            "BLOCKED": 0.0012,
+            "REOBSERVE": 0.0005
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-OCR",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.7809,
+      "seconds": 0.05892374995164573,
+      "operation": "DONE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE",
+          "confidence": 0.7809,
+          "probabilities": {
+            "SCROLL_UP": 0.0452,
+            "SCROLL_DOWN": 0.0552,
+            "WAIT": 0.0244,
+            "DONE": 0.7809,
+            "BLOCKED": 0.0587,
+            "REOBSERVE": 0.0355
+          }
+        }
+      }
+    },
+    {
+      "id": "test-repeated",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.8934,
+      "seconds": 0.11555900005623698,
+      "operation": "CLICK",
+      "candidate_count": 8,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.8934,
+          "probabilities": {
+            "CLICK": 0.8934,
+            "SCROLL_UP": 0.0022,
+            "SCROLL_DOWN": 0.0045,
+            "WAIT": 0.003,
+            "DONE": 0.0873,
+            "BLOCKED": 0.0058,
+            "REOBSERVE": 0.0038
+          }
+        }
+      }
+    },
+    {
+      "id": "test-scroll",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.9881,
+      "seconds": 0.05553425010293722,
+      "operation": "SCROLL_DOWN",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "SCROLL_DOWN",
+          "confidence": 0.9881,
+          "probabilities": {
+            "SCROLL_UP": 0.0012,
+            "SCROLL_DOWN": 0.9881,
+            "WAIT": 0.0008,
+            "DONE": 0.0039,
+            "BLOCKED": 0.0036,
+            "REOBSERVE": 0.0024
+          }
+        }
+      }
+    },
+    {
+      "id": "test-typing",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9908,
+      "seconds": 0.10457804205361754,
+      "operation": "TYPE_TEXT",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "TYPE_TEXT",
+          "confidence": 0.9908,
+          "probabilities": {
+            "TYPE_TEXT": 0.9908,
+            "SCROLL_UP": 0.0003,
+            "SCROLL_DOWN": 0.0004,
+            "WAIT": 0.0005,
+            "DONE": 0.0058,
+            "BLOCKED": 0.0014,
+            "REOBSERVE": 0.0008
+          }
+        },
+        "type_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-selection",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9868,
+      "seconds": 0.10558308300096542,
+      "operation": "SELECT",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "SELECT",
+          "confidence": 0.9868,
+          "probabilities": {
+            "SELECT": 0.9868,
+            "SCROLL_UP": 0.0006,
+            "SCROLL_DOWN": 0.0007,
+            "WAIT": 0.0008,
+            "DONE": 0.0075,
+            "BLOCKED": 0.0027,
+            "REOBSERVE": 0.001
+          }
+        },
+        "select_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-done",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.8588,
+      "seconds": 0.056102082948200405,
+      "operation": "DONE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE",
+          "confidence": 0.8588,
+          "probabilities": {
+            "SCROLL_UP": 0.0203,
+            "SCROLL_DOWN": 0.0178,
+            "WAIT": 0.0305,
+            "DONE": 0.8588,
+            "BLOCKED": 0.0513,
+            "REOBSERVE": 0.0212
+          }
+        }
+      }
+    },
+    {
+      "id": "test-blocked",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.375,
+      "seconds": 0.05848050001077354,
+      "operation": "BLOCKED",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "BLOCKED",
+          "confidence": 0.375,
+          "probabilities": {
+            "SCROLL_UP": 0.0418,
+            "SCROLL_DOWN": 0.0512,
+            "WAIT": 0.0994,
+            "DONE": 0.3255,
+            "BLOCKED": 0.375,
+            "REOBSERVE": 0.1071
+          }
+        }
+      }
+    },
+    {
+      "id": "test-uncertain",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.487,
+      "seconds": 0.05501858296338469,
+      "operation": "DONE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE",
+          "confidence": 0.487,
+          "probabilities": {
+            "SCROLL_UP": 0.04,
+            "SCROLL_DOWN": 0.0515,
+            "WAIT": 0.0587,
+            "DONE": 0.487,
+            "BLOCKED": 0.2904,
+            "REOBSERVE": 0.0724
+          }
+        }
+      }
+    },
+    {
+      "id": "test-financial",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.585,
+      "seconds": 0.09993787494022399,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.585,
+          "probabilities": {
+            "CLICK": 0.585,
+            "SCROLL_UP": 0.0059,
+            "SCROLL_DOWN": 0.0065,
+            "WAIT": 0.0113,
+            "DONE": 0.366,
+            "BLOCKED": 0.0165,
+            "REOBSERVE": 0.0088
+          }
+        }
+      }
+    },
+    {
+      "id": "test-large",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.985,
+      "seconds": 0.09858224994968623,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.985,
+          "probabilities": {
+            "CLICK": 0.985,
+            "SCROLL_UP": 0.0003,
+            "SCROLL_DOWN": 0.0003,
+            "WAIT": 0.0004,
+            "DONE": 0.012,
+            "BLOCKED": 0.0011,
+            "REOBSERVE": 0.0009
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-history",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9962,
+      "seconds": 0.11232166597619653,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9962,
+          "probabilities": {
+            "CLICK": 0.9962,
+            "SCROLL_UP": 0.0001,
+            "SCROLL_DOWN": 0.0001,
+            "WAIT": 0.0002,
+            "DONE": 0.0026,
+            "BLOCKED": 0.0005,
+            "REOBSERVE": 0.0003
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-literal_done",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.4902,
+      "seconds": 0.05456620897166431,
+      "operation": "DONE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE",
+          "confidence": 0.4902,
+          "probabilities": {
+            "SCROLL_UP": 0.0537,
+            "SCROLL_DOWN": 0.0467,
+            "WAIT": 0.0572,
+            "DONE": 0.4902,
+            "BLOCKED": 0.2798,
+            "REOBSERVE": 0.0723
+          }
+        }
+      }
+    }
+  ]
+}

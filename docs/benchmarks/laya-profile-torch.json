@@ -1,0 +1,75 @@
+{
+  "backend": "torch",
+  "backend_revision": "laya-0.3.20",
+  "environment": {
+    "python": "3.12.8",
+    "os": "macOS-27.0-arm64-arm-64bit",
+    "machine": "arm64",
+    "laya": "0.3.20",
+    "torch": "2.14.0"
+  },
+  "checkpoint_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "model": "convaiinnovations/laya@55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "options": {
+    "compile": false,
+    "cache_prompts": false,
+    "batch_size": null,
+    "dtype": null
+  },
+  "cold_load_seconds": 4.262369667063467,
+  "first_inference_seconds": 0.6360654169693589,
+  "peak_rss_mib": 2852.984375,
+  "measurements": {
+    "one_question": {
+      "median_seconds": 0.03505047899670899,
+      "p90_seconds": 0.03724587499164045,
+      "repeats": 10,
+      "choice_sets_identical": true,
+      "selected": {
+        "operation": "OPEN_APP"
+      }
+    },
+    "operation_plus_target": {
+      "median_seconds": 0.0696156250196509,
+      "p90_seconds": 0.07104008400347084,
+      "repeats": 10,
+      "choice_sets_identical": true,
+      "selected": {
+        "operation": "OPEN_APP",
+        "click_target": "c_0"
+      }
+    },
+    "five_question_batch": {
+      "median_seconds": 0.19329860346624628,
+      "p90_seconds": 0.19651745806913823,
+      "repeats": 10,
+      "choice_sets_identical": true,
+      "selected": {
+        "operation": "OPEN_APP",
+        "click_target": "c_0",
+        "type_target": "c_0",
+        "select_target": "c_0",
+        "goal_state": "NOT_SATISFIED"
+      }
+    },
+    "eight_choice_target": {
+      "median_seconds": 0.04734514601295814,
+      "p90_seconds": 0.0506834170082584,
+      "repeats": 10,
+      "choice_sets_identical": true,
+      "selected": {
+        "click_target": "c_0"
+      }
+    },
+    "thirty_choice_diagnostic_only": {
+      "median_seconds": 0.05584824952529743,
+      "p90_seconds": 0.0566827500006184,
+      "repeats": 10,
+      "choice_sets_identical": true,
+      "selected": {
+        "click_target": "c_0"
+      }
+    }
+  },
+  "note": "30 choices is a diagnostic model-input profile; Kio production candidate generation remains bounded to at most 8 ordinary targets."
+}

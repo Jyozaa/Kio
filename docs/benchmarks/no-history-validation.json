@@ -1,0 +1,168 @@
+{
+  "rows": [
+    {
+      "id": "validation-AX",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9955,
+      "seconds": 0.09691145794931799,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-DOM",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9939,
+      "seconds": 0.10314799996558577,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-OCR",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.6324,
+      "seconds": 0.05836133297998458,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "validation-repeated",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.6831,
+      "seconds": 0.11958962492644787,
+      "operation": "CLICK",
+      "candidate_count": 8
+    },
+    {
+      "id": "validation-scroll",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.9881,
+      "seconds": 0.05701650003902614,
+      "operation": "SCROLL_DOWN",
+      "candidate_count": 6
+    },
+    {
+      "id": "validation-typing",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9746,
+      "seconds": 0.11030708404723555,
+      "operation": "TYPE_TEXT",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-selection",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9868,
+      "seconds": 0.1104882910149172,
+      "operation": "SELECT",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.8588,
+      "seconds": 0.05826054199133068,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "validation-blocked",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.375,
+      "seconds": 0.061661708052270114,
+      "operation": "BLOCKED",
+      "candidate_count": 6
+    },
+    {
+      "id": "validation-uncertain",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.487,
+      "seconds": 0.05595304199960083,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "validation-financial",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.4905,
+      "seconds": 0.10695183300413191,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-large",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9911,
+      "seconds": 0.09865883307065815,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-history",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9932,
+      "seconds": 0.09527712501585484,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "validation-literal_done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.4765,
+      "seconds": 0.05242141697090119,
+      "operation": "DONE",
+      "candidate_count": 6
+    }
+  ],
+  "operation_accuracy": 0.7142857142857143,
+  "target_accuracy": 1,
+  "combined_accuracy": 0.7142857142857143,
+  "false_high_confidence_errors": 0,
+  "ece": 0.18660714285714283,
+  "cold_load_seconds": 6.106446790974587,
+  "first_inference_seconds": 0.09691145794931799,
+  "warm_median_seconds": 0.09527712501585484,
+  "warm_p90_seconds": 0.1104882910149172,
+  "peak_rss_mib": 2062.828125
+}

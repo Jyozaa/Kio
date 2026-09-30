@@ -1,0 +1,2896 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "765dcd2993e74db68e88c81df2286654",
+  "task": {
+    "id": "765dcd2993e74db68e88c81df2286654",
+    "goal": "Click Continue until Success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "c13df089f0144c46b9c7f1071fde584c",
+        "fingerprint": "824ad455881a9ba2d87665a796e1963f3f991a636ab0dd951147662187c34a0a",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Step 1: Create workspace",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Step 1: Create workspace",
+            "role": "AXStaticText",
+            "value": "Step 1: Create workspace",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "0",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_29226e4523a0_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_29226e4523a0_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_29226e4523a0_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_29226e4523a0_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_29226e4523a0_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_29226e4523a0_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_29226e4523a0_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_29226e4523a0_0",
+        "snapshot_id": "c13df089f0144c46b9c7f1071fde584c",
+        "operation": "CLICK",
+        "confidence": 0.9552,
+        "latency_seconds": 0.28574641596060246,
+        "operation_probability": 0.9552,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.36346849997062236,
+        "laya": 0.28574641596060246,
+        "action": 2.527303499984555
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 1,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "d224fe1644994c9ebbe365f69c027c42",
+        "fingerprint": "8df72fc3fbfe50495dd6ba5c86fd5668bf2fae89f527c459dd27c9c5cc352333",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Step 2: Choose local storage",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Step 2: Choose local storage",
+            "role": "AXStaticText",
+            "value": "Step 2: Choose local storage",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_8bd3f6d1b26d_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_8bd3f6d1b26d_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_8bd3f6d1b26d_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_8bd3f6d1b26d_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_8bd3f6d1b26d_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_8bd3f6d1b26d_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_8bd3f6d1b26d_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_8bd3f6d1b26d_0",
+        "snapshot_id": "d224fe1644994c9ebbe365f69c027c42",
+        "operation": "CLICK",
+        "confidence": 0.9762,
+        "latency_seconds": 0.2076280830660835,
+        "operation_probability": 0.9762,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3199632080504671,
+        "laya": 0.2076280830660835,
+        "action": 1.0741549580125138
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 2,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "b28eee9bce4242acbe54104a675df612",
+        "fingerprint": "1fe46222c23bd4fde6e9cd1b558df84309d09ae59ee6f1744eecd92079c33267",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Step 3: Check folders",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Step 3: Check folders",
+            "role": "AXStaticText",
+            "value": "Step 3: Check folders",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_3d416570e786_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_3d416570e786_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_3d416570e786_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_3d416570e786_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_3d416570e786_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_3d416570e786_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_3d416570e786_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_3d416570e786_0",
+        "snapshot_id": "b28eee9bce4242acbe54104a675df612",
+        "operation": "CLICK",
+        "confidence": 0.9605,
+        "latency_seconds": 0.19024662498850375,
+        "operation_probability": 0.9605,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3004228330682963,
+        "laya": 0.19024662498850375,
+        "action": 1.0787404170259833
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 3,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "21ada23509f14b88b55f7a481fe8359f",
+        "fingerprint": "f85a529b31750d19dd4e7780e552f5501524a14afb9d960425868e5502a00e8b",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Step 4: Set display",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Step 4: Set display",
+            "role": "AXStaticText",
+            "value": "Step 4: Set display",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "3",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_aa2bc1193608_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_aa2bc1193608_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_aa2bc1193608_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_aa2bc1193608_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_aa2bc1193608_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_aa2bc1193608_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_aa2bc1193608_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_aa2bc1193608_0",
+        "snapshot_id": "21ada23509f14b88b55f7a481fe8359f",
+        "operation": "CLICK",
+        "confidence": 0.9496,
+        "latency_seconds": 0.20073841698467731,
+        "operation_probability": 0.9496,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.2968417090596631,
+        "laya": 0.20073841698467731,
+        "action": 1.0707673749420792
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 4,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "d80303e6a4244dcf87e4018d48a57640",
+        "fingerprint": "4e22b6bb9ef6e410097e084cbb0a9ccd799f909645f43f371508940c650d0c24",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Step 5: Configure editor",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Step 5: Configure editor",
+            "role": "AXStaticText",
+            "value": "Step 5: Configure editor",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "4",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_9844aa5c57e0_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_9844aa5c57e0_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_9844aa5c57e0_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_9844aa5c57e0_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_9844aa5c57e0_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_9844aa5c57e0_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_9844aa5c57e0_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_9844aa5c57e0_0",
+        "snapshot_id": "d80303e6a4244dcf87e4018d48a57640",
+        "operation": "CLICK",
+        "confidence": 0.938,
+        "latency_seconds": 0.19233679107856005,
+        "operation_probability": 0.938,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3006772920489311,
+        "laya": 0.19233679107856005,
+        "action": 1.0770920829381794
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 5,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+        "fingerprint": "23f5f2af971f427c64483eb2bf76519cd4ec0977ecfb1c18989b07b5ce0a4043",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Step 6: Choose keyboard layout",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Step 6: Choose keyboard layout",
+            "role": "AXStaticText",
+            "value": "Step 6: Choose keyboard layout",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "5",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_c83f14801a7e_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_c83f14801a7e_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_c83f14801a7e_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_c83f14801a7e_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_c83f14801a7e_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_c83f14801a7e_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_c83f14801a7e_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_c83f14801a7e_0",
+        "snapshot_id": "7fb520e8fb164882a23f77cc6dc1cb1b",
+        "operation": "CLICK",
+        "confidence": 0.8969,
+        "latency_seconds": 0.19395666604395956,
+        "operation_probability": 0.8969,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3085779589600861,
+        "laya": 0.19395666604395956,
+        "action": 1.0729758330853656
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 6,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "b3844f0a7c9d49188d6feb93ca983241",
+        "fingerprint": "c55c9da049051720c4aa00e3e0d841737ed5262837b69bec15159b47838f468b",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Step 7: Set local backups",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Step 7: Set local backups",
+            "role": "AXStaticText",
+            "value": "Step 7: Set local backups",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "6",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_44f2a8345ca4_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_44f2a8345ca4_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_44f2a8345ca4_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_44f2a8345ca4_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_44f2a8345ca4_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_44f2a8345ca4_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_44f2a8345ca4_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_44f2a8345ca4_0",
+        "snapshot_id": "b3844f0a7c9d49188d6feb93ca983241",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.19673941703513265,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.29284762497991323,
+        "laya": 0.19673941703513265,
+        "action": 1.0861968329409137
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 7,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+        "fingerprint": "8bea8cc77e0f846b78d62d15330ab2f9dd82234b816b875e0a0ceb20bb7f143a",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Step 8: Check import format",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Step 8: Check import format",
+            "role": "AXStaticText",
+            "value": "Step 8: Check import format",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "7",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_0fe4b39e01c1_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_0fe4b39e01c1_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0fe4b39e01c1_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0fe4b39e01c1_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_0fe4b39e01c1_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_0fe4b39e01c1_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_0fe4b39e01c1_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_0fe4b39e01c1_0",
+        "snapshot_id": "73ae04edc7244e5a8adb3b8f53f83fd8",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.19158250000327826,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3030022500315681,
+        "laya": 0.19158250000327826,
+        "action": 1.072678666911088
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 8,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "6a177b32d6714765b4af21aeee84d36e",
+        "fingerprint": "f493c1e5cf0cd2cc4ee898404fd94bab3a6c4d780fbc81d9953fa766ede6e759",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Step 9: Build local index",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Step 9: Build local index",
+            "role": "AXStaticText",
+            "value": "Step 9: Build local index",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "8",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_d64c06f0fb8b_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_d64c06f0fb8b_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_d64c06f0fb8b_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_d64c06f0fb8b_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_d64c06f0fb8b_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_d64c06f0fb8b_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_d64c06f0fb8b_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_d64c06f0fb8b_0",
+        "snapshot_id": "6a177b32d6714765b4af21aeee84d36e",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.18273645895533264,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.29260762501508,
+        "laya": 0.18273645895533264,
+        "action": 1.0662140829954296
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 9,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "d9e1c23c104d4503bb27450db0f78907",
+        "fingerprint": "513e30f6c2c278c085d83d3b797ec667cf34d9f161995bd0a34ad28d4f239034",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Step 10: Validate settings",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Step 10: Validate settings",
+            "role": "AXStaticText",
+            "value": "Step 10: Validate settings",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "9",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_d9e9e59f9831_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_d9e9e59f9831_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_d9e9e59f9831_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_d9e9e59f9831_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_d9e9e59f9831_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_d9e9e59f9831_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_d9e9e59f9831_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_d9e9e59f9831_0",
+        "snapshot_id": "d9e1c23c104d4503bb27450db0f78907",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.19365258293692023,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.29474016604945064,
+        "laya": 0.19365258293692023,
+        "action": 1.075342083000578
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 10,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "888c53a88bd445a5a6166a353e57c45a",
+        "fingerprint": "5ab73a1e43f5d5af068b6147136f91870d78fa320a043686455a2cbf1a2ba263",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Step 11: Review configuration",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Step 11: Review configuration",
+            "role": "AXStaticText",
+            "value": "Step 11: Review configuration",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "10",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_4e3d50be3f79_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_4e3d50be3f79_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_4e3d50be3f79_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_4e3d50be3f79_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_4e3d50be3f79_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_4e3d50be3f79_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_4e3d50be3f79_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_4e3d50be3f79_0",
+        "snapshot_id": "888c53a88bd445a5a6166a353e57c45a",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.1882983340183273,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.3030808330513537,
+        "laya": 0.1882983340183273,
+        "action": 1.0792658750433475
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 11,
+      "goal": "Click Continue until Success",
+      "observation": {
+        "id": "2570720e0a6246e3903535301a41b3cd",
+        "fingerprint": "fdfb6e443441892b4b5e3cdf5f8b1aa56994a61c99ad408baf99e7119915cd68",
+        "title": "Kio long local workflow - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Kio long local workflow - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Kio long local workflow",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Local workspace setup",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Local workspace setup",
+            "role": "AXStaticText",
+            "value": "Local workspace setup",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "No information leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "No information leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Step 12: Finish workspace",
+            "role": "AXHeading",
+            "value": "2",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Step 12: Finish workspace",
+            "role": "AXStaticText",
+            "value": "Step 12: Finish workspace",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Continue confirms this local setup step.",
+            "role": "AXStaticText",
+            "value": "Continue confirms this local setup step.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "",
+            "role": "AXProgressIndicator",
+            "value": "11",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Continue",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_fa902e4ce118_0",
+          "operation": "CLICK",
+          "description": "Continue (AXButton; value=)",
+          "element_id": "e_0042"
+        },
+        {
+          "id": "c_fa902e4ce118_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_fa902e4ce118_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_fa902e4ce118_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_fa902e4ce118_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_fa902e4ce118_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_fa902e4ce118_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_fa902e4ce118_0",
+        "snapshot_id": "2570720e0a6246e3903535301a41b3cd",
+        "operation": "CLICK",
+        "confidence": 0.8275,
+        "latency_seconds": 0.18457762501202524,
+        "operation_probability": 0.8275,
+        "target_probability": 1.0
+      },
+      "history": [
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)",
+        "CLICK: Continue (AXButton; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": "Success"
+          }
+        ],
+        "reason": "All requested outcomes observed."
+      },
+      "latencies": {
+        "perception": 0.3016135419020429,
+        "laya": 0.18457762501202524,
+        "action": 1.0726380830164999
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "completed",
+    "reason": "Verified the requested state.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "VERIFIED",
+      "evidence": [
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": "Success"
+        }
+      ],
+      "reason": "All requested outcomes observed."
+    }
+  }
+}
