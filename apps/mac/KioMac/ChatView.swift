@@ -253,10 +253,18 @@ private struct ArtifactCard: View {
                 Text(artifact.displayName).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                 Text(ByteCountFormatter.string(fromByteCount: artifact.sizeBytes, countStyle: .file))
                     .font(.system(size: 10)).foregroundStyle(Color.primary.opacity(0.48))
+                if let note = artifact.verificationNote {
+                    Text(note).font(.system(size: 9)).foregroundStyle(Color.primary.opacity(0.48)).lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
             Button("Open") { NSWorkspace.shared.open(artifact.fileURL) }
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([artifact.fileURL]) }
+            Button("Copy") {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.writeObjects([artifact.fileURL as NSURL])
+            }
         }
         .buttonStyle(.borderless)
         .font(.system(size: 10, weight: .medium))

@@ -2,6 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import KioCore
 import KioSync
+import KioTools
 import KioUI
 import os
 import SwiftUI
@@ -34,7 +35,7 @@ struct KioMacApp: App {
 }
 
 @MainActor
-final class KioAppDelegate: NSObject, NSApplicationDelegate {
+final class KioAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var hotKey: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
     private let logger = Logger(subsystem: "app.kio.mac", category: "Shortcut")
@@ -53,6 +54,7 @@ final class KioAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         if let hotKey { UnregisterEventHotKey(hotKey) }
         if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
+        OutputLocation.stopAccessingSelectedFolder()
     }
 
     private func installGlobalShortcut() {
@@ -91,18 +93,27 @@ final class KioAppDelegate: NSObject, NSApplicationDelegate {
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Welcome to Kio"
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         window.contentView = NSHostingView(rootView: KioOnboardingView(onFinish: { [weak self, weak window] in
             UserDefaults.standard.set(true, forKey: "kio.hasCompletedOnboarding")
             window?.close()
             self?.onboardingWindow = nil
-        }, onOpenSettings: { [weak window] in
+        }, onOpenSettings: { [weak self, weak window] in
+            UserDefaults.standard.set(true, forKey: "kio.hasCompletedOnboarding")
             window?.close()
+            self?.onboardingWindow = nil
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }))
         onboardingWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === onboardingWindow else { return }
+        UserDefaults.standard.set(true, forKey: "kio.hasCompletedOnboarding")
+        onboardingWindow = nil
     }
 
     private var onboardingWindow: NSWindow?

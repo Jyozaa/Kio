@@ -44,7 +44,7 @@ final class NotchPanelController: ObservableObject {
         let displayToken = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refreshDisplay() }
+            Task { @MainActor [weak self] in self?.refreshDisplay(preferPointerScreen: true) }
         }
         let wakeToken = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
@@ -108,12 +108,22 @@ final class NotchPanelController: ObservableObject {
 
     func composingChanged(_ composing: Bool) {
         interaction.set(.composing, active: composing)
-        if !composing { scheduleCollapse() }
+        if composing {
+            cancelCollapse()
+            setExpanded(true)
+        } else {
+            scheduleCollapse()
+        }
     }
 
     func attachmentsChanged(_ hasAttachments: Bool) {
         interaction.set(.attachments, active: hasAttachments)
-        if !hasAttachments { scheduleCollapse() }
+        if hasAttachments {
+            cancelCollapse()
+            setExpanded(true)
+        } else {
+            scheduleCollapse()
+        }
     }
 
     func draggingChanged(_ dragging: Bool) {
@@ -128,7 +138,12 @@ final class NotchPanelController: ObservableObject {
 
     func workingChanged(_ working: Bool) {
         interaction.set(.working, active: working)
-        if !working { scheduleCollapse(after: .milliseconds(700)) }
+        if working {
+            cancelCollapse()
+            setExpanded(true)
+        } else {
+            scheduleCollapse(after: .milliseconds(700))
+        }
     }
 
     func resultInteractionChanged(_ active: Bool) {
@@ -141,10 +156,21 @@ final class NotchPanelController: ObservableObject {
         }
     }
 
-    func activateForInput() {
+    func menuOrPopoverChanged(_ open: Bool) {
+        interaction.set(.menuOrPopover, active: open)
+        if open {
+            cancelCollapse()
+            setExpanded(true)
+        } else {
+            scheduleCollapse()
+        }
+    }
+
+    func activateForInput(pinned: Bool = false) {
         show()
         panel?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        interaction.set(.pinned, active: pinned)
         setExpanded(true)
         focusCommandRequest &+= 1
     }
@@ -152,9 +178,9 @@ final class NotchPanelController: ObservableObject {
     func toggleForShortcut() {
         if isExpanded {
             guard !KioWorkspace.shared.isWorking else { return }
-            setExpanded(false, force: true)
+            collapse()
         } else {
-            activateForInput()
+            activateForInput(pinned: true)
         }
     }
 
@@ -165,7 +191,10 @@ final class NotchPanelController: ObservableObject {
         interaction.set(.pointer, active: false)
         interaction.set(.attachments, active: false)
         interaction.set(.dragging, active: false)
+        interaction.set(.pinned, active: false)
+        interaction.set(.working, active: false)
         interaction.set(.resultInteraction, active: false)
+        interaction.set(.menuOrPopover, active: false)
         setExpanded(false, force: true)
     }
 
@@ -183,14 +212,14 @@ final class NotchPanelController: ObservableObject {
     }
 
     private var shouldRemainExpandedAutomatically: Bool {
-        interaction.isActive(.pointer) || interaction.isActive(.dragging)
+        interaction.shouldRemainExpanded
     }
 
     private func scheduleCollapse(after delay: Duration = .milliseconds(340)) {
         cancelCollapse()
         collapseTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let self, !self.shouldRemainExpandedAutomatically else { return }
+            guard !Task.isCancelled, let self, !self.interaction.shouldRemainExpanded else { return }
             self.setExpanded(false, force: true)
         }
     }
@@ -200,11 +229,11 @@ final class NotchPanelController: ObservableObject {
         collapseTask = nil
     }
 
-    private func refreshDisplay() {
+    private func refreshDisplay(preferPointerScreen: Bool = false) {
         guard panel != nil else { return }
-        let screen = screenNumber.flatMap { current in
-            NSScreen.screens.first(where: { Self.number(for: $0) == current })
-        } ?? Self.preferredScreen()
+        let screen = (preferPointerScreen ? Self.screenUnderPointer() : nil)
+            ?? screenNumber.flatMap { current in NSScreen.screens.first(where: { Self.number(for: $0) == current }) }
+            ?? Self.preferredScreen()
         guard let screen else { return }
         screenNumber = Self.number(for: screen)
         updateLayout(for: screen)
@@ -230,7 +259,12 @@ final class NotchPanelController: ObservableObject {
     }
 
     private static func preferredScreen() -> NSScreen? {
-        NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main ?? NSScreen.screens.first
+        screenUnderPointer() ?? NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private static func screenUnderPointer() -> NSScreen? {
+        let pointer = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { $0.frame.contains(pointer) })
     }
 
     private static func number(for screen: NSScreen) -> NSNumber? {
@@ -254,24 +288,21 @@ private struct NotchContents: View {
     @ObservedObject var controller: NotchPanelController
     @State private var isTargeted = false
     @State private var command = ""
-    @State private var editingCompletion = false
-    @State private var completionReturnedToComposer = false
     @State private var stageMascotAgent: AgentID = .kio
     @State private var coordinatorHasDeparted = false
     @State private var agentHasArrived = false
     @State private var launchSmokeVisible = false
+    @State private var pointerGaze = CGSize.zero
     @FocusState private var commandFocused: Bool
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("kio.hoverExpansion") private var hoverExpansion = true
     @AppStorage("kio.hoverDwellMilliseconds") private var hoverDwellMilliseconds = 150
 
-    private var latestResponse: String? {
-        workspace.conversation.last(where: { $0.speaker != "You" && $0.speaker != "Phone" })?.message
-    }
-
     private var inputPrompt: String {
-        if workspace.attachments.isEmpty { return "Ask Kio or drop files" }
+        if workspace.attachments.isEmpty {
+            return workspace.activeOutput == nil ? "Ask Kio or drop files" : "Ask a follow-up…"
+        }
         return "Add a note for these files"
     }
 
@@ -304,25 +335,6 @@ private struct NotchContents: View {
         }
     }
 
-    private var completionTaskKey: String {
-        let status = workspace.executionState.map { String(describing: $0.status) } ?? "none"
-        return "\(status):\(workspace.isWorking)"
-    }
-
-    private var terminalTitle: String {
-        switch workspace.executionState?.status {
-        case .completed: "DONE"
-        case .failed: "COULDN’T FINISH"
-        case .waitingForUser: "NEEDS YOUR INPUT"
-        case .cancelled: "STOPPED"
-        case .planning, .running, .none: "RESPONSE"
-        }
-    }
-
-    private var terminalMessage: String {
-        workspace.executionState?.failureMessage ?? latestResponse ?? workspace.executionState?.statusText ?? "Done."
-    }
-
     var body: some View {
         ZStack(alignment: .top) {
             NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: controller.layout)
@@ -345,23 +357,25 @@ private struct NotchContents: View {
         .preferredColorScheme(.dark)
         .contentShape(NotchInteractionRegion(progress: controller.isExpanded ? 1 : 0, layout: controller.layout))
         .onHover { controller.pointerChanged($0, hoverExpansion: hoverExpansion, dwellMilliseconds: hoverDwellMilliseconds) }
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            guard !reduceMotion, controller.isExpanded else { pointerGaze = .zero; return }
+            guard case .active(let location) = phase else { pointerGaze = .zero; return }
+            let layout = controller.layout
+            let inset = max(34, layout.screenTopInset + 8)
+            let contentHeight = max(90, layout.expandedHeight - inset - 8)
+            let mascotCenterX = (layout.hostWidth - layout.expandedWidth) / 2 + 16 + layout.expandedWidth * 0.31 / 2
+            let mascotCenterY = inset + contentHeight / 2
+            pointerGaze = CGSize(
+                width: min(1, max(-1, (location.x - mascotCenterX) / max(1, layout.expandedWidth * 0.48))),
+                height: min(1, max(-1, (location.y - mascotCenterY) / max(1, contentHeight * 0.48)))
+            )
+        }
         .onDrop(of: [UTType.fileURL], isTargeted: $isTargeted, perform: acceptDrop)
         .onChange(of: isTargeted) { _, value in controller.draggingChanged(value) }
         .onChange(of: commandFocused) { _, value in controller.inputFocusChanged(value) }
         .onChange(of: command) { _, value in controller.composingChanged(!value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
         .onChange(of: workspace.attachments.count) { _, value in controller.attachmentsChanged(value > 0) }
         .onChange(of: workspace.isWorking) { _, value in controller.workingChanged(value) }
-        .task(id: completionTaskKey) {
-            switch workspace.executionState?.status {
-            case .completed, .failed, .waitingForUser, .cancelled:
-                completionReturnedToComposer = false
-                try? await Task.sleep(for: .milliseconds(1900))
-                guard !Task.isCancelled else { return }
-                completionReturnedToComposer = true
-            case .planning, .running, .none:
-                completionReturnedToComposer = false
-            }
-        }
         .task(id: targetMascotAgent) {
             let target = targetMascotAgent
             guard target != stageMascotAgent else { return }
@@ -405,7 +419,6 @@ private struct NotchContents: View {
             }
         }
         .onChange(of: controller.focusCommandRequest) { _, _ in
-            editingCompletion = true
             commandFocused = true
         }
         .onExitCommand { controller.collapse() }
@@ -414,19 +427,29 @@ private struct NotchContents: View {
     }
 
     private var expandedContents: some View {
-        let topInset = max(42, controller.layout.screenTopInset + 8)
+        let topInset = max(34, controller.layout.screenTopInset + 8)
         let mascotWidth = controller.layout.expandedWidth * 0.31
-        let contentHeight = max(90, controller.layout.expandedHeight - topInset - 10)
-        return HStack(spacing: 12) {
+        let contentHeight = max(90, controller.layout.expandedHeight - topInset - 8)
+        return HStack(spacing: 10) {
             mascotStage
                 .frame(width: mascotWidth, height: contentHeight)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
                     Text(panelTitle)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(1)
                     Spacer(minLength: 2)
+                    if workspace.activeOutput != nil {
+                        Button { beginNewRequest() } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Start a new request")
+                    }
                     historyButton
                     Button { controller.collapse() } label: {
                         Image(systemName: "xmark")
@@ -437,39 +460,145 @@ private struct NotchContents: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Collapse Kio")
                 }
-                if workspace.isWorking {
-                    workingPanel
-                } else if hasTerminalResult && !editingCompletion && !completionReturnedToComposer {
-                    completionPanel
-                } else {
-                    composer
+                conversationFeed
+                    .frame(height: workspace.attachments.isEmpty ? 58 : 43)
+                if !workspace.attachments.isEmpty {
+                    attachmentStrip
                 }
-                if !workspace.attachments.isEmpty && !hasTerminalResult {
-                    Text(workspace.attachments.map(\.displayName).joined(separator: " · "))
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
-                        .padding(.leading, 5)
-                }
-                Spacer(minLength: 0)
+                composer
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .padding(.horizontal, 16)
         .padding(.top, topInset)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
         .frame(width: controller.layout.expandedWidth, height: controller.layout.expandedHeight, alignment: .top)
     }
 
     private var panelTitle: String {
         if workspace.isWorking { return "\(displayAgent.name) is working" }
         if !workspace.attachments.isEmpty { return "\(workspace.attachments.count) file\(workspace.attachments.count == 1 ? "" : "s") ready" }
+        if workspace.activeOutput != nil { return "Result ready" }
         return "Ready when you are"
+    }
+
+    private var mascotGaze: CGSize {
+        if reduceMotion { return .zero }
+        if isTargeted || commandFocused { return CGSize(width: 0.82, height: 0.12) }
+        return pointerGaze
+    }
+
+    private var conversationFeed: some View {
+        let recent = Array(workspace.conversation.suffix(3))
+        return ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(recent) { item in
+                        compactMessage(item)
+                            .id(item.id)
+                    }
+                    if workspace.isWorking,
+                       let status = workspace.executionState?.statusText,
+                       recent.last?.message != status {
+                        HStack(spacing: 5) {
+                            ProgressView().controlSize(.mini).tint(.white.opacity(0.7))
+                            Text("\(displayAgent.name) · \(status)")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+                        }
+                        .id("working-status")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: workspace.conversation.count) { _, _ in
+                if let last = recent.last { withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo(last.id, anchor: .bottom) } }
+            }
+            .onChange(of: workspace.executionState?.statusText) { _, _ in
+                if workspace.isWorking { withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo("working-status", anchor: .bottom) } }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactMessage(_ item: ConversationItem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Text(item.speaker)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(item.speaker == "You" ? .white.opacity(0.55) : Color(hex: (AgentID(rawValue: item.speaker.lowercased()) ?? .kio).colorHex))
+                Text(item.message)
+                    .font(.system(size: 9, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+                    .help(item.message)
+            }
+            if let artifact = item.artifact {
+                resultCard(artifact)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func resultCard(_ artifact: ArtifactRef) -> some View {
+        if artifact.refreshedFromDisk() != nil {
+            HStack(spacing: 4) {
+                Image(systemName: artifact.kind == .pdf ? "doc.richtext" : "doc")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                Text(artifact.displayName)
+                    .font(.system(size: 8, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(ByteCountFormatter.string(fromByteCount: artifact.sizeBytes, countStyle: .file))
+                    .font(.system(size: 7))
+                    .foregroundStyle(.white.opacity(0.48))
+                    .fixedSize()
+                Spacer(minLength: 0)
+                Button("Open") { NSWorkspace.shared.open(artifact.fileURL) }
+                Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([artifact.fileURL]) }
+                Button("Copy") { copyFileURL(artifact.fileURL) }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 7, weight: .semibold))
+            .foregroundStyle(Color(hex: AgentID.kio.colorHex))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 7))
+            .onHover { controller.resultInteractionChanged($0) }
+            .onDrag { NSItemProvider(object: artifact.fileURL as NSURL) }
+        } else {
+            Label("Result unavailable · \(artifact.displayName)", systemImage: "doc.questionmark")
+                .font(.system(size: 8))
+                .foregroundStyle(.orange.opacity(0.8))
+                .lineLimit(1)
+        }
+    }
+
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 5) {
+                ForEach(workspace.attachments) { artifact in
+                    NotchAttachmentChip(artifact: artifact) { workspace.removeAttachment(artifact.id) }
+                }
+                if workspace.attachments.count > 1 {
+                    Button("Clear") { workspace.clearAttachments() }
+                        .font(.system(size: 8, weight: .medium))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: 21)
     }
 
     private var mascotStage: some View {
         ZStack {
-            AgentBlob(.kio, mood: baseMascotMood, size: 66)
+            AgentBlob(.kio, mood: baseMascotMood, size: 66, gazeTarget: mascotGaze)
                 .offset(y: coordinatorHasDeparted ? -250 : 0)
                 .zIndex(coordinatorHasDeparted ? 0 : 1)
             if launchSmokeVisible {
@@ -478,7 +607,7 @@ private struct NotchContents: View {
                     .zIndex(1)
             }
             if agentHasArrived {
-                AgentBlob(stageMascotAgent, mood: characterMood, size: 58)
+                AgentBlob(stageMascotAgent, mood: characterMood, size: 58, gazeTarget: mascotGaze)
                     .id(stageMascotAgent)
                     .zIndex(2)
                     .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .move(edge: .top).combined(with: .opacity)))
@@ -525,21 +654,25 @@ private struct NotchContents: View {
                 .submitLabel(.send)
                 .onSubmit { sendCommand() }
                 .accessibilityLabel("Message Kio or drop files")
-            Button { sendCommand() } label: {
-                Image(systemName: "arrow.up")
+                .disabled(workspace.isWorking)
+            Button {
+                if workspace.isWorking { workspace.cancelCurrentTask() }
+                else { sendCommand() }
+            } label: {
+                Image(systemName: workspace.isWorking ? "stop.fill" : "arrow.up")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(workspace.isWorking ? .white : .black)
                     .frame(width: 28, height: 28)
-                    .background(Color(hex: AgentID.kio.colorHex), in: Circle())
+                    .background(workspace.isWorking ? Color.white.opacity(0.14) : Color(hex: AgentID.kio.colorHex), in: Circle())
             }
             .buttonStyle(.plain)
-            .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
-            .accessibilityLabel("Send message")
+            .disabled(!workspace.isWorking && command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity(!workspace.isWorking && command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            .accessibilityLabel(workspace.isWorking ? "Stop task" : "Send message")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 54)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 44)
         .background(isTargeted ? Color(hex: AgentID.pixel.colorHex).opacity(0.14) : Color.white.opacity(0.09),
                     in: RoundedRectangle(cornerRadius: 15))
         .overlay {
@@ -549,83 +682,24 @@ private struct NotchContents: View {
         }
     }
 
-    private var workingPanel: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(workspace.executionState?.statusText ?? "Working on it…")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(2)
-                if !workspace.attachments.isEmpty {
-                    Text("\(workspace.attachments.count) file\(workspace.attachments.count == 1 ? "" : "s") in use")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.52))
-                }
-            }
-            Spacer(minLength: 0)
-            Button { workspace.cancelCurrentTask() } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.12), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Stop task")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 15))
-    }
-
-    private var completionPanel: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Text(terminalTitle)
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color(hex: displayAgent.colorHex))
-                Spacer(minLength: 4)
-                if let artifact = workspace.activeOutput, artifact.refreshedFromDisk() != nil {
-                    Button("Open") { NSWorkspace.shared.open(artifact.fileURL) }
-                        .font(.system(size: 9, weight: .semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color(hex: AgentID.kio.colorHex))
-                }
-                Button { beginNewRequest() } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.74))
-                        .frame(width: 24, height: 22)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("New request")
-            }
-            Text(terminalMessage)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 15))
-    }
-
     private func sendCommand() {
         let value = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !workspace.isWorking else { return }
         command = ""
-        editingCompletion = false
         commandFocused = false
         workspace.submit(value)
     }
 
     private func beginNewRequest() {
-        editingCompletion = true
+        workspace.startNewRequest()
         command = ""
         controller.activateForInput()
+    }
+
+    private func copyFileURL(_ url: URL) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects([url as NSURL])
     }
 
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -647,6 +721,51 @@ private struct NotchContents: View {
             controller.draggingChanged(false)
         }
         return true
+    }
+}
+
+private struct NotchAttachmentChip: View {
+    let artifact: ArtifactRef
+    let onRemove: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(artifact.isAvailableLocally ? Color.white.opacity(0.64) : Color.orange)
+            Text(artifact.displayName)
+                .font(.system(size: 8, weight: .medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(artifact.isAvailableLocally ? Color.white.opacity(0.84) : Color.orange)
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.74))
+                    .frame(width: 13, height: 13)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(artifact.displayName)")
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 3)
+        .padding(.vertical, 3)
+        .background(hovering ? Color.white.opacity(0.15) : Color.white.opacity(0.08), in: Capsule())
+        .onHover { hovering = $0 }
+        .help(artifact.isAvailableLocally ? artifact.displayName : "File unavailable: \(artifact.displayName)")
+    }
+
+    private var icon: String {
+        switch artifact.kind {
+        case .pdf: "doc.richtext"
+        case .image: "photo"
+        case .audio: "waveform"
+        case .video: "film"
+        case .folder: "folder"
+        default: "doc"
+        }
     }
 }
 

@@ -3,6 +3,7 @@ import CoreImage.CIFilterBuiltins
 import KioCore
 import KioInference
 import KioSync
+import KioTools
 import KioUI
 import ServiceManagement
 import SwiftUI
@@ -20,6 +21,9 @@ struct KioSettingsView: View {
     @State private var revokeDeviceID: String?
     @State private var launchAtLogin = false
     @State private var loginError: String?
+    @State private var pairingLinkCopied = false
+    @State private var outputLocationDescription = OutputLocation.preferenceDescription
+    @State private var outputLocationError: String?
     @ObservedObject private var model = LocalModelManager.shared
     @ObservedObject private var relay = LocalRelayManager.shared
 
@@ -120,9 +124,40 @@ struct KioSettingsView: View {
 
     private var filesSection: some View {
         Section("Files") {
-                LabeledContent("Default output", value: "Source folder or Downloads/Kio")
+                LabeledContent("Output location", value: outputLocationDescription)
+                HStack {
+                    Button("Choose Folder…") { chooseOutputFolder() }
+                    Button("Restore Default") {
+                        OutputLocation.restoreDefault()
+                        outputLocationDescription = OutputLocation.preferenceDescription
+                        outputLocationError = nil
+                    }
+                    .disabled(outputLocationDescription == "Source folder or Downloads/Kio")
+                }
+                if let outputLocationError {
+                    Text(outputLocationError).font(.system(size: 11)).foregroundStyle(.red).textSelection(.enabled)
+                }
+                Text("Kio writes new files here when a custom location is selected. The default uses the source folder or Downloads/Kio.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 Label("Preserve originals", systemImage: "lock.fill")
             }
+    }
+
+    private func chooseOutputFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Choose Folder"
+        panel.message = "Choose where Kio should save new results."
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        do {
+            try OutputLocation.setCustomFolder(folder)
+            outputLocationDescription = OutputLocation.preferenceDescription
+            outputLocationError = nil
+        } catch {
+            outputLocationError = error.localizedDescription
+        }
     }
 
     private var mobileSection: some View {
@@ -148,6 +183,16 @@ struct KioSettingsView: View {
                             Text("One use · expires in five minutes").font(.system(size: 11)).foregroundStyle(.secondary)
                             Text("The QR code carries a one-time pairing token and this Mac's public key. Its private key stays in Keychain.")
                                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(pairingURL.absoluteString, forType: .string)
+                                pairingLinkCopied = true
+                            } label: {
+                                Label(pairingLinkCopied ? "Pairing link copied" : "Copy pairing link", systemImage: pairingLinkCopied ? "checkmark" : "link")
+                            }
+                            .buttonStyle(.bordered)
+                            .help("Copy the one-time pairing link to use in a browser on this Mac.")
+                            .accessibilityIdentifier("copy-pairing-link")
                         }
                     }
                     .padding(.vertical, 4)

@@ -79,6 +79,17 @@ final class KioWorkspace: ObservableObject {
     func removeAttachment(_ id: UUID) { attachments.removeAll { $0.id == id } }
     func clearAttachments() { attachments.removeAll() }
 
+    func startNewRequest() {
+        guard !isWorking else { return }
+        attachments = []
+        activeOutput = nil
+        lastOperation = nil
+        lastPlan = nil
+        latestError = nil
+        executionState = nil
+        ConversationPersistence.saveLastPlan(nil)
+    }
+
     func submit(_ rawRequest: String) {
         submit(rawRequest, remote: nil)
     }
@@ -150,6 +161,17 @@ final class KioWorkspace: ObservableObject {
     private func submit(_ rawRequest: String, remote: (phoneID: String, taskID: String, inputURL: URL?)?) {
         let request = rawRequest.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty, !isWorking else { return }
+        if remote == nil, attachments.isEmpty, let answer = fastResponseResolver.response(to: request) {
+            activeOutput = nil
+            lastOperation = nil
+            lastPlan = nil
+            latestError = nil
+            executionState = nil
+            ConversationPersistence.saveLastPlan(nil)
+            append("You", request)
+            append("Kio", answer)
+            return
+        }
         if activeOutput != nil, activeOutput?.refreshedFromDisk() == nil {
             activeOutput = nil
             lastOperation = nil
@@ -330,14 +352,42 @@ final class KioWorkspace: ObservableObject {
         switch operation {
         case .mergePDFs: "Merging \(inputCount) PDFs."
         case .removePDFPages: "Editing PDF pages."
+        case .removeBlankPDFPages: "Checking each PDF page and removing visually blank pages."
+        case .splitPDF: "Splitting the PDF into one-page files."
+        case .extractPDFPages: "Extracting the selected PDF pages."
+        case .reorderPDFPages: "Reordering all pages in the requested order."
+        case .rotatePDFPages: "Rotating PDF pages."
+        case .extractPDFText: "Extracting selectable PDF text."
+        case .ocrPDFText: "Reading scanned PDF pages with on-device OCR."
+        case .inspectPDF: "Inspecting the PDF."
         case .imagesToPDF: "Putting the images into a PDF."
         case .resizeImage: "Resizing the image."
         case .convertImage: "Converting the image."
+        case .rotateImage: "Rotating the image."
+        case .inspectImage: "Inspecting the image."
+        case .cropImage: "Cropping the selected image area."
+        case .compressImage: "Creating and checking a smaller image copy."
+        case .removeImageMetadata: "Removing embedded image metadata."
+        case .imageContactSheet: "Arranging the selected images into a contact sheet."
         case .renameFile: "Making a conflict-safe copy with the requested name."
         case .batchRename: "Making conflict-safe renamed copies."
+        case .copyFiles: "Copying files into the selected folder and checking each copy."
+        case .moveFiles: "Moving the selected files into the chosen folder."
+        case .createFolder: "Creating a new folder in the chosen location."
+        case .findDuplicates: "Comparing file hashes to find exact duplicates."
+        case .organizeByType: "Sorting verified file copies into type folders."
+        case .organizeByDate: "Sorting verified file copies into date folders."
         case .createArchive: "Creating a ZIP archive."
+        case .inspectArchive: "Listing the ZIP contents."
+        case .extractZip: "Checking ZIP paths and extracting into a new folder."
         case .compressPDF: "Compressing a readable PDF copy."
         case .extractAudio: "Extracting the audio track."
+        case .inspectMedia: "Inspecting the video's tracks and duration."
+        case .thumbnailVideo: "Capturing a frame from the video."
+        case .trimVideo: "Trimming a copy of the video."
+        case .resizeVideo: "Resizing the video with a native MP4 preset."
+        case .transcodeVideo: "Converting a copy to MP4."
+        case .compressVideo: "Checking smaller native MP4 export presets."
         }
     }
 
