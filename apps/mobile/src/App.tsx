@@ -34,6 +34,17 @@ function prettySize(size?: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function showKioNotification(body: string, taskID?: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const options: NotificationOptions = { body, icon: "/kio-192.png", badge: "/kio-192.png", ...(taskID ? { tag: `kio-${taskID}` } : {}) };
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification("Kio", options);
+  } else {
+    new Notification("Kio", options);
+  }
+}
+
 export default function App() {
   const [identity, setIdentity] = useState<PhoneIdentity>();
   const [messages, setMessages] = useState<HistoryItem[]>([]);
@@ -114,7 +125,11 @@ export default function App() {
               };
               append(item);
               if ((payload.type === "result" || payload.type === "error") && document.hidden && Notification.permission === "granted") {
-                new Notification("Kio", { body: payload.type === "result" ? "Your Mac finished a Kio request." : "Kio needs your attention." });
+                try {
+                  await showKioNotification(payload.type === "result" ? "Your Mac finished a Kio request." : "Kio needs your attention.", payload.taskID);
+                } catch {
+                  // Keep delivery flowing if the browser closes notification access while Kio is running.
+                }
               }
             } catch {
               append({ id: randomID(), role: "status", text: "A message arrived but couldn't be verified. It was discarded.", createdAt: new Date().toISOString() });
@@ -232,7 +247,12 @@ export default function App() {
       <div className="device-menu-wrap">
         <button className="more" aria-label="Paired device settings" aria-expanded={showDeviceMenu} onClick={() => setShowDeviceMenu((open) => !open)}>···</button>
         {showDeviceMenu && <div className="device-menu">
-          {"Notification" in window && <button onClick={() => { void Notification.requestPermission(); setShowDeviceMenu(false); }}>Enable completion notifications</button>}
+          {"Notification" in window && <button onClick={() => {
+            void Notification.requestPermission().then((permission) => {
+              setError(permission === "granted" ? "" : "Allow notifications in your browser settings to receive Kio completion alerts.");
+            });
+            setShowDeviceMenu(false);
+          }}>{Notification.permission === "granted" ? "Completion notifications enabled" : "Enable completion notifications"}</button>}
           <button className="danger-action" onClick={() => { setShowDeviceMenu(false); void unpair(); }}>Unpair this device</button>
         </div>}
       </div>

@@ -181,6 +181,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!claim.meta.changes) return error("That pairing code was already used.", 410);
     await env.DB.prepare("INSERT INTO devices (id, workspace_id, role, display_name, public_key, credential_hash, created_at, last_seen) VALUES (?, ?, 'phone', ?, ?, ?, ?, ?)")
       .bind(deviceID, pairing.workspace_id, deviceName || "My phone", publicKey, await sha256(authToken), now, now).run();
+    await env.DB.prepare("UPDATE workspaces SET phone_paired_at = COALESCE(phone_paired_at, ?) WHERE id = ?")
+      .bind(now, pairing.workspace_id).run();
     return json({ workspaceID: pairing.workspace_id, macDeviceID: pairing.mac_device_id, macPublicKey: mac.public_key });
   }
 
@@ -338,13 +340,24 @@ export default {
   },
   async scheduled(_event: ScheduledController, env: Env, _context: ExecutionContext): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
+    const retentionCutoff = now - 30 * 86_400;
     await env.DB.batch([
       env.DB.prepare("DELETE FROM transfers WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM envelopes WHERE expires_at <= ? OR consumed_at IS NOT NULL").bind(now),
       env.DB.prepare("DELETE FROM pairing_requests WHERE expires_at <= ? OR consumed_at IS NOT NULL").bind(now),
-      env.DB.prepare("DELETE FROM devices WHERE role = 'phone' AND revoked_at IS NOT NULL AND revoked_at <= ?").bind(now - 30 * 86_400),
+      env.DB.prepare("DELETE FROM devices WHERE role = 'phone' AND revoked_at IS NOT NULL AND revoked_at <= ?").bind(retentionCutoff),
       env.DB.prepare("DELETE FROM pairing_ip_limits WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM transfer_device_limits WHERE expires_at <= ?").bind(now),
+      env.DB.prepare("DELETE FROM transfer_chunks WHERE NOT EXISTS (SELECT 1 FROM transfers WHERE transfers.id = transfer_chunks.transfer_id)"),
+      env.DB.prepare(`DELETE FROM workspaces
+        WHERE phone_paired_at IS NULL
+          AND created_at <= ?
+          AND NOT EXISTS (SELECT 1 FROM devices WHERE devices.workspace_id = workspaces.id AND devices.last_seen > ?)
+          AND NOT EXISTS (SELECT 1 FROM devices WHERE devices.workspace_id = workspaces.id AND devices.role = 'phone')
+          AND NOT EXISTS (SELECT 1 FROM envelopes WHERE envelopes.workspace_id = workspaces.id)
+          AND NOT EXISTS (SELECT 1 FROM transfers WHERE transfers.workspace_id = workspaces.id)
+          AND NOT EXISTS (SELECT 1 FROM pairing_requests WHERE pairing_requests.workspace_id = workspaces.id)`)
+        .bind(retentionCutoff, retentionCutoff),
     ]);
   },
 } satisfies ExportedHandler<Env>;

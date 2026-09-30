@@ -16,3 +16,4 @@ for _ in {1..60}; do
   sleep 1
 done
 KIO_RELAY_URL=http://127.0.0.1:8787 node scripts/relay-smoke.mjs
+KIO_RELAY_URL=http://127.0.0.1:8787 node scripts/lifecycle-smoke.mjs
