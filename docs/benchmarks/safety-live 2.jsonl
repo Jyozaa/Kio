@@ -1,6 +1,0 @@
-{"check": "consequential", "status": "needs_user", "executions": 0, "gemini_calls": 0}
-{"check": "stale_observation", "status": "needs_user", "executions": 0, "gemini_calls": 0}
-{"check": "low_confidence", "status": "needs_user", "executions": 0, "gemini_calls": 1}
-{"check": "stop", "status": "cancelled", "executions": 0, "gemini_calls": 0}
-{"check": "false_done", "status": "needs_user", "executions": 0, "gemini_calls": 0}
-{"purchase_handler": "not run", "passed": 5}

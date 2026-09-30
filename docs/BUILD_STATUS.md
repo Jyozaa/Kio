@@ -1,38 +1,29 @@
 # Kio build status
 
+## Current checkout
+
+- Branch: `main`
+- HEAD: `9744e51` — `overhaul ui, chat interface`
+- Worktree was clean at the start of this pass.
+- The latest GitHub Actions run for this commit completed successfully (Kio CI, run `36727753916`).
+
 ## Current milestone
 
-The local checkout contains the hardening and completion work described below. The Cloudflare relay and PWA currently deployed at <https://kio-relay.kio-relay.workers.dev> are still the earlier deployed build; this checkout has not been deployed or released.
+Repository cleanup is complete. Product hardening continues on the existing SwiftUI/AppKit, local planner, deterministic native tools, optional encrypted relay, and PWA architecture.
 
-## Implemented in this checkout
+## Known issues and audit findings
 
-- Reproducible CI/bootstrap checks and tag-aware Mac app, DMG, checksum, and release versioning.
-- Typed planner/executor fixes for exact conflict-safe rename, stable multi-step artifact inputs, stale output recovery, image format/extension correctness, duplicate relay task handling, and one bounded model-plan repair.
-- Structured local-model planning with a pinned Qwen tool-call format, while keeping deterministic status/file paths independent of model inference.
-- Expanded-notch interaction state, stable host-panel rendering, specialist character motion and pointer tracking, reduced-motion support, onboarding, settings, and hotkey/login options.
-- Relay quota and cleanup protections, including per-workspace and per-device transfer bounds, global active-transfer limits, and hashed-IP workspace creation limits.
-- PWA install assets/service-worker updates, notification preference handling, and richer agent/avatar message support with backward-compatible relay payloads.
-- Architecture, privacy, security, free-tier, local-model, mobile-pairing, release, and user documentation updates.
+- Removed 179 accidental tracked paths with the ` 2` suffix: 169 byte-identical copies, nine stale alternate snapshots, and one repository symlink to a user cache. Canonical files and the symlink target were preserved; Xcode references only `NotchPanel.swift`.
+- Registered native operations currently cover PDF merge/page removal/compression, images-to-PDF/resize/convert, file rename/batch rename, ZIP creation, and audio extraction. The broader specialist operation set in the task brief is not implemented yet.
+- Existing documentation reports passing Swift/macOS/PWA/relay checks and earlier live checks, but those results have not been rerun or independently re-observed during this pass.
+- The current relay/PWA deployment and physical iPhone workflows have not yet been checked against this checkout.
 
-## Automated verification in this checkout
+## Verification in this pass
 
-- `bash scripts/check.sh` — passed after the latest code change: 35 Swift tests, Debug macOS build, clean `npm ci` installs, PWA typecheck and production build, relay typecheck, local Wrangler/D1 integration smoke checks, and CryptoKit/WebCrypto interoperability.
-- `KIO_VERSION_OVERRIDE=0.2.0 scripts/package-dmg.sh` — passed after the final UI appearance fix. The `Kio-0.2.0.dmg` image verified, its SHA-256 checksum matched, and the Release app reports `CFBundleShortVersionString=0.2.0`.
+- `bash scripts/check.sh` passed after cleanup: 35 Swift tests, macOS Debug build, clean mobile and relay dependency installs, PWA typecheck/build, relay typecheck/tests, local D1 integration smoke, and CryptoKit/WebCrypto interoperability.
+- GitHub Actions latest run for `9744e51`: completed successfully (Kio CI, run `36727753916`).
+- Release build/DMG, live Mac interaction, laptop-browser workflows, current relay deployment, and physical iPhone testing: not yet verified in this pass.
 
-## Live checks
+## Next action
 
-- **Mac to paired laptop browser:** the paired Chrome PWA displayed `Mac online`; asking “Is my Mac online?” returned “Your Mac is online—it received this request just now.”
-- **Offline queue and reconnect:** after terminating Kio, Chrome showed the status request queued while Mac was offline. Relaunching the Debug app delivered the reply, and the PWA presence changed back to online.
-- **Earlier browser file workflow:** the paired Chrome session contains a successful image-to-PDF request and a follow-up rename from the earlier deployed build. In the current run, the native macOS chooser showed the generated PNG selected and previewed it as a PNG, but its Open button stayed disabled. No upload occurred, so a fresh browser file round trip was not verified.
-- **Deployed service:** the relay health endpoint returned `{"ok":true,"version":1}`. The live PWA is the earlier deployment, so local PWA visuals and the new agent/avatar payloads have not been confirmed in production.
-- **Mac UI:** inspected the running app's restored conversation window. The warm off-white surface, readable dark text, Pip's progress entry, PDF result card, and Open/Reveal controls were visible. A text-contrast issue found during inspection was fixed and the Debug app rebuilt. The expanded-notch hover/animation, drag/drop, and processing/result sequence were not fully re-inspected through the native UI in this pass.
-
-## Requires final device validation
-
-- Physical iPhone pairing, upload/download, notifications, and offline/reconnect behavior remain unverified on an iPhone. The user previously confirmed Add to Home Screen works.
-- The current source changes have not been deployed. Do not use this document as evidence that the live PWA has the new UI or relay behavior.
-- Public Mac distribution remains ad-hoc signed and is not notarized for Gatekeeper distribution.
-
-## Outputs
-
-`KIO_VERSION_OVERRIDE=0.2.0 scripts/package-dmg.sh` creates `build/release/Kio-0.2.0.dmg` and its `.sha256` file. The `.app` is under `Build/Products/Release` in the DerivedData path printed by `scripts/build-mac.sh` (set `KIO_DERIVED_DATA_PATH` to choose a stable path).
+Address the highest-priority interaction and result-state gaps, then continue with tools, browser/relay validation, and release checks. This section will be updated as each verification is actually completed.
