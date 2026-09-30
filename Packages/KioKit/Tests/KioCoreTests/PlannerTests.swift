@@ -61,6 +61,120 @@ import KioModel
     #expect(plan.steps.first?.arguments == .imageResize(width: 1200))
 }
 
+@Test func pipAndPixelInspectionAndRotationRequestsUseRegisteredTools() throws {
+    let pdf = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let image = try makeArtifact(name: "photo.png", kind: .image)
+
+    let split = FastPathPlanner().plan(request: "Split this PDF into pages", artifacts: [pdf])
+    let inspectPDF = FastPathPlanner().plan(request: "Inspect this PDF", artifacts: [pdf])
+    let rotatePDF = FastPathPlanner().plan(request: "Rotate pages 2-3 90 degrees", artifacts: [pdf])
+    let rotateImage = FastPathPlanner().plan(request: "Rotate this image clockwise", artifacts: [image])
+    let rotateCounterclockwise = FastPathPlanner().plan(request: "Rotate this image counter clockwise", artifacts: [image])
+    let inspectImage = FastPathPlanner().plan(request: "Inspect this image", artifacts: [image])
+
+    #expect(split.steps.first?.operation == .splitPDF)
+    #expect(inspectPDF.steps.first?.operation == .inspectPDF)
+    #expect(rotatePDF.steps.first?.operation == .rotatePDFPages)
+    #expect(rotatePDF.steps.first?.arguments == .pdfRotation(indices: [2, 3], degrees: 90))
+    #expect(rotateImage.steps.first?.operation == .rotateImage)
+    #expect(rotateImage.steps.first?.arguments == .imageRotation(degrees: 90))
+    #expect(rotateCounterclockwise.steps.first?.arguments == .imageRotation(degrees: 270))
+    #expect(inspectImage.steps.first?.operation == .inspectImage)
+}
+
+@Test func imageRotationRequiresDirectionOrAngle() throws {
+    let image = try makeArtifact(name: "photo.png", kind: .image)
+    let plan = FastPathPlanner().plan(request: "Rotate this image", artifacts: [image])
+    #expect(plan.steps.isEmpty)
+    #expect(plan.clarification != nil)
+}
+
+@Test func archiveExtractionAndInspectionUseRegisteredZIPOperations() throws {
+    let zip = try makeArtifact(name: "archive.zip", kind: .other)
+    let inspect = FastPathPlanner().plan(request: "Inspect this ZIP", artifacts: [zip])
+    let extract = FastPathPlanner().plan(request: "Extract this ZIP", artifacts: [zip])
+    #expect(inspect.steps.first?.operation == .inspectArchive)
+    #expect(extract.steps.first?.operation == .extractZip)
+    #expect(extract.steps.first?.owner == .zip)
+}
+
+@Test func scannedPDFOCRUsesBoundedRegisteredPipTool() throws {
+    let pdf = try makeArtifact(name: "scan.pdf", kind: .pdf)
+    let plan = FastPathPlanner().plan(request: "OCR this scanned PDF", artifacts: [pdf])
+    #expect(plan.steps.first?.operation == .ocrPDFText)
+    #expect(plan.steps.first?.owner == .pip)
+    let wire = #"{"steps":[{"operation":"pdf.ocrText","inputIndexes":[0],"arguments":{}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "OCR", artifacts: [pdf])?.steps.first?.operation == .ocrPDFText)
+}
+
+@Test func pixelTaskPlannerSelectsCropCompressionAndContactSheetTools() throws {
+    let first = try makeArtifact(name: "first.png", kind: .image)
+    let second = try makeArtifact(name: "second.png", kind: .image)
+    let crop = FastPathPlanner().plan(request: "Crop x=10 y=20 width=300 height=200", artifacts: [first])
+    let compress = FastPathPlanner().plan(request: "Compress this image under 2 MB", artifacts: [first])
+    let contact = FastPathPlanner().plan(request: "Make a contact sheet", artifacts: [first, second])
+    #expect(crop.steps.first?.operation == .cropImage)
+    #expect(crop.steps.first?.arguments == .imageCrop(x: 10, y: 20, width: 300, height: 200))
+    #expect(compress.steps.first?.operation == .compressImage)
+    #expect(compress.steps.first?.arguments == .imageCompression(maxBytes: 2_000_000))
+    #expect(contact.steps.first?.operation == .imageContactSheet)
+}
+
+@Test func pipPlannerSelectsBlankPageRemovalAndCompletePageOrder() throws {
+    let pdf = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let blank = FastPathPlanner().plan(request: "Remove blank pages", artifacts: [pdf])
+    let reorder = FastPathPlanner().plan(request: "Reorder pages 3, 1, 2", artifacts: [pdf])
+    #expect(blank.steps.first?.operation == .removeBlankPDFPages)
+    #expect(reorder.steps.first?.operation == .reorderPDFPages)
+    #expect(reorder.steps.first?.arguments == .pageOrder(indices: [3, 1, 2]))
+    let wire = #"{"steps":[{"operation":"pdf.reorderPages","inputIndexes":[0],"arguments":{"pages":[3,1,2]}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "reorder", artifacts: [pdf])?.steps.first?.arguments == .pageOrder(indices: [3, 1, 2]))
+    let duplicatePages = #"{"steps":[{"operation":"pdf.reorderPages","inputIndexes":[0],"arguments":{"pages":[1,1,3]}}]}"#
+    #expect(ModelPlanDecoder.decode(duplicatePages, request: "reorder", artifacts: [pdf]) == nil)
+}
+
+@Test func echoPlannerAndDecoderUseBoundedNativeMediaOperations() throws {
+    let video = try makeArtifact(name: "clip.mov", kind: .video)
+    let inspect = FastPathPlanner().plan(request: "Inspect this video", artifacts: [video])
+    let thumbnail = FastPathPlanner().plan(request: "Make a thumbnail at 2.5 seconds", artifacts: [video])
+    let trim = FastPathPlanner().plan(request: "Trim from 2 seconds to 8 seconds", artifacts: [video])
+    let resize = FastPathPlanner().plan(request: "Resize video to 960 pixels wide", artifacts: [video])
+    let transcode = FastPathPlanner().plan(request: "Transcode this video", artifacts: [video])
+    let compress = FastPathPlanner().plan(request: "Compress this video under 10 MB", artifacts: [video])
+
+    #expect(inspect.steps.first?.operation == .inspectMedia)
+    #expect(thumbnail.steps.first?.arguments == .mediaThumbnail(timeMilliseconds: 2_500))
+    #expect(trim.steps.first?.arguments == .mediaTrim(startMilliseconds: 2_000, durationMilliseconds: 6_000))
+    #expect(resize.steps.first?.arguments == .mediaResize(width: 960))
+    #expect(transcode.steps.first?.operation == .transcodeVideo)
+    #expect(compress.steps.first?.arguments == .mediaCompression(maxBytes: 10_000_000))
+
+    let wire = #"{"steps":[{"operation":"media.trim","inputIndexes":[0],"arguments":{"startMs":2000,"durationMs":6000}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "trim", artifacts: [video])?.steps.first?.arguments == .mediaTrim(startMilliseconds: 2_000, durationMilliseconds: 6_000))
+    let badResize = #"{"steps":[{"operation":"media.resizeVideo","inputIndexes":[0],"arguments":{"width":1920}}]}"#
+    #expect(ModelPlanDecoder.decode(badResize, request: "resize", artifacts: [video]) == nil)
+}
+
+@Test func clerkPlannerRequiresExplicitCopyMoveAndDestinationFolder() throws {
+    let file = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let folder = try makeArtifact(name: "Destination", kind: .folder)
+    let copy = FastPathPlanner().plan(request: "Copy these files into the selected folder", artifacts: [file, folder])
+    let move = FastPathPlanner().plan(request: "Move these files into the selected folder", artifacts: [file, folder])
+    let find = FastPathPlanner().plan(request: "Find duplicate files", artifacts: [file, try makeArtifact(name: "copy.pdf", kind: .pdf)])
+    let organizeType = FastPathPlanner().plan(request: "Organize these files by type", artifacts: [file])
+    let organizeDate = FastPathPlanner().plan(request: "Organize these files by date", artifacts: [file])
+    #expect(copy.steps.first?.operation == .copyFiles)
+    #expect(copy.steps.first?.source == .artifacts([file.id, folder.id]))
+    #expect(move.steps.first?.operation == .moveFiles)
+    #expect(find.steps.first?.operation == .findDuplicates)
+    #expect(organizeType.steps.first?.operation == .organizeByType)
+    #expect(organizeDate.steps.first?.operation == .organizeByDate)
+
+    let inventedMove = #"{"steps":[{"operation":"file.move","inputIndexes":[0,1],"arguments":{}}]}"#
+    #expect(ModelPlanDecoder.decode(inventedMove, request: "Organize these files by type", artifacts: [file, folder]) == nil)
+    #expect(ModelPlanDecoder.decode(inventedMove, request: "Move these files into this folder", artifacts: [file, folder])?.steps.first?.operation == .moveFiles)
+}
+
 @Test func modelPlanDecoderAcceptsOnlyTypedRegisteredWorkflow() throws {
     let first = try makeArtifact(name: "report.pdf", kind: .pdf)
     let second = try makeArtifact(name: "appendix.pdf", kind: .pdf)
@@ -130,6 +244,45 @@ import KioModel
     #expect(plan.steps[0].arguments == .imageResize(width: 800))
 }
 
+@Test func sameToTheseRebuildsSafeMergeAndCompressionPipeline() throws {
+    let oldA = try makeArtifact(name: "old-a.pdf", kind: .pdf)
+    let oldB = try makeArtifact(name: "old-b.pdf", kind: .pdf)
+    let newA = try makeArtifact(name: "new-a.pdf", kind: .pdf)
+    let newB = try makeArtifact(name: "new-b.pdf", kind: .pdf)
+    let oldMerge = TaskStep(operation: .mergePDFs, source: .artifacts([oldA.id, oldB.id]))
+    let oldCompress = TaskStep(operation: .compressPDF, source: .previousStep(oldMerge.id),
+                               arguments: .pdfCompression(maxBytes: 3_000_000))
+    let prior = TaskPlan(request: "Merge and compress these to 3 MB", steps: [oldMerge, oldCompress])
+
+    let plan = FastPathPlanner().plan(request: "Do the same to these files", artifacts: [newA, newB],
+                                      context: PlanningContext(previousPlan: prior))
+
+    #expect(plan.steps.count == 2)
+    #expect(plan.steps[0].operation == .mergePDFs)
+    #expect(plan.steps[0].source == .artifacts([newA.id, newB.id]))
+    #expect(plan.steps[0].id != oldMerge.id)
+    #expect(plan.steps[1].operation == .compressPDF)
+    #expect(plan.steps[1].source == .previousStep(plan.steps[0].id))
+    #expect(plan.steps[1].id != oldCompress.id)
+    #expect(plan.steps[1].arguments == .pdfCompression(maxBytes: 3_000_000))
+}
+
+@Test func sameToTheseRejectsPipelineWhenAnyStageDoesNotAcceptNewTypes() throws {
+    let oldA = try makeArtifact(name: "old-a.pdf", kind: .pdf)
+    let oldB = try makeArtifact(name: "old-b.pdf", kind: .pdf)
+    let image = try makeArtifact(name: "new.png", kind: .image)
+    let oldMerge = TaskStep(operation: .mergePDFs, source: .artifacts([oldA.id, oldB.id]))
+    let oldCompress = TaskStep(operation: .compressPDF, source: .previousStep(oldMerge.id),
+                               arguments: .pdfCompression(maxBytes: nil))
+    let prior = TaskPlan(request: "Merge and compress", steps: [oldMerge, oldCompress])
+
+    let plan = FastPathPlanner().plan(request: "Do the same to these files", artifacts: [image],
+                                      context: PlanningContext(previousPlan: prior))
+
+    #expect(plan.steps.isEmpty)
+    #expect(plan.clarification?.contains("doesn't fit") == true)
+}
+
 @Test func sameWorkflowAsksWhenNewFilesDoNotMatchThePriorTool() throws {
     let original = try makeArtifact(name: "first.png", kind: .image)
     let selected = try makeArtifact(name: "report.pdf", kind: .pdf)
@@ -139,7 +292,7 @@ import KioModel
     let plan = FastPathPlanner().plan(request: "Same thing with these files", artifacts: [selected],
                                       context: PlanningContext(previousOperation: .resizeImage, previousPlan: prior))
     #expect(plan.steps.isEmpty)
-    #expect(plan.clarification?.contains("does not accept") == true)
+    #expect(plan.clarification?.contains("doesn't fit") == true)
 }
 
 @Test func resizeFollowupCanSupplyANewWidthWithoutRepeatingTheVerb() throws {
@@ -217,17 +370,21 @@ import KioModel
     #expect(state.shouldRemainExpanded)
     state.set(.pointer, active: false)
     #expect(!state.shouldRemainExpanded)
+
     state.set(.inputFocus, active: true)
     state.set(.composing, active: true)
     state.set(.inputFocus, active: false)
     #expect(state.shouldRemainExpanded)
     state.set(.composing, active: false)
-    state.set(.working, active: true)
-    #expect(state.shouldRemainExpanded)
-    state.set(.working, active: false)
-    state.set(.pinned, active: true)
-    #expect(state.shouldRemainExpanded)
-    state.set(.pinned, active: false)
+
+    for reason in [NotchInteractionReason.attachments, .dragging, .pinned, .working, .resultInteraction, .menuOrPopover] {
+        state.set(reason, active: true)
+        state.set(.pointer, active: true)
+        state.set(.pointer, active: false)
+        #expect(state.shouldRemainExpanded)
+        state.set(reason, active: false)
+    }
+
     #expect(!state.shouldRemainExpanded)
 }
 

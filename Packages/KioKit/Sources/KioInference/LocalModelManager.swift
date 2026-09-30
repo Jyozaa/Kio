@@ -94,7 +94,7 @@ public final class LocalModelManager: ObservableObject {
 
         Choose a safe workflow using only the registered operations below. Call the submit_plan tool exactly once with the complete plan.
         For each step, provide exactly one source: inputIndexes for original inputs, or previousStepIndex for an earlier step's zero-based index. Do not provide both.
-        Operations: pdf.merge (two or more PDFs), pdf.removePages (one PDF, arguments.pages), image.toPDF (images), image.resize (one image, arguments.width), image.convert (one image, arguments.format png or jpeg), file.rename (one file, arguments.name; exact name, extension optional), file.batchRename (arguments.prefix), archive.createZip, pdf.compress (one PDF, optional arguments.maxBytes), media.extractAudio (one video).
+        Operations: pdf.merge (two or more PDFs), pdf.removePages (one PDF, arguments.pages), pdf.removeBlankPages (one PDF), pdf.split (one PDF), pdf.extractPages (one PDF, arguments.pages), pdf.reorderPages (one PDF, arguments.pages must list every page exactly once), pdf.rotatePages (one PDF, optional arguments.pages for all pages, arguments.degrees 90/180/270), pdf.extractText, pdf.ocrText (scanned PDF, at most 50 pages), pdf.inspect, image.toPDF (images), image.resize (one image, arguments.width), image.convert (one image, arguments.format png or jpeg), image.rotate (one image, arguments.degrees 90/180/270), image.crop (arguments.x, arguments.y, arguments.width, arguments.height in pixels), image.compress (one opaque static image, optional arguments.maxBytes), image.removeMetadata, image.contactSheet (2-36 images), image.inspect, file.rename (one file, arguments.name; exact name, extension optional), file.batchRename (arguments.prefix), file.copy/move (regular files followed by one attached destination folder; file.move requires explicit user intent), file.createFolder (one attached parent folder and arguments.name), file.findDuplicates (2-200 files), file.organizeByType/date (1-200 files, originals preserved), archive.createZip, archive.inspect (one ZIP), archive.extractZip (one ZIP; creates a new verified folder), pdf.compress (one PDF, optional arguments.maxBytes), media.inspect, media.thumbnail (arguments.timeMs), media.trim (arguments.startMs, arguments.durationMs), media.resizeVideo (width 640/960/1280), media.transcode (MP4), media.compressVideo (optional arguments.maxBytes), media.extractAudio.
         For missing or ambiguous details, return {"steps":[],"clarification":"one concise question"}.
         Do not invent files, operations, paths, commands, or arguments. Do not claim a task is complete.
         """
@@ -132,9 +132,10 @@ public final class LocalModelManager: ObservableObject {
         func object(_ properties: [String: any Sendable]) -> [String: any Sendable] { ["type": "object", "properties": properties] }
         let integer = type("integer")
         let argumentProperties: [String: any Sendable] = [
-            "width": integer, "format": type("string"),
+            "width": integer, "x": integer, "y": integer, "height": integer, "format": type("string"),
             "name": type("string"), "prefix": type("string"),
-            "pages": array(integer), "maxBytes": integer
+            "pages": array(integer), "degrees": integer, "maxBytes": integer,
+            "timeMs": integer, "startMs": integer, "durationMs": integer
         ]
         let stepProperties: [String: any Sendable] = [
             "operation": type("string"),

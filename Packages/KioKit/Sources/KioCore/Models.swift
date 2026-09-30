@@ -93,14 +93,42 @@ public struct PlannerArtifact: Codable, Identifiable, Sendable, Hashable {
 public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case mergePDFs = "pdf.merge"
     case removePDFPages = "pdf.removePages"
+    case removeBlankPDFPages = "pdf.removeBlankPages"
+    case splitPDF = "pdf.split"
+    case extractPDFPages = "pdf.extractPages"
+    case reorderPDFPages = "pdf.reorderPages"
+    case rotatePDFPages = "pdf.rotatePages"
+    case extractPDFText = "pdf.extractText"
+    case ocrPDFText = "pdf.ocrText"
+    case inspectPDF = "pdf.inspect"
     case imagesToPDF = "image.toPDF"
     case resizeImage = "image.resize"
     case convertImage = "image.convert"
+    case rotateImage = "image.rotate"
+    case inspectImage = "image.inspect"
+    case cropImage = "image.crop"
+    case compressImage = "image.compress"
+    case removeImageMetadata = "image.removeMetadata"
+    case imageContactSheet = "image.contactSheet"
     case renameFile = "file.rename"
     case batchRename = "file.batchRename"
+    case copyFiles = "file.copy"
+    case moveFiles = "file.move"
+    case createFolder = "file.createFolder"
+    case findDuplicates = "file.findDuplicates"
+    case organizeByType = "file.organizeByType"
+    case organizeByDate = "file.organizeByDate"
     case createArchive = "archive.createZip"
+    case inspectArchive = "archive.inspect"
+    case extractZip = "archive.extractZip"
     case compressPDF = "pdf.compress"
     case extractAudio = "media.extractAudio"
+    case inspectMedia = "media.inspect"
+    case thumbnailVideo = "media.thumbnail"
+    case trimVideo = "media.trim"
+    case resizeVideo = "media.resizeVideo"
+    case transcodeVideo = "media.transcode"
+    case compressVideo = "media.compressVideo"
 }
 
 public enum StepSource: Codable, Sendable, Hashable {
@@ -112,9 +140,19 @@ public enum ToolArguments: Codable, Sendable, Hashable {
     case none
     case imageResize(width: Int)
     case imageConvert(format: String)
+    case imageRotation(degrees: Int)
+    case imageCrop(x: Int, y: Int, width: Int, height: Int)
+    case imageCompression(maxBytes: Int64?)
+    case folderName(name: String)
+    case mediaThumbnail(timeMilliseconds: Int64)
+    case mediaTrim(startMilliseconds: Int64, durationMilliseconds: Int64)
+    case mediaResize(width: Int)
+    case mediaCompression(maxBytes: Int64?)
     case exactRename(name: String)
     case rename(prefix: String)
     case removePages(indices: [Int])
+    case pageOrder(indices: [Int])
+    case pdfRotation(indices: [Int], degrees: Int)
     case pdfCompression(maxBytes: Int64?)
 }
 
@@ -133,11 +171,11 @@ public struct TaskStep: Codable, Identifiable, Sendable, Hashable {
 
     public var owner: AgentID {
         switch operation {
-        case .mergePDFs, .removePDFPages, .imagesToPDF: .pip
-        case .resizeImage, .convertImage: .pixel
-        case .renameFile, .batchRename: .clerk
-        case .createArchive, .compressPDF: .zip
-        case .extractAudio: .echo
+        case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF: .pip
+        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .compressImage, .removeImageMetadata, .imageContactSheet: .pixel
+        case .renameFile, .batchRename, .copyFiles, .moveFiles, .createFolder, .findDuplicates, .organizeByType, .organizeByDate: .clerk
+        case .createArchive, .inspectArchive, .extractZip, .compressPDF: .zip
+        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: .echo
         }
     }
 }
@@ -242,7 +280,7 @@ public struct TaskExecutionState: Sendable, Equatable {
 }
 
 public enum NotchInteractionReason: Hashable, Sendable {
-    case pointer, inputFocus, composing, attachments, dragging, pinned, working, resultInteraction
+    case pointer, inputFocus, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover
 }
 
 /// Centralizes the reasons the expanded notch must remain available for interaction.

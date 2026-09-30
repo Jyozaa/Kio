@@ -21,11 +21,13 @@ public struct AgentBlob: View {
     private let agent: AgentID
     private let mood: CharacterMood
     private let size: CGFloat
+    private let gazeTarget: CGSize?
 
-    public init(_ agent: AgentID, mood: CharacterMood = .idle, size: CGFloat = 36) {
+    public init(_ agent: AgentID, mood: CharacterMood = .idle, size: CGFloat = 36, gazeTarget: CGSize? = nil) {
         self.agent = agent
         self.mood = mood
         self.size = size
+        self.gazeTarget = gazeTarget
     }
 
     public var body: some View {
@@ -52,8 +54,8 @@ public struct AgentBlob: View {
                 }
             }
             .foregroundStyle(eyeColor)
-            .offset(x: eyeTracking.width + idleGaze.width,
-                    y: size * 0.005 + eyeOffset + eyeTracking.height + idleGaze.height)
+            .offset(x: pointerOffset.width + idleGaze.width,
+                    y: size * 0.005 + eyeOffset + pointerOffset.height + idleGaze.height)
         }
         .offset(y: shapeOffset + idleBobOffset)
         .rotationEffect(idleRotation)
@@ -62,18 +64,21 @@ public struct AgentBlob: View {
         .frame(width: size, height: size)
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: breathing)
         .animation(shouldReduceMotion ? nil : .easeOut(duration: 0.15), value: eyeTracking)
+        .animation(shouldReduceMotion ? nil : .easeOut(duration: 0.15), value: gazeTarget)
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.48), value: idleGaze)
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.72), value: idleBob)
         .animation(shouldReduceMotion ? nil : .easeInOut(duration: 0.82), value: idleSway)
         .animation(shouldReduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.68), value: mood)
         .overlay {
-            AgentPointerTracker { location, bounds in
-                guard !shouldReduceMotion, let location else { eyeTracking = .zero; return }
-                let horizontal = min(1, max(-1, (location.x - bounds.width / 2) / max(1, bounds.width / 2)))
-                let vertical = min(1, max(-1, (bounds.height / 2 - location.y) / max(1, bounds.height / 2)))
-                eyeTracking = CGSize(width: horizontal * size * 0.035, height: vertical * size * 0.025)
+            if gazeTarget == nil {
+                AgentPointerTracker { location, bounds in
+                    guard !shouldReduceMotion, let location else { eyeTracking = .zero; return }
+                    let horizontal = min(1, max(-1, (location.x - bounds.width / 2) / max(1, bounds.width / 2)))
+                    let vertical = min(1, max(-1, (bounds.height / 2 - location.y) / max(1, bounds.height / 2)))
+                    eyeTracking = CGSize(width: horizontal * size * 0.035, height: vertical * size * 0.025)
+                }
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
         }
         .task(id: shouldReduceMotion) {
             guard !shouldReduceMotion else { return }
@@ -153,6 +158,13 @@ public struct AgentBlob: View {
         case .failure: size * 0.025
         default: 0
         }
+    }
+
+    private var pointerOffset: CGSize {
+        guard let gazeTarget, !shouldReduceMotion else { return eyeTracking }
+        let horizontal = min(1, max(-1, gazeTarget.width))
+        let vertical = min(1, max(-1, gazeTarget.height))
+        return CGSize(width: horizontal * size * 0.035, height: vertical * size * 0.025)
     }
 
     private var eyeColor: Color { .black }
