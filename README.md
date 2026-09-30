@@ -18,10 +18,11 @@ See [Build status](docs/BUILD_STATUS.md) for the checked paths and known gaps.
 Requirements: Apple Silicon Mac, macOS 14+, Xcode, Swift 6, Node.js 22.12+, and npm.
 
 ```sh
-bash scripts/bootstrap.sh
 bash scripts/check.sh
 bash scripts/build-mac.sh
 ```
+
+The canonical check installs the PWA and relay dependencies with `npm ci` from their lockfiles before building them. `bash scripts/bootstrap.sh` is optional when you only want to pre-resolve the Swift package.
 
 Package a locally signed app and DMG:
 

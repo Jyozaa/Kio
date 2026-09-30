@@ -29,6 +29,8 @@ export interface EnvelopePayload {
   attachmentID?: string;
   attachmentNonce?: string;
   taskID?: string;
+  speaker?: string;
+  agent?: "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier";
   createdAt: string;
 }
 

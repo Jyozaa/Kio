@@ -1,7 +1,8 @@
-const CACHE = "kio-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/kio.svg"];
-self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL))));
-self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))));
+const CACHE = "kio-shell-v2";
+const SHELL = ["/", "/manifest.webmanifest", "/kio.svg", "/kio-192.png", "/kio-512.png", "/apple-touch-icon.png"];
+self.addEventListener("install", (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())));
+self.addEventListener("activate", (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("kio-shell-") && key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
+self.addEventListener("message", (event) => { if (event.data === "SKIP_WAITING") void self.skipWaiting(); });
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;

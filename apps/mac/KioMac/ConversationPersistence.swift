@@ -25,6 +25,8 @@ struct RestoredConversation {
     let items: [ConversationItem]
     let activeOutput: ArtifactRef?
     let operation: ToolOperation?
+    let plan: TaskPlan?
+    let hadUnavailableActiveOutput: Bool
 }
 
 enum ConversationPersistence {
@@ -39,9 +41,20 @@ enum ConversationPersistence {
         let items = entries.map { entry in
             ConversationItem(id: entry.id, speaker: entry.speaker, message: entry.message, artifact: entry.artifactData.flatMap { try? JSONDecoder().decode(ArtifactRef.self, from: $0) })
         }
-        let output = items.reversed().compactMap(\.artifact).first
-        let operation = entries.reversed().compactMap { $0.operationRawValue }.first.flatMap(ToolOperation.init(rawValue:))
-        return RestoredConversation(items: items, activeOutput: output, operation: operation)
+        let latestOutput = items.reversed().compactMap(\.artifact).first
+        let output = latestOutput?.refreshedFromDisk()
+        let operation = output == nil ? nil : entries.reversed().compactMap { $0.operationRawValue }.first.flatMap(ToolOperation.init(rawValue:))
+        let plan = UserDefaults.standard.data(forKey: "kio.previousPlan").flatMap { try? JSONDecoder().decode(TaskPlan.self, from: $0) }
+        return RestoredConversation(items: items, activeOutput: output, operation: operation, plan: output == nil ? nil : plan,
+                                    hadUnavailableActiveOutput: latestOutput != nil && output == nil)
+    }
+
+    static func saveLastPlan(_ plan: TaskPlan?) {
+        guard let plan, let data = try? JSONEncoder().encode(plan) else {
+            UserDefaults.standard.removeObject(forKey: "kio.previousPlan")
+            return
+        }
+        UserDefaults.standard.set(data, forKey: "kio.previousPlan")
     }
 
     static func append(_ item: ConversationItem, operation: ToolOperation?) {
@@ -59,6 +72,7 @@ enum ConversationPersistence {
     }
 
     static func clear() {
+        UserDefaults.standard.removeObject(forKey: "kio.previousPlan")
         guard let container else { return }
         let context = ModelContext(container)
         let descriptor = FetchDescriptor<StoredConversationEntry>()

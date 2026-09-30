@@ -1,0 +1,482 @@
+{
+  "schema_version": 1,
+  "backend": "mlx",
+  "backend_revision": "laya-mlx-0.2.0",
+  "environment": {
+    "python": "3.12.8",
+    "os": "macOS-27.0-arm64-arm-64bit",
+    "machine": "arm64",
+    "laya": "0.3.20",
+    "laya_mlx": "0.2.0",
+    "mlx": "0.32.3",
+    "mlx_metal": "0.32.3"
+  },
+  "model": "convaiinnovations/laya@55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "checkpoint_revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+  "representation": "v1",
+  "options": {
+    "compile": false,
+    "cache_prompts": false,
+    "batch_size": 8,
+    "dtype": "float16"
+  },
+  "split": "test",
+  "fixture_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+  "cold_load_seconds": 0.2635020000161603,
+  "first_inference_seconds": 0.07067124999593943,
+  "warm_median_seconds": 0.09015358402393758,
+  "warm_p90_seconds": 0.12128845800179988,
+  "peak_rss_mib": 950.21875,
+  "operation_accuracy": 0.6666666666666666,
+  "operation_accuracy_all_rows": 0.7142857142857143,
+  "operation_rows_scored": 12,
+  "target_accuracy": 1,
+  "combined_accuracy": 0.7142857142857143,
+  "false_high_confidence_errors": 0,
+  "ece": 0.08990714285714287,
+  "candidate_recall": {
+    "target_rows": 6,
+    "perception_recall": 1.0,
+    "candidate_builder_recall": 1.0,
+    "production_candidate_recall": 1.0,
+    "rows": [
+      {
+        "id": "test-AX",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      },
+      {
+        "id": "test-DOM",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      },
+      {
+        "id": "test-typing",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 1
+      },
+      {
+        "id": "test-selection",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 1
+      },
+      {
+        "id": "test-large",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 301
+      },
+      {
+        "id": "test-history",
+        "raw_observation": true,
+        "candidate_builder": true,
+        "production_candidate_set": true,
+        "final_candidate_count": 1,
+        "exhaustive_candidate_count": 2
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "test-AX",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9943,
+      "seconds": 0.09220787498634309,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9943,
+          "probabilities": {
+            "CLICK": 0.9943,
+            "SCROLL_UP": 0.0005,
+            "SCROLL_DOWN": 0.0009,
+            "WAIT": 0.0003,
+            "BLOCKED": 0.0016,
+            "REOBSERVE": 0.0022
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-DOM",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9953,
+      "seconds": 0.09228233294561505,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9953,
+          "probabilities": {
+            "CLICK": 0.9953,
+            "SCROLL_UP": 0.0005,
+            "SCROLL_DOWN": 0.0009,
+            "WAIT": 0.0002,
+            "BLOCKED": 0.0013,
+            "REOBSERVE": 0.0018
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-OCR",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.3279,
+      "seconds": 0.04966791602782905,
+      "operation": "REOBSERVE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "REOBSERVE",
+          "confidence": 0.3279,
+          "probabilities": {
+            "SCROLL_UP": 0.147,
+            "SCROLL_DOWN": 0.1658,
+            "WAIT": 0.0946,
+            "BLOCKED": 0.2647,
+            "REOBSERVE": 0.3279
+          }
+        }
+      }
+    },
+    {
+      "id": "test-repeated",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.4607,
+      "seconds": 0.09932183299679309,
+      "operation": "CLICK",
+      "candidate_count": 8,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.4607,
+          "probabilities": {
+            "CLICK": 0.4607,
+            "SCROLL_UP": 0.0446,
+            "SCROLL_DOWN": 0.0521,
+            "WAIT": 0.0358,
+            "BLOCKED": 0.1336,
+            "REOBSERVE": 0.2732
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 0.8092,
+          "probabilities": {
+            "c_0": 0.8092,
+            "c_1": 0.1908
+          }
+        }
+      }
+    },
+    {
+      "id": "test-scroll",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.9609,
+      "seconds": 0.05427879199851304,
+      "operation": "SCROLL_DOWN",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "SCROLL_DOWN",
+          "confidence": 0.9609,
+          "probabilities": {
+            "SCROLL_UP": 0.0078,
+            "SCROLL_DOWN": 0.9609,
+            "WAIT": 0.0051,
+            "BLOCKED": 0.0107,
+            "REOBSERVE": 0.0155
+          }
+        }
+      }
+    },
+    {
+      "id": "test-typing",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.8856,
+      "seconds": 0.10577587492298335,
+      "operation": "TYPE_TEXT",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "TYPE_TEXT",
+          "confidence": 0.8856,
+          "probabilities": {
+            "TYPE_TEXT": 0.8856,
+            "SCROLL_UP": 0.0077,
+            "SCROLL_DOWN": 0.0071,
+            "WAIT": 0.0054,
+            "BLOCKED": 0.0198,
+            "REOBSERVE": 0.0745
+          }
+        },
+        "type_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-selection",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9456,
+      "seconds": 0.12128845800179988,
+      "operation": "SELECT",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "SELECT",
+          "confidence": 0.9456,
+          "probabilities": {
+            "SELECT": 0.9456,
+            "SCROLL_UP": 0.0044,
+            "SCROLL_DOWN": 0.007,
+            "WAIT": 0.0036,
+            "BLOCKED": 0.0152,
+            "REOBSERVE": 0.0242
+          }
+        },
+        "select_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-done",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 1.0,
+      "seconds": 0.0,
+      "operation": "DONE_VERIFIED",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE_VERIFIED",
+          "confidence": 1.0
+        }
+      }
+    },
+    {
+      "id": "test-blocked",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 0.4709,
+      "seconds": 0.053054750082083046,
+      "operation": "BLOCKED",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "BLOCKED",
+          "confidence": 0.4709,
+          "probabilities": {
+            "SCROLL_UP": 0.0847,
+            "SCROLL_DOWN": 0.0913,
+            "WAIT": 0.0745,
+            "BLOCKED": 0.4709,
+            "REOBSERVE": 0.2785
+          }
+        }
+      }
+    },
+    {
+      "id": "test-uncertain",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.3283,
+      "seconds": 0.048316708067432046,
+      "operation": "REOBSERVE",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "REOBSERVE",
+          "confidence": 0.3283,
+          "probabilities": {
+            "SCROLL_UP": 0.128,
+            "SCROLL_DOWN": 0.1407,
+            "WAIT": 0.1193,
+            "BLOCKED": 0.2837,
+            "REOBSERVE": 0.3283
+          }
+        }
+      }
+    },
+    {
+      "id": "test-financial",
+      "operation_correct": false,
+      "target_correct": true,
+      "correct": false,
+      "has_target": false,
+      "confidence": 0.4411,
+      "seconds": 0.09015358402393758,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.4411,
+          "probabilities": {
+            "CLICK": 0.4411,
+            "SCROLL_UP": 0.052,
+            "SCROLL_DOWN": 0.0461,
+            "WAIT": 0.0438,
+            "BLOCKED": 0.1675,
+            "REOBSERVE": 0.2495
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-large",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.9925,
+      "seconds": 0.09093466703779995,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.9925,
+          "probabilities": {
+            "CLICK": 0.9925,
+            "SCROLL_UP": 0.0004,
+            "SCROLL_DOWN": 0.0007,
+            "WAIT": 0.0004,
+            "BLOCKED": 0.0023,
+            "REOBSERVE": 0.0036
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-history",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": true,
+      "confidence": 0.996,
+      "seconds": 0.15445066604297608,
+      "operation": "CLICK",
+      "candidate_count": 7,
+      "predictions": {
+        "operation": {
+          "choice": "CLICK",
+          "confidence": 0.996,
+          "probabilities": {
+            "CLICK": 0.996,
+            "SCROLL_UP": 0.0003,
+            "SCROLL_DOWN": 0.0005,
+            "WAIT": 0.0005,
+            "BLOCKED": 0.0012,
+            "REOBSERVE": 0.0016
+          }
+        },
+        "click_target": {
+          "choice": "c_0",
+          "confidence": 1.0,
+          "probabilities": {
+            "c_0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "id": "test-literal_done",
+      "operation_correct": true,
+      "target_correct": true,
+      "correct": true,
+      "has_target": false,
+      "confidence": 1.0,
+      "seconds": 0.0,
+      "operation": "DONE_VERIFIED",
+      "candidate_count": 6,
+      "predictions": {
+        "operation": {
+          "choice": "DONE_VERIFIED",
+          "confidence": 1.0
+        }
+      }
+    }
+  ]
+}

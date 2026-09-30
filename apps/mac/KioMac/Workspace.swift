@@ -36,10 +36,13 @@ final class KioWorkspace: ObservableObject {
     @Published private(set) var isWorking = false
     @Published private(set) var activeOutput: ArtifactRef?
     @Published private(set) var latestError: String?
+    @Published private(set) var executionState: TaskExecutionState?
 
     private var lastOperation: ToolOperation?
+    private var lastPlan: TaskPlan?
     private var runningTask: Task<Void, Never>?
     private var pendingRemoteRequests: [PendingRemoteRequest] = []
+    private var remoteTaskLedger = TaskDeduplicationLedger(knownIDs: UserDefaults.standard.stringArray(forKey: "kio.processedRemoteTaskIDs") ?? [])
     private let planner = FastPathPlanner()
     private let fastResponseResolver = FastPathResponseResolver()
     private let executor = ToolExecutor()
@@ -49,6 +52,10 @@ final class KioWorkspace: ObservableObject {
             conversation = restored.items
             activeOutput = restored.activeOutput
             lastOperation = restored.operation
+            lastPlan = restored.plan
+            if restored.hadUnavailableActiveOutput {
+                conversation.append(ConversationItem(speaker: "Kio", message: "The last result file is no longer available. Add the file again before asking me to work with it.", artifact: nil))
+            }
         } else {
             conversation = [ConversationItem(speaker: "Kio", message: "Drop in a file and tell me what you want done. Kio processes files on this Mac. You can install an optional 1.72 GB local model in Settings for broader request planning.", artifact: nil)]
         }
@@ -82,6 +89,11 @@ final class KioWorkspace: ObservableObject {
             Task { await LocalRelayManager.shared.sendReply(type: "error", text: "That request is empty or too long to send safely.", taskID: taskID, artifactURL: nil, to: phoneID) }
             return
         }
+        guard remoteTaskLedger.insertIfNew(taskID) else {
+            Task { await LocalRelayManager.shared.sendReply(type: "progress", text: "This request was already accepted and won't run twice.", taskID: taskID, artifactURL: nil, to: phoneID, speaker: "Kio", agent: AgentID.kio.rawValue) }
+            return
+        }
+        UserDefaults.standard.set(remoteTaskLedger.entries, forKey: "kio.processedRemoteTaskIDs")
         if payload.attachmentID == nil, let answer = fastResponseResolver.response(to: payload.text) {
             append("Phone", payload.text)
             append("Kio", answer)
@@ -138,11 +150,22 @@ final class KioWorkspace: ObservableObject {
     private func submit(_ rawRequest: String, remote: (phoneID: String, taskID: String, inputURL: URL?)?) {
         let request = rawRequest.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty, !isWorking else { return }
+        if activeOutput != nil, activeOutput?.refreshedFromDisk() == nil {
+            activeOutput = nil
+            lastOperation = nil
+            lastPlan = nil
+            ConversationPersistence.saveLastPlan(nil)
+            append("Kio", "The previous result file is no longer available. Add it again before asking me to work with it.")
+        } else if let current = activeOutput?.refreshedFromDisk() {
+            activeOutput = current
+        }
         append(remote == nil ? "You" : "Phone", request)
         latestError = nil
-        let context = PlanningContext(activeOutput: activeOutput, previousOperation: lastOperation)
-        let fastPlan = planner.plan(request: request, artifacts: attachments, context: context)
         let planningArtifacts = attachments.isEmpty ? (activeOutput.map { [$0] } ?? []) : attachments
+        let submittedAttachmentIDs = Set(attachments.map(\.id))
+        let context = PlanningContext(activeOutput: activeOutput, previousOperation: lastOperation, previousPlan: lastPlan)
+        let fastPlan = planner.plan(request: request, artifacts: planningArtifacts, context: context)
+        publishExecution(for: fastPlan, status: .planning, text: "Planning your task…")
         isWorking = true
         runningTask = Task {
             defer {
@@ -161,24 +184,30 @@ final class KioWorkspace: ObservableObject {
             if plan.steps.isEmpty {
                 guard LocalModelManager.shared.isInstalled else {
                     let message = plan.clarification ?? "I need a clearer instruction for that."
+                    publishExecution(for: plan, status: .waitingForUser, text: message)
                     append("Kio", "\(message) A local model can plan other registered workflows after you prepare it in Settings.")
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 }
                 append("Kio", "Planning with the local model…")
+                if let remote { await LocalRelayManager.shared.sendReply(type: "progress", text: "Kio is checking the request against its registered tools.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: "Kio", agent: AgentID.kio.rawValue) }
                 do {
                     guard let modelPlan = try await LocalModelManager.shared.plan(request: request, artifacts: planningArtifacts) else {
-                        append("Kio", "I couldn't verify a safe tool plan for that request. Try adding a little more detail.")
-                        if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "I couldn't verify a safe tool plan for that request. Add a little more detail and try again.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
+                        let message = "I couldn't verify a safe tool plan for that request. Try adding a little more detail."
+                        publishExecution(for: plan, status: .waitingForUser, text: message)
+                        append("Kio", message)
+                        if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                         return
                     }
                     plan = modelPlan
                 } catch is CancellationError {
+                    publishExecution(for: plan, status: .cancelled, text: "Stopped before making changes.")
                     append("Kio", "Stopped before making changes.")
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "Stopped before making changes.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 } catch {
                     latestError = error.localizedDescription
+                    publishExecution(for: plan, status: .failed, text: error.localizedDescription, failure: error.localizedDescription)
                     append("Kio", "The local model couldn't plan this safely: \(error.localizedDescription)")
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "The local model couldn't plan this safely: \(error.localizedDescription)", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
@@ -186,69 +215,106 @@ final class KioWorkspace: ObservableObject {
             }
             guard !plan.steps.isEmpty else {
                 let message = plan.clarification ?? "I need a clearer instruction for that."
+                publishExecution(for: plan, status: .waitingForUser, text: message)
                 append("Kio", message)
                 if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                 return
             }
-            if let remote { await LocalRelayManager.shared.sendReply(type: "progress", text: "Your request is running on your Mac.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
-            let result = await execute(plan)
+            publishExecution(for: plan, status: .running, text: "Starting \(plan.steps[0].owner.name)'s step.", total: plan.steps.count)
+            let result = await execute(plan, inputSnapshot: planningArtifacts, remote: remote.map { ($0.phoneID, $0.taskID) })
+            if result != nil {
+                attachments.removeAll { submittedAttachmentIDs.contains($0.id) }
+                lastPlan = plan
+                ConversationPersistence.saveLastPlan(plan)
+            }
             guard let remote else { return }
             if let result {
-                await LocalRelayManager.shared.sendReply(type: "result", text: "Done. \(result.displayName) is ready.", taskID: remote.taskID, artifactURL: result.fileURL, to: remote.phoneID)
+                await LocalRelayManager.shared.sendReply(type: "result", text: "Done. \(result.displayName) is ready.", taskID: remote.taskID, artifactURL: result.fileURL, to: remote.phoneID, speaker: "Kio", agent: AgentID.kio.rawValue)
             } else {
                 let message = latestError ?? "Kio stopped before creating a result."
-                await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID)
+                let agent = executionState?.activeAgent ?? .kio
+                await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: agent.name, agent: agent.rawValue)
             }
         }
     }
 
     func cancelCurrentTask() { runningTask?.cancel() }
 
-    private func execute(_ plan: TaskPlan) async -> ArtifactRef? {
-        var outputsByStep: [UUID: [ArtifactRef]] = [:]
-        for step in plan.steps {
+    private func execute(_ plan: TaskPlan, inputSnapshot: [ArtifactRef], remote: (phoneID: String, taskID: String)?) async -> ArtifactRef? {
+        var artifactSnapshot = PlanArtifactSnapshot(originals: inputSnapshot)
+        for (stepIndex, step) in plan.steps.enumerated() {
             do {
                 try Task.checkCancellation()
-                let inputs: [ArtifactRef]
-                switch step.source {
-                case .artifacts(let ids):
-                    let all = Dictionary((attachments + (activeOutput.map { [$0] } ?? [])).map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
-                    guard ids.allSatisfy({ all[$0] != nil }) else { throw KioFailure.invalidInput("One of the selected files is no longer available. Add it again and retry.") }
-                    inputs = ids.compactMap { all[$0] }
-                case .previousStep(let id):
-                    guard let previous = outputsByStep[id] else { throw KioFailure.invalidInput("A previous operation did not produce an output.") }
-                    inputs = previous
+                let resolved = try artifactSnapshot.resolve(step)
+                let inputs = try resolved.map { artifact -> ArtifactRef in
+                    guard let current = artifact.refreshedFromDisk() else {
+                        throw KioFailure.invalidInput("One of the selected files is no longer available. Add it again and retry.")
+                    }
+                    return current
                 }
-                append(step.owner.name, Self.status(for: step.operation, inputCount: inputs.count))
+                let status = Self.status(for: step.operation, inputCount: inputs.count)
+                publishExecution(for: plan, status: .running, stepIndex: stepIndex, operation: step.operation,
+                                 agent: step.owner, text: status, completed: stepIndex, total: plan.steps.count)
+                append(step.owner.name, status)
+                if let remote {
+                    if stepIndex > 0, plan.steps[stepIndex - 1].owner != step.owner {
+                        await LocalRelayManager.shared.sendReply(type: "progress", text: "I'll hand this to \(step.owner.name).", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: "Kio", agent: AgentID.kio.rawValue)
+                    }
+                    await LocalRelayManager.shared.sendReply(type: "progress", text: status, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: step.owner.name, agent: step.owner.rawValue)
+                }
                 let outputs = try await executor.execute(step, inputs: inputs)
                 guard !outputs.isEmpty, outputs.allSatisfy({ FileManager.default.fileExists(atPath: $0.fileURL.path) && $0.sizeBytes > 0 }) else {
                     throw KioFailure.verification("Kio could not verify the result file.")
                 }
-                outputsByStep[step.id] = outputs
+                artifactSnapshot.record(outputs, for: step)
                 lastOperation = step.operation
                 activeOutput = outputs.last
-                attachments.removeAll()
+                publishExecution(for: plan, status: .running, stepIndex: stepIndex, operation: step.operation,
+                                 agent: step.owner, text: "Finished step \(stepIndex + 1) of \(plan.steps.count).",
+                                 completed: stepIndex + 1, total: plan.steps.count, output: outputs.last)
                 for output in outputs {
                     let message = output.verificationNote.map { "\($0)\n\(output.displayName)" } ?? "Done. \(output.displayName)"
                     append("Kio", message, artifact: output)
                 }
             } catch is CancellationError {
+                publishExecution(for: plan, status: .cancelled, stepIndex: stepIndex, operation: step.operation,
+                                 agent: step.owner, text: "Stopped.", completed: stepIndex, total: plan.steps.count,
+                                 output: activeOutput)
                 append("Kio", "Stopped. Any completed copies remain available; original files are unchanged.")
                 return nil
             } catch {
                 let message = error.localizedDescription
                 latestError = message
+                publishExecution(for: plan, status: .failed, stepIndex: stepIndex, operation: step.operation,
+                                 agent: step.owner, text: message, completed: stepIndex, total: plan.steps.count,
+                                 output: activeOutput, failure: message)
                 append(step.owner.name, "I couldn't finish that: \(message)")
                 return nil
             }
         }
+        publishExecution(for: plan, status: .completed, stepIndex: nil, operation: plan.steps.last?.operation,
+                         agent: plan.steps.last?.owner ?? .kio, text: "Done.", completed: plan.steps.count,
+                         total: plan.steps.count, output: activeOutput)
         return activeOutput
+    }
+
+    private func publishExecution(for plan: TaskPlan, status: TaskExecutionStatus, stepIndex: Int? = nil,
+                                  operation: ToolOperation? = nil, agent: AgentID = .kio, text: String,
+                                  completed: Int = 0, total: Int = 0, output: ArtifactRef? = nil,
+                                  failure: String? = nil) {
+        executionState = TaskExecutionState(taskID: plan.id, plan: plan, currentStepIndex: stepIndex,
+                                            currentOperation: operation, activeAgent: agent, status: status,
+                                            statusText: text, completedStepCount: completed,
+                                            totalStepCount: total, latestOutput: output, failureMessage: failure)
     }
 
     func clearHistory() {
         attachments = []
         activeOutput = nil
         lastOperation = nil
+        lastPlan = nil
+        ConversationPersistence.saveLastPlan(nil)
+        executionState = nil
         conversation = [ConversationItem(speaker: "Kio", message: "History cleared. Add a file whenever you're ready.", artifact: nil)]
         ConversationPersistence.clear()
         ConversationPersistence.append(conversation[0], operation: nil)
@@ -267,6 +333,7 @@ final class KioWorkspace: ObservableObject {
         case .imagesToPDF: "Putting the images into a PDF."
         case .resizeImage: "Resizing the image."
         case .convertImage: "Converting the image."
+        case .renameFile: "Making a conflict-safe copy with the requested name."
         case .batchRename: "Making conflict-safe renamed copies."
         case .createArchive: "Creating a ZIP archive."
         case .compressPDF: "Compressing a readable PDF copy."

@@ -1,7 +1,19 @@
 # Free-tier relay
 
-The Mac app and its file tools work locally without a Cloudflare account. Phone pairing is optional. The Worker is configured for Cloudflare's free Workers plan and uses a single free D1 database for device, queue, and encrypted-file data; it does not require a custom domain, paid Workers, R2, or a model API.
+The Mac app and native file tools work without a Cloudflare account. Phone pairing is optional. The configured Worker uses Cloudflare Workers Free and one D1 database; it does not require a paid model API, R2, or a custom domain.
 
-Current published Workers Free limits include 100,000 Worker requests/day, 5 million D1 rows read/day, 100,000 rows written/day, and a 500 MB D1 database cap. On the Free plan, requests that exceed Workers, D1, or KV included quotas fail rather than becoming paid overage. Kio's own file bound is 50 MiB per transfer and 128 MiB of active file data total. Files are stored as encrypted 1,000,000-byte D1 chunks, deleted on recipient acknowledgement, or removed by a 15-minute cleanup trigger after 24 hours. D1 BLOB rows stay under Cloudflare's 2 MB row limit.
+## Kio's bounds
 
-These limits are shared with other Workers resources in the same Cloudflare account. Free limits can change; review the current [Workers pricing and limits](https://developers.cloudflare.com/workers/platform/pricing/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) before deploying. If a required service begins asking to enable a paid plan, the local Mac product remains usable without it.
+- At most 5 new Kio workspaces per source IP per UTC day. The relay stores a SHA-256 hash of the IP for the two-day rate-limit window; it does not store the raw IP in D1.
+- At most 12 encrypted file uploads per paired device per hour.
+- At most 50 MiB per file and 64 MiB of active transfer data per workspace.
+- A 384 MiB global active-transfer ceiling leaves room for D1 rows and metadata within the Free database's 500 MB per-database limit.
+- Message envelopes and transfers expire after 24 hours. Acknowledgements delete them sooner. Expired pairings, rate-limit rows, and revoked phone records are cleaned up.
+
+The limits are enforced in D1 as well as in request preflight checks. Rejected uploads return a capacity or rate-limit error; they do not silently consume another workspace's allowance. Revoked/expired device credentials are not used to read queued data.
+
+## Cloudflare's published Free limits
+
+Cloudflare currently lists 100,000 Worker requests per day, 10 ms CPU per invocation, 5 million D1 rows read per day, 100,000 D1 rows written per day, and 500 MB per D1 database. Exceeding the daily D1 read/write quotas causes D1 queries to fail until the quota resets; Kio returns a specific retry-after-midnight message for those D1 errors. Cloudflare can change these limits; review the official [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), and [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) before deploying.
+
+The 384 MiB active transfer ceiling is a Kio safety margin, not a billing allowance. If a free service limit is reached, local Mac workflows remain usable without the relay.

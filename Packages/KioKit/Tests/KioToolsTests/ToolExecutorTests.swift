@@ -46,6 +46,28 @@ import KioTools
     #expect(try ArtifactRef.inspect(sourceURL).sizeBytes == originalSize)
 }
 
+@Test func resizingGIFWritesPNGContentWithPNGExtension() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let sourceURL = folder.appendingPathComponent("sample.gif")
+    let image = makeCGImage(width: 48, height: 24)
+    let encoded = NSMutableData()
+    let sourceWriter = CGImageDestinationCreateWithData(encoded, "com.compuserve.gif" as CFString, 1, nil)!
+    CGImageDestinationAddImage(sourceWriter, image, nil)
+    #expect(CGImageDestinationFinalize(sourceWriter))
+    try (encoded as Data).write(to: sourceURL)
+    let input = try ArtifactRef.inspect(sourceURL)
+    let step = TaskStep(operation: .resizeImage, source: .artifacts([input.id]), arguments: .imageResize(width: 24))
+
+    let output = try await ToolExecutor().execute(step, inputs: [input])[0]
+    let imageSource = try #require(CGImageSourceCreateWithURL(output.fileURL as CFURL, nil))
+
+    #expect(output.fileURL.pathExtension.lowercased() == "png")
+    #expect(CGImageSourceGetType(imageSource) as String? == "public.png")
+    #expect(CGImageSourceCreateImageAtIndex(imageSource, 0, nil)?.width == 24)
+}
+
 @Test func zipArchiveRoundTripsThroughSystemArchiveReader() async throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -102,6 +124,49 @@ import KioTools
     #expect(first.map(\.displayName) == ["lecture-001-one.txt", "lecture-002-two.txt"])
     #expect(second.map(\.displayName) == ["lecture-001-one-2.txt", "lecture-002-two-2.txt"])
     #expect(try Data(contentsOf: urls[0]) == Data("one".utf8))
+}
+
+@Test func exactRenameMakesRequestedCopyAndResolvesConflicts() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let sourceURL = folder.appendingPathComponent("original.txt")
+    let original = Data("keep the original".utf8)
+    try original.write(to: sourceURL)
+    let input = try ArtifactRef.inspect(sourceURL)
+    let step = TaskStep(operation: .renameFile, source: .artifacts([input.id]), arguments: .exactRename(name: "Kio-Mobile-Followup"))
+
+    let first = try await ToolExecutor().execute(step, inputs: [input])[0]
+    let second = try await ToolExecutor().execute(step, inputs: [input])[0]
+
+    #expect(first.displayName == "Kio-Mobile-Followup.txt")
+    #expect(second.displayName == "Kio-Mobile-Followup-2.txt")
+    #expect(first.kind == .text)
+    #expect(try Data(contentsOf: sourceURL) == original)
+    #expect(try Data(contentsOf: first.fileURL) == original)
+}
+
+@Test func exactRenameSanitizesPathAndRejectsIncompatibleExtension() async throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioTests-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let sourceURL = folder.appendingPathComponent("original.txt")
+    try Data("safe".utf8).write(to: sourceURL)
+    let input = try ArtifactRef.inspect(sourceURL)
+    let sanitized = try await ToolExecutor().execute(
+        TaskStep(operation: .renameFile, source: .artifacts([input.id]), arguments: .exactRename(name: "../../traversal.txt")),
+        inputs: [input]
+    )[0]
+
+    #expect(sanitized.displayName == "traversal.txt")
+    #expect(sanitized.fileURL.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL)
+    await #expect(throws: (any Error).self) {
+        try await ToolExecutor().execute(
+            TaskStep(operation: .renameFile, source: .artifacts([input.id]), arguments: .exactRename(name: "wrong.pdf")),
+            inputs: [input]
+        )
+    }
+    #expect(try Data(contentsOf: sourceURL) == Data("safe".utf8))
 }
 
 @Test func pdfCompressionReturnsOnlyAnHonestSmallerCopy() async throws {

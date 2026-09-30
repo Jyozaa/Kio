@@ -38,7 +38,10 @@ const PAIRING_TTL_SECONDS = 5 * 60;
 const MAC_ONLINE_SECONDS = 45;
 const TRANSFER_TTL_SECONDS = 24 * 60 * 60;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
-const MAX_ACTIVE_TRANSFER_BYTES = 128 * 1024 * 1024;
+const MAX_WORKSPACE_TRANSFER_BYTES = 64 * 1024 * 1024;
+const MAX_GLOBAL_TRANSFER_BYTES = 384 * 1024 * 1024;
+const MAX_WORKSPACE_CREATIONS_PER_IP_DAY = 5;
+const MAX_TRANSFER_UPLOADS_PER_DEVICE_HOUR = 12;
 const FILE_CHUNK_BYTES = 1_000_000;
 
 function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
@@ -63,6 +66,28 @@ function decodeBase64(value: string): Uint8Array | undefined {
 
 async function sha256(value: string): Promise<string> {
   return base64URL(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
+}
+
+async function allowWorkspaceCreation(request: Request, env: Env, now: number): Promise<boolean> {
+  const source = request.headers.get("CF-Connecting-IP")?.trim() || "local-unknown";
+  const ipHash = await sha256(`kio-workspace-creation-v1:${source}`);
+  const dayStart = Math.floor(now / 86_400) * 86_400;
+  const result = await env.DB.prepare(`INSERT INTO pairing_ip_limits (ip_hash, window_start, request_count, expires_at)
+    VALUES (?, ?, 1, ?)
+    ON CONFLICT (ip_hash, window_start) DO UPDATE SET request_count = request_count + 1, expires_at = excluded.expires_at
+    WHERE request_count < ?`)
+    .bind(ipHash, dayStart, dayStart + 2 * 86_400, MAX_WORKSPACE_CREATIONS_PER_IP_DAY).run();
+  return result.meta.changes > 0;
+}
+
+async function allowTransferUpload(deviceID: string, env: Env, now: number): Promise<boolean> {
+  const hourStart = Math.floor(now / 3_600) * 3_600;
+  const result = await env.DB.prepare(`INSERT INTO transfer_device_limits (device_id, window_start, request_count, expires_at)
+    VALUES (?, ?, 1, ?)
+    ON CONFLICT (device_id, window_start) DO UPDATE SET request_count = request_count + 1, expires_at = excluded.expires_at
+    WHERE request_count < ?`)
+    .bind(deviceID, hourStart, hourStart + 2 * 3_600, MAX_TRANSFER_UPLOADS_PER_DEVICE_HOUR).run();
+  return result.meta.changes > 0;
 }
 
 function randomToken(size = 32): string { return base64URL(crypto.getRandomValues(new Uint8Array(size))); }
@@ -115,6 +140,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       if (device.role !== "mac" || device.id !== deviceID || device.public_key !== publicKey) return error("This Mac identity does not match the paired device.", 403);
       await env.DB.prepare("UPDATE devices SET last_seen = ? WHERE id = ?").bind(now, device.id).run();
     } else {
+      if (!await allowWorkspaceCreation(request, env, now)) return error("This network has created the daily limit of Kio workspaces. Try again tomorrow.", 429);
       const existing = await env.DB.prepare("SELECT id FROM devices WHERE id = ?").bind(deviceID).first<{ id: string }>();
       if (existing) return error("This device identifier is already in use.", 409);
       await env.DB.batch([
@@ -182,16 +208,22 @@ async function route(request: Request, env: Env): Promise<Response> {
     const recipient = await env.DB.prepare("SELECT id FROM devices WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL")
       .bind(recipientID, device.workspace_id).first<{ id: string }>();
     if (!recipient) return error("The paired device is unavailable.", 404);
-    const active = await env.DB.prepare("SELECT COALESCE(SUM(size_bytes), 0) AS total FROM transfers WHERE expires_at > ?")
-      .bind(now).first<{ total: number }>();
-    if ((active?.total ?? 0) + reportedSize > MAX_ACTIVE_TRANSFER_BYTES) return error("The temporary relay is at capacity. Try again after older transfers expire.", 429);
+    if (!await allowTransferUpload(device.id, env, now)) return error("This paired device has reached its temporary file-transfer rate limit. Try again in about an hour.", 429);
+    const active = await env.DB.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN workspace_id = ? THEN size_bytes ELSE 0 END), 0) AS workspace_total,
+      COALESCE(SUM(size_bytes), 0) AS global_total
+      FROM transfers WHERE expires_at > ?`)
+      .bind(device.workspace_id, now).first<{ workspace_total: number; global_total: number }>();
+    if ((active?.workspace_total ?? 0) + reportedSize > MAX_WORKSPACE_TRANSFER_BYTES || (active?.global_total ?? 0) + reportedSize > MAX_GLOBAL_TRANSFER_BYTES) return error("The temporary relay is at capacity for this workspace or the free relay tier. Try again after older transfers expire.", 429);
     const encrypted = await request.arrayBuffer();
     if (encrypted.byteLength !== reportedSize + 16) return error("Encrypted file size does not match its metadata.", 400);
     const id = crypto.randomUUID().replaceAll("-", "");
     const statements = [env.DB.prepare(`INSERT INTO transfers (id, workspace_id, sender_id, recipient_id, size_bytes, created_at, expires_at)
       SELECT ?, ?, ?, ?, ?, ?, ?
-      WHERE (SELECT COALESCE(SUM(size_bytes), 0) FROM transfers WHERE expires_at > ?) + ? <= ?`)
-      .bind(id, device.workspace_id, device.id, recipientID, reportedSize, now, now + TRANSFER_TTL_SECONDS, now, reportedSize, MAX_ACTIVE_TRANSFER_BYTES)];
+      WHERE (SELECT COALESCE(SUM(size_bytes), 0) FROM transfers WHERE workspace_id = ? AND expires_at > ?) + ? <= ?
+        AND (SELECT COALESCE(SUM(size_bytes), 0) FROM transfers WHERE expires_at > ?) + ? <= ?`)
+      .bind(id, device.workspace_id, device.id, recipientID, reportedSize, now, now + TRANSFER_TTL_SECONDS,
+        device.workspace_id, now, reportedSize, MAX_WORKSPACE_TRANSFER_BYTES, now, reportedSize, MAX_GLOBAL_TRANSFER_BYTES)];
     for (let offset = 0, index = 0; offset < encrypted.byteLength; offset += FILE_CHUNK_BYTES, index++) {
       const end = Math.min(offset + FILE_CHUNK_BYTES, encrypted.byteLength);
       statements.push(env.DB.prepare("INSERT INTO transfer_chunks (transfer_id, chunk_index, encrypted_chunk) VALUES (?, ?, ?)")
@@ -279,6 +311,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       env.DB.prepare("UPDATE devices SET revoked_at = ? WHERE id = ?").bind(now, target.id),
       env.DB.prepare("DELETE FROM envelopes WHERE sender_id = ? OR recipient_id = ?").bind(target.id, target.id),
       env.DB.prepare("DELETE FROM transfers WHERE sender_id = ? OR recipient_id = ?").bind(target.id, target.id),
+      env.DB.prepare("DELETE FROM transfer_device_limits WHERE device_id = ?").bind(target.id),
     ]);
     return json({ revoked: true });
   }
@@ -292,7 +325,14 @@ export default {
     if (url.pathname.startsWith("/api/")) {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-methods": "GET,POST,DELETE,OPTIONS", "access-control-allow-headers": "authorization,content-type", "access-control-max-age": "600" } });
       try { return await route(request, env); }
-      catch { return error("The relay could not complete that request. Try again shortly.", 500); }
+      catch (cause) {
+        const message = cause instanceof Error ? cause.message.toLowerCase() : "";
+        if (message.includes("daily row read limit")) return error("The relay has reached today's free database read limit. Try again after midnight UTC.", 503);
+        if (message.includes("daily row write limit")) return error("The relay has reached today's free database write limit. Try again after midnight UTC.", 503);
+        if (message.includes("storage limit")) return error("The relay's free database storage is full. Try again after expired data is cleaned up.", 507);
+        if (message.includes("overloaded") || message.includes("busy")) return error("The relay database is temporarily busy. Try again shortly.", 503);
+        return error("The relay could not complete that request. Try again shortly.", 500);
+      }
     }
     return env.ASSETS.fetch(request);
   },
@@ -301,7 +341,10 @@ export default {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM transfers WHERE expires_at <= ?").bind(now),
       env.DB.prepare("DELETE FROM envelopes WHERE expires_at <= ? OR consumed_at IS NOT NULL").bind(now),
-      env.DB.prepare("DELETE FROM pairing_requests WHERE expires_at <= ? OR consumed_at IS NOT NULL").bind(now - PAIRING_TTL_SECONDS),
+      env.DB.prepare("DELETE FROM pairing_requests WHERE expires_at <= ? OR consumed_at IS NOT NULL").bind(now),
+      env.DB.prepare("DELETE FROM devices WHERE role = 'phone' AND revoked_at IS NOT NULL AND revoked_at <= ?").bind(now - 30 * 86_400),
+      env.DB.prepare("DELETE FROM pairing_ip_limits WHERE expires_at <= ?").bind(now),
+      env.DB.prepare("DELETE FROM transfer_device_limits WHERE expires_at <= ?").bind(now),
     ]);
   },
 } satisfies ExportedHandler<Env>;

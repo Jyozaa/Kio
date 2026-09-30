@@ -1,0 +1,1437 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "1f5efe876d6a4278bd3f77eb4b3b6dff",
+  "task": {
+    "id": "1f5efe876d6a4278bd3f77eb4b3b6dff",
+    "goal": "Enter \"trajectory AX sample\" in Message field, choose Option B, then click Reach success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Enter \"trajectory AX sample\" in Message field",
+      "observation": {
+        "id": "6d5c39b4796343698b6d9dc2d4bce408",
+        "fingerprint": "2e88ae3b5b0d57e6638aa101ae98c0bd5df86bbf1bea8ec48c01c1a253d23141",
+        "title": "Kio local fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Kio local fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Kio local fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Kio local fixture",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Kio local fixture",
+            "role": "AXStaticText",
+            "value": "Kio local fixture",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "No network submissions, purchases or external services.",
+            "role": "AXStaticText",
+            "value": "No network submissions, purchases or external services.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Message",
+            "role": "AXStaticText",
+            "value": "Message",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Message",
+            "role": "AXTextField",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Delivery",
+            "role": "AXStaticText",
+            "value": "Delivery",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Delivery",
+            "role": "AXPopUpButton",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Option A",
+            "role": "AXMenuItem",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Enter a message, choose Option B, then reach success.",
+            "role": "AXStaticText",
+            "value": "Enter a message, choose Option B, then reach success.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0044",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Buy now",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0045",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Purchase action has not run",
+            "role": "AXStaticText",
+            "value": "Purchase action has not run",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0046",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0047",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0048",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "Scrollable content starts here",
+            "role": "AXStaticText",
+            "value": "Scrollable content starts here",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0049",
+            "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+            "label": "End of scrollable content",
+            "role": "AXStaticText",
+            "value": "End of scrollable content",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_0a195bf53f8d_0",
+          "operation": "TYPE_TEXT",
+          "description": "Message (AXTextField; value=)",
+          "element_id": "e_0039"
+        },
+        {
+          "id": "c_0a195bf53f8d_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0a195bf53f8d_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_0a195bf53f8d_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_0a195bf53f8d_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_0a195bf53f8d_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_0a195bf53f8d_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_0a195bf53f8d_0",
+        "snapshot_id": "6d5c39b4796343698b6d9dc2d4bce408",
+        "operation": "TYPE_TEXT",
+        "confidence": 0.9965,
+        "latency_seconds": 0.6192855420522392,
+        "operation_probability": 0.9965,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "field",
+            "expected": "trajectory AX sample",
+            "observed": "trajectory AX sample"
+          },
+          {
+            "kind": "option",
+            "expected": "option B",
+            "observed": "option a"
+          },
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.37563804199453443,
+        "laya": 0.6192855420522392,
+        "action": 3.508503874996677
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 1,
+      "goal": "choose Option B",
+      "observation": {
+        "id": "f606c945060c4eaf948d8ca73022cf96",
+        "fingerprint": "097ab8d88728f3cbb245a6e6cf0bab8c4218c64fcaada5931909055e90b8b9b3",
+        "title": "Kio local fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Kio local fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Kio local fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Kio local fixture",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Kio local fixture",
+            "role": "AXStaticText",
+            "value": "Kio local fixture",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "No network submissions, purchases or external services.",
+            "role": "AXStaticText",
+            "value": "No network submissions, purchases or external services.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Message",
+            "role": "AXStaticText",
+            "value": "Message",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Message",
+            "role": "AXTextField",
+            "value": "trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Delivery",
+            "role": "AXStaticText",
+            "value": "Delivery",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Delivery",
+            "role": "AXPopUpButton",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Option A",
+            "role": "AXMenuItem",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Choose Option B.",
+            "role": "AXStaticText",
+            "value": "Choose Option B.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0044",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Message preview: trajectory AX sample",
+            "role": "AXStaticText",
+            "value": "Message preview: trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0045",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Buy now",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0046",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Purchase action has not run",
+            "role": "AXStaticText",
+            "value": "Purchase action has not run",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0047",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0048",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0049",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "Scrollable content starts here",
+            "role": "AXStaticText",
+            "value": "Scrollable content starts here",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0050",
+            "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+            "label": "End of scrollable content",
+            "role": "AXStaticText",
+            "value": "End of scrollable content",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_3c9235294e28_0",
+          "operation": "SELECT",
+          "description": "Delivery (AXPopUpButton; value=Option A)",
+          "element_id": "e_0041"
+        },
+        {
+          "id": "c_3c9235294e28_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_3c9235294e28_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_3c9235294e28_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_3c9235294e28_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_3c9235294e28_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_3c9235294e28_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_3c9235294e28_0",
+        "snapshot_id": "f606c945060c4eaf948d8ca73022cf96",
+        "operation": "SELECT",
+        "confidence": 0.9773,
+        "latency_seconds": 0.6599665000103414,
+        "operation_probability": 0.9773,
+        "target_probability": 1.0
+      },
+      "history": [
+        "TYPE_TEXT: Message (AXTextField; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "field",
+            "expected": "trajectory AX sample",
+            "observed": "trajectory AX sample"
+          },
+          {
+            "kind": "option",
+            "expected": "option B",
+            "observed": "option a"
+          },
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.30035075009800494,
+        "laya": 0.6599665000103414,
+        "action": 2.2265659170225263
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 2,
+      "goal": "choose Option B",
+      "observation": {
+        "id": "53177c23753c45c781d887736bc6fdbc",
+        "fingerprint": "bcae324db5584145fcb2b78625f4713e0a2fd88dd49693a4c74c5290a347a5f4",
+        "title": "Kio local fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Kio local fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Kio local fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Kio local fixture",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Kio local fixture",
+            "role": "AXStaticText",
+            "value": "Kio local fixture",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "No network submissions, purchases or external services.",
+            "role": "AXStaticText",
+            "value": "No network submissions, purchases or external services.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Message",
+            "role": "AXStaticText",
+            "value": "Message",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Message",
+            "role": "AXTextField",
+            "value": "trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Delivery",
+            "role": "AXStaticText",
+            "value": "Delivery",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Delivery",
+            "role": "AXPopUpButton",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "",
+            "role": "AXMenu",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Option A",
+            "role": "AXMenuItem",
+            "value": "Option A",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0044",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Option B",
+            "role": "AXMenuItem",
+            "value": "Option B",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0045",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Choose Option B.",
+            "role": "AXStaticText",
+            "value": "Choose Option B.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0046",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Message preview: trajectory AX sample",
+            "role": "AXStaticText",
+            "value": "Message preview: trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0047",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Buy now",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0048",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Purchase action has not run",
+            "role": "AXStaticText",
+            "value": "Purchase action has not run",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0049",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0050",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0051",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Scrollable content starts here",
+            "role": "AXStaticText",
+            "value": "Scrollable content starts here",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0052",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "End of scrollable content",
+            "role": "AXStaticText",
+            "value": "End of scrollable content",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0054",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Option A",
+            "role": "AXMenuItem",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0055",
+            "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+            "label": "Option B",
+            "role": "AXMenuItem",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_f1fe89d04dab_0",
+          "operation": "SELECT",
+          "description": "Option B (AXMenuItem; value=)",
+          "element_id": "e_0055"
+        },
+        {
+          "id": "c_f1fe89d04dab_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_f1fe89d04dab_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_f1fe89d04dab_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_f1fe89d04dab_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_f1fe89d04dab_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_f1fe89d04dab_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_f1fe89d04dab_0",
+        "snapshot_id": "53177c23753c45c781d887736bc6fdbc",
+        "operation": "SELECT",
+        "confidence": 0.9984,
+        "latency_seconds": 0.3602683749049902,
+        "operation_probability": 0.9984,
+        "target_probability": 1.0
+      },
+      "history": [
+        "TYPE_TEXT: Message (AXTextField; value=)",
+        "SELECT: Delivery (AXPopUpButton; value=Option A)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "field",
+            "expected": "trajectory AX sample",
+            "observed": "trajectory AX sample"
+          },
+          {
+            "kind": "option",
+            "expected": "option B",
+            "observed": "option b"
+          },
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.31513620796613395,
+        "laya": 0.3602683749049902,
+        "action": 2.268828250002116
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 3,
+      "goal": "click Reach success",
+      "observation": {
+        "id": "48a24adca1ca489da65f3603e3d83997",
+        "fingerprint": "e3453460125d5ed20c81ee6b62521e999b8c471775c469b2da3dc89db5acd659",
+        "title": "Kio local fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Kio local fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Kio local fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Kio local fixture",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Kio local fixture",
+            "role": "AXStaticText",
+            "value": "Kio local fixture",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "No network submissions, purchases or external services.",
+            "role": "AXStaticText",
+            "value": "No network submissions, purchases or external services.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Message",
+            "role": "AXStaticText",
+            "value": "Message",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Message",
+            "role": "AXTextField",
+            "value": "trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Delivery",
+            "role": "AXStaticText",
+            "value": "Delivery",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0041",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Delivery",
+            "role": "AXPopUpButton",
+            "value": "Option B",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0042",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Option B",
+            "role": "AXMenuItem",
+            "value": "Option B",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0043",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Reach success",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0044",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Click Reach success.",
+            "role": "AXStaticText",
+            "value": "Click Reach success.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0045",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Message preview: trajectory AX sample",
+            "role": "AXStaticText",
+            "value": "Message preview: trajectory AX sample",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0046",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Buy now",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0047",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Purchase action has not run",
+            "role": "AXStaticText",
+            "value": "Purchase action has not run",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0048",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0049",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Details",
+            "role": "AXButton",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0050",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "Scrollable content starts here",
+            "role": "AXStaticText",
+            "value": "Scrollable content starts here",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0051",
+            "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+            "label": "End of scrollable content",
+            "role": "AXStaticText",
+            "value": "End of scrollable content",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_87425d953402_0",
+          "operation": "CLICK",
+          "description": "Reach success (AXButton; value=)",
+          "element_id": "e_0043"
+        },
+        {
+          "id": "c_87425d953402_1",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_87425d953402_2",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_87425d953402_3",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_87425d953402_4",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_87425d953402_5",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_87425d953402_6",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_87425d953402_0",
+        "snapshot_id": "48a24adca1ca489da65f3603e3d83997",
+        "operation": "CLICK",
+        "confidence": 0.9874,
+        "latency_seconds": 0.2019840000430122,
+        "operation_probability": 0.9874,
+        "target_probability": 1.0
+      },
+      "history": [
+        "TYPE_TEXT: Message (AXTextField; value=)",
+        "SELECT: Delivery (AXPopUpButton; value=Option A)",
+        "SELECT: Option B (AXMenuItem; value=)"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": true,
+      "verification": {
+        "status": "VERIFIED",
+        "evidence": [
+          {
+            "kind": "field",
+            "expected": "trajectory AX sample",
+            "observed": "trajectory AX sample"
+          },
+          {
+            "kind": "option",
+            "expected": "option B",
+            "observed": "option b"
+          },
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": "Success"
+          }
+        ],
+        "reason": "All requested outcomes observed."
+      },
+      "latencies": {
+        "perception": 0.31200450006872416,
+        "laya": 0.2019840000430122,
+        "action": 2.2077343750279397
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "completed",
+    "reason": "Verified the requested state.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "VERIFIED",
+      "evidence": [
+        {
+          "kind": "field",
+          "expected": "trajectory AX sample",
+          "observed": "trajectory AX sample"
+        },
+        {
+          "kind": "option",
+          "expected": "option B",
+          "observed": "option b"
+        },
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": "Success"
+        }
+      ],
+      "reason": "All requested outcomes observed."
+    }
+  }
+}

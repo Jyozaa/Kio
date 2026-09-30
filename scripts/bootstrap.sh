@@ -12,6 +12,4 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 swift package --package-path "$ROOT/Packages/KioKit" resolve
-npm ci --prefix "$ROOT/apps/mobile"
-npm ci --prefix "$ROOT/apps/relay"
-echo 'Kio local dependencies are ready.'
+echo 'Swift dependencies are ready. scripts/check.sh installs npm dependencies from both lockfiles before building.'

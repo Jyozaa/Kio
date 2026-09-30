@@ -17,7 +17,8 @@ public enum OutputLocation {
         var suffix = 1
         while true {
             let stem = suffix == 1 ? safeBase : "\(safeBase)-\(suffix)"
-            let result = candidate.appendingPathComponent(stem).appendingPathExtension(fileExtension)
+            let path = candidate.appendingPathComponent(stem)
+            let result = fileExtension.isEmpty ? path : path.appendingPathExtension(fileExtension)
             if !fm.fileExists(atPath: result.path) { return result }
             suffix += 1
         }
@@ -46,7 +47,7 @@ public enum OutputLocation {
     }
 
     private static func sanitize(_ value: String) -> String {
-        let forbidden = CharacterSet(charactersIn: "/:\\?%*|\"<>\n\r\t")
+        let forbidden = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/:\\?%*|\"<>"))
         let clean = value.components(separatedBy: forbidden).filter { !$0.isEmpty }.joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".-")))
         return clean.isEmpty ? "Kio-Output" : String(clean.prefix(96))

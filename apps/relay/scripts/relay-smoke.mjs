@@ -10,15 +10,24 @@ const b64 = (bytes) => Buffer.from(bytes).toString("base64url");
 const from64 = (text) => Buffer.from(text, "base64url");
 const token = () => b64(crypto.getRandomValues(new Uint8Array(32)));
 const deviceID = () => b64(crypto.getRandomValues(new Uint8Array(16)));
+const smokeIP = `2001:db8:${token().slice(0, 8)}::1`;
 
-async function api(path, { method = "GET", auth, body } = {}) {
+async function api(path, { method = "GET", auth, body, extraHeaders = {} } = {}) {
   const response = await fetch(new URL(`/api${path}`, origin), {
     method,
-    headers: { ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
+    headers: { ...extraHeaders, ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await response.json();
   return { response, data };
+}
+
+async function uploadOpaqueFile(auth, recipientID, size) {
+  return fetch(new URL(`/api/files?recipientID=${encodeURIComponent(recipientID)}`, origin), {
+    method: "POST",
+    headers: { authorization: `Bearer ${auth}`, "content-type": "application/octet-stream", "x-kio-file-size": String(size) },
+    body: new Uint8Array(size + 16),
+  });
 }
 
 async function makeKey() {
@@ -50,7 +59,7 @@ assert.equal(health.response.status, 200, "local relay is healthy");
 const mac = await makeKey();
 const macID = deviceID();
 const macToken = token();
-const invitationResponse = await api("/pairings", { method: "POST", auth: macToken, body: { deviceID: macID, deviceName: "Kio Test Mac", publicKey: mac.publicKey } });
+const invitationResponse = await api("/pairings", { method: "POST", auth: macToken, body: { deviceID: macID, deviceName: "Kio Test Mac", publicKey: mac.publicKey }, extraHeaders: { "cf-connecting-ip": smokeIP } });
 assert.equal(invitationResponse.response.status, 200, JSON.stringify(invitationResponse.data));
 const invitation = invitationResponse.data;
 
@@ -107,6 +116,61 @@ assert.equal(fileAck.status, 200, "receiving device can remove a completed trans
 const deletedFile = await fetch(new URL(`/api/files/${transfer.id}`, origin), { headers: { authorization: `Bearer ${macToken}` } });
 assert.equal(deletedFile.status, 404, "acknowledged file object is deleted");
 
+const quotaUpload = await uploadOpaqueFile(phoneToken, macID, 49 * 1024 * 1024);
+assert.equal(quotaUpload.status, 201, "a workspace can use its active-transfer allowance");
+const quotaTransfer = await quotaUpload.json();
+const overWorkspaceQuota = await uploadOpaqueFile(phoneToken, macID, 16 * 1024 * 1024);
+assert.equal(overWorkspaceQuota.status, 429, "one workspace cannot exceed its own active-transfer quota");
+
+const secondMac = await makeKey();
+const secondMacID = deviceID();
+const secondMacToken = token();
+const secondInvitationResponse = await api("/pairings", {
+  method: "POST", auth: secondMacToken,
+  body: { deviceID: secondMacID, deviceName: "Second Kio Mac", publicKey: secondMac.publicKey },
+  extraHeaders: { "cf-connecting-ip": `${smokeIP}:2` },
+});
+assert.equal(secondInvitationResponse.response.status, 200);
+const secondInvitation = secondInvitationResponse.data;
+const secondPhone = await makeKey();
+const secondPhoneID = deviceID();
+const secondPhoneToken = token();
+const secondPair = await api("/pairings/complete", { method: "POST", body: {
+  pairingID: secondInvitation.pairingID, oneTimeToken: secondInvitation.oneTimeToken,
+  deviceID: secondPhoneID, deviceName: "Second Phone", publicKey: secondPhone.publicKey, authToken: secondPhoneToken,
+} });
+assert.equal(secondPair.response.status, 200);
+const independentWorkspaceUpload = await uploadOpaqueFile(secondPhoneToken, secondMacID, 20 * 1024 * 1024);
+assert.equal(independentWorkspaceUpload.status, 201, "a different workspace still has its own transfer allowance");
+const independentTransfer = await independentWorkspaceUpload.json();
+const independentAck = await fetch(new URL(`/api/files/${independentTransfer.id}/ack`, origin), { method: "POST", headers: { authorization: `Bearer ${secondMacToken}` } });
+assert.equal(independentAck.status, 200);
+const quotaAck = await fetch(new URL(`/api/files/${quotaTransfer.id}/ack`, origin), { method: "POST", headers: { authorization: `Bearer ${macToken}` } });
+assert.equal(quotaAck.status, 200);
+
+for (let index = 0; index < 9; index++) {
+  const response = await uploadOpaqueFile(phoneToken, macID, 1);
+  assert.equal(response.status, 201, `device transfer allowance accepts request ${index + 4}`);
+  const item = await response.json();
+  const acknowledged = await fetch(new URL(`/api/files/${item.id}/ack`, origin), { method: "POST", headers: { authorization: `Bearer ${macToken}` } });
+  assert.equal(acknowledged.status, 200);
+}
+const transferRateLimited = await uploadOpaqueFile(phoneToken, macID, 1);
+assert.equal(transferRateLimited.status, 429, "one device cannot create an unbounded number of short-lived transfers");
+
+for (let index = 0; index < 5; index++) {
+  const candidate = await makeKey();
+  const created = await api("/pairings", { method: "POST", auth: token(), body: {
+    deviceID: deviceID(), deviceName: `Rate test ${index}`, publicKey: candidate.publicKey,
+  }, extraHeaders: { "cf-connecting-ip": `${smokeIP}:quota` } });
+  assert.equal(created.response.status, 200, `workspace creation allowance accepts request ${index + 1}`);
+}
+const blockedWorkspace = await makeKey();
+const workspaceRateLimited = await api("/pairings", { method: "POST", auth: token(), body: {
+  deviceID: deviceID(), deviceName: "Over the limit", publicKey: blockedWorkspace.publicKey,
+}, extraHeaders: { "cf-connecting-ip": `${smokeIP}:quota` } });
+assert.equal(workspaceRateLimited.response.status, 429, "anonymous workspace creation is rate-limited by source IP");
+
 const tamperedBytes = from64(inbox.data.messages[0].ciphertext);
 tamperedBytes[0] ^= 1;
 const tampered = { ...inbox.data.messages[0], ciphertext: b64(tamperedBytes) };
@@ -152,4 +216,4 @@ assert.equal(revoked.response.status, 200);
 const revokedRead = await api("/devices", { auth: phoneToken });
 assert.equal(revokedRead.response.status, 401, "revoked phone credentials stop working");
 
-console.log("Relay smoke passed: one-time pairing, device auth, encrypted request/reply and multi-chunk files, tamper detection, queue/ack, size bounds, and revocation.");
+console.log("Relay smoke passed: one-time pairing, source and device rate limits, per-workspace and global transfer bounds, encrypted request/reply and multi-chunk files, tamper detection, queue/ack, size bounds, and revocation.");

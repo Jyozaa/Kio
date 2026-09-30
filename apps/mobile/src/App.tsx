@@ -18,7 +18,8 @@ import {
   type PhoneIdentity,
 } from "./crypto";
 
-interface HistoryItem { id: string; role: "user" | "kio" | "status"; text: string; name?: string; size?: number; mime?: string; attachmentBlob?: Blob; createdAt: string }
+type AgentName = "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier";
+interface HistoryItem { id: string; role: "user" | "kio" | "agent" | "status"; text: string; speaker?: string; agent?: AgentName; name?: string; size?: number; mime?: string; attachmentBlob?: Blob; createdAt: string }
 interface RelayEnvelope { id: string; senderID: string; nonce: string; ciphertext: string; createdAt: string }
 interface DeviceStatus { macOnline: boolean; macLastSeen: string | null }
 
@@ -44,6 +45,7 @@ export default function App() {
   const [deviceName, setDeviceName] = useState("My iPhone");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export default function App() {
   }, []);
 
   const append = useCallback((item: HistoryItem) => {
-    setMessages((current) => [...current, item]);
+    setMessages((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
     void saveHistory(item);
   }, []);
 
@@ -96,9 +98,13 @@ export default function App() {
                 attachmentBlob = new Blob([bytes], { type: payload.artifactMime || "application/octet-stream" });
                 await acknowledgeTransfer(identity, payload.attachmentID);
               }
+              const knownAgents: AgentName[] = ["kio", "pip", "pixel", "zip", "echo", "clerk", "courier"];
+              const agent = knownAgents.includes(payload.agent as AgentName) ? payload.agent as AgentName : undefined;
               const item: HistoryItem = {
                 id: envelope.id,
-                role: payload.type === "progress" ? "status" : "kio",
+                role: agent && agent !== "kio" ? "agent" : payload.type === "progress" && !payload.speaker ? "status" : "kio",
+                speaker: payload.speaker || (agent ? agent[0].toUpperCase() + agent.slice(1) : undefined),
+                agent,
                 text: payload.text,
                 name: payload.artifactName,
                 size: payload.artifactSize,
@@ -107,6 +113,9 @@ export default function App() {
                 createdAt: payload.createdAt ?? envelope.createdAt,
               };
               append(item);
+              if ((payload.type === "result" || payload.type === "error") && document.hidden && Notification.permission === "granted") {
+                new Notification("Kio", { body: payload.type === "result" ? "Your Mac finished a Kio request." : "Kio needs your attention." });
+              }
             } catch {
               append({ id: randomID(), role: "status", text: "A message arrived but couldn't be verified. It was discarded.", createdAt: new Date().toISOString() });
             }
@@ -218,15 +227,21 @@ export default function App() {
 
   return <main className="app-shell">
     <header className="topbar">
-      <div className="brand"><div className="avatar">K</div><div><strong>Kio</strong><span>Your Mac companion</span></div></div>
+      <div className="brand"><AgentFace agent="kio" size={38} /><div><strong>Kio</strong><span>Your Mac companion</span></div></div>
       <div className={`connection ${status.macOnline ? "online" : "offline"}`}><i />{status.macOnline ? "Mac online" : "Mac offline"}</div>
-      <button className="more" aria-label="Paired device settings" onClick={() => void unpair()}>···</button>
+      <div className="device-menu-wrap">
+        <button className="more" aria-label="Paired device settings" aria-expanded={showDeviceMenu} onClick={() => setShowDeviceMenu((open) => !open)}>···</button>
+        {showDeviceMenu && <div className="device-menu">
+          {"Notification" in window && <button onClick={() => { void Notification.requestPermission(); setShowDeviceMenu(false); }}>Enable completion notifications</button>}
+          <button className="danger-action" onClick={() => { setShowDeviceMenu(false); void unpair(); }}>Unpair this device</button>
+        </div>}
+      </div>
     </header>
-    <div className="crew"><span>YOUR CREW</span><div className="crew-row"><span className="crew-avatar pip">P</span><span className="crew-avatar pixel">✦</span><span className="crew-avatar zip">Z</span><span className="crew-avatar echo">e</span><small>Pip · Pixel · Zip · Echo</small></div></div>
+    <div className="crew"><span>YOUR CREW</span><div className="crew-row">{(["pip", "pixel", "zip", "echo", "clerk", "courier"] as AgentName[]).map((agent) => <AgentFace key={agent} agent={agent} size={23} />)}<small>Pip · Pixel · Zip · Echo · Clerk</small></div></div>
     <section className="conversation" ref={listRef} aria-live="polite">
-      {messages.length === 0 && <div className="welcome"><div className="welcome-kio">K</div><h2>What can I help with?</h2><p>Send a request and your Mac will take it from here.</p></div>}
-      {messages.map((message) => <article key={message.id} className={`message ${message.role}`}>
-        {message.role === "kio" && <span className="speaker">Kio</span>}
+      {messages.length === 0 && <div className="welcome"><AgentFace agent="kio" size={52} /><h2>What can I help with?</h2><p>Send a request and your Mac will take it from here.</p></div>}
+      {messages.map((message) => <article key={message.id} className={`message ${message.role} agent-${message.agent ?? "kio"}`}>
+        {(message.role === "kio" || message.role === "agent") && <div className="message-speaker"><AgentFace agent={message.agent ?? "kio"} size={22} /><span className="speaker">{message.speaker ?? "Kio"}</span></div>}
         <div className="bubble">{message.text}{message.name && <div className="file-pill"><span>▧</span><span>{message.name}<small>{prettySize(message.size)}</small></span></div>}{downloadURLs[message.id] && message.name && <a className="download-result" download={message.name} href={downloadURLs[message.id]}>Download to this phone ↓</a>}</div>
         <time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>
       </article>)}
@@ -244,4 +259,8 @@ export default function App() {
       {!window.matchMedia("(display-mode: standalone)").matches && <p className="install-hint">In Safari: <strong>Share → Add to Home Screen</strong></p>}
     </footer>
   </main>;
+}
+
+function AgentFace({ agent, size }: { agent: AgentName; size: number }) {
+  return <span className={`agent-face ${agent}`} style={{ width: size, height: size }} aria-label={`${agent} character`}><i /><i /></span>;
 }

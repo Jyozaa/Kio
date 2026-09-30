@@ -36,9 +36,11 @@ public struct RelayPayload: Codable, Sendable {
     public let attachmentID: String?
     public let attachmentNonce: String?
     public let taskID: String?
+    public let speaker: String?
+    public let agent: String?
     public let createdAt: String
 
-    public init(type: String, text: String, artifactName: String? = nil, artifactSize: Int? = nil, artifactMime: String? = nil, attachmentID: String? = nil, attachmentNonce: String? = nil, taskID: String? = nil, createdAt: String = ISO8601DateFormatter().string(from: Date())) {
+    public init(type: String, text: String, artifactName: String? = nil, artifactSize: Int? = nil, artifactMime: String? = nil, attachmentID: String? = nil, attachmentNonce: String? = nil, taskID: String? = nil, speaker: String? = nil, agent: String? = nil, createdAt: String = ISO8601DateFormatter().string(from: Date())) {
         self.type = type
         self.text = text
         self.artifactName = artifactName
@@ -47,6 +49,8 @@ public struct RelayPayload: Codable, Sendable {
         self.attachmentID = attachmentID
         self.attachmentNonce = attachmentNonce
         self.taskID = taskID
+        self.speaker = speaker
+        self.agent = agent
         self.createdAt = createdAt
     }
 }

@@ -119,7 +119,7 @@ public final class LocalRelayManager: ObservableObject {
         } catch { lastError = error.localizedDescription }
     }
 
-    public func sendReply(type: String, text: String, taskID: String?, artifactURL: URL?, to deviceID: String) async {
+    public func sendReply(type: String, text: String, taskID: String?, artifactURL: URL?, to deviceID: String, speaker: String? = nil, agent: String? = nil) async {
         guard let baseURL, let credential, let privateKey else { return }
         do {
             var fileName: String?
@@ -148,7 +148,7 @@ public final class LocalRelayManager: ObservableObject {
                 }
             }
             let responseText = exceededFileLimit ? "\(text) The file is larger than the 50 MB phone-transfer limit, so it remains on this Mac." : text
-            let payload = RelayPayload(type: type, text: responseText, artifactName: fileName, artifactSize: fileSize, artifactMime: fileType, attachmentID: attachmentID, attachmentNonce: attachmentNonce, taskID: taskID)
+            let payload = RelayPayload(type: type, text: responseText, artifactName: fileName, artifactSize: fileSize, artifactMime: fileType, attachmentID: attachmentID, attachmentNonce: attachmentNonce, taskID: taskID, speaker: speaker, agent: agent)
             let sealed = try Self.seal(payload, recipientPublicKey: recipient.publicKey, privateKey: privateKey, workspaceID: credential.deviceID)
             try await postEnvelope(sealed, recipientID: deviceID, baseURL: baseURL, credential: credential)
         } catch {

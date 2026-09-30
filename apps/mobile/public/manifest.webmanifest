@@ -6,5 +6,8 @@
   "display": "standalone",
   "background_color": "#f5f4f0",
   "theme_color": "#f5f4f0",
-  "icons": [{ "src": "/kio.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [
+    { "src": "/kio-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/kio-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }

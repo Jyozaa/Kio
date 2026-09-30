@@ -60,3 +60,21 @@ button { cursor: pointer; }
 .helper, .privacy-note { color: #908d95; font-size: 11px; line-height: 1.55; margin: 14px 1px; }.privacy-note { border-top: 1px solid #e9e6e2; padding-top: 15px; margin-top: 35px; }
 @media (min-width: 600px) { .app-shell { border-left: 1px solid #eeece8; border-right: 1px solid #eeece8; box-shadow: 0 0 34px #34303e08; } .conversation { padding-inline: 30px; } .composer-area { padding-inline: 24px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Small solid slime characters echo the native crew without letter placeholders. */
+.avatar, .welcome-kio { display: none; }
+.agent-face { --agent-color: #f4ebdd; background: var(--agent-color); border-radius: 43% 42% 35% 39%; display: inline-flex; align-items: center; justify-content: center; gap: 10%; flex: 0 0 auto; vertical-align: middle; box-shadow: inset 0 -2px 0 #0000000c; }
+.agent-face i { display: block; width: 11%; height: 25%; border-radius: 99px; background: #292d2e; }
+.agent-face.kio { --agent-color: #f4ebdd; }.agent-face.pip { --agent-color: #93afc8; }.agent-face.pixel { --agent-color: #a9cdbd; }
+.agent-face.zip { --agent-color: #e5a06c; }.agent-face.echo { --agent-color: #b9a4d5; }.agent-face.clerk { --agent-color: #d9a0a8; }.agent-face.courier { --agent-color: #e88979; }
+.welcome > .agent-face { display: flex; margin: 0 auto 15px; box-shadow: 0 7px 16px #28272d16; }
+.crew-row .agent-face { border-radius: 40%; }
+.message-speaker { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
+.speaker { margin-left: 0; }
+.agent .bubble { background: color-mix(in srgb, var(--agent-color, #f0eef8) 24%, #f0eef8); }
+.agent-pip { --agent-color: #93afc8; }.agent-pixel { --agent-color: #a9cdbd; }.agent-zip { --agent-color: #e5a06c; }
+.agent-echo { --agent-color: #b9a4d5; }.agent-clerk { --agent-color: #d9a0a8; }.agent-courier { --agent-color: #e88979; }.agent-kio { --agent-color: #f4ebdd; }
+.device-menu-wrap { position: relative; }
+.device-menu { position: absolute; z-index: 5; top: calc(100% + 7px); right: 0; min-width: 205px; padding: 5px; border: 1px solid #e9e6e2; border-radius: 13px; background: #fff; box-shadow: 0 10px 30px #28272d18; }
+.device-menu button { width: 100%; border: 0; border-radius: 9px; padding: 10px 11px; background: transparent; text-align: left; color: #49464f; font-size: 12px; }
+.device-menu button:hover { background: #f5f3f0; }.device-menu .danger-action { color: #a34844; }

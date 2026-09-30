@@ -4,10 +4,12 @@ import KioCore
 public struct PlanningContext: Sendable {
     public let activeOutput: ArtifactRef?
     public let previousOperation: ToolOperation?
+    public let previousPlan: TaskPlan?
 
-    public init(activeOutput: ArtifactRef? = nil, previousOperation: ToolOperation? = nil) {
+    public init(activeOutput: ArtifactRef? = nil, previousOperation: ToolOperation? = nil, previousPlan: TaskPlan? = nil) {
         self.activeOutput = activeOutput
         self.previousOperation = previousOperation
+        self.previousPlan = previousPlan
     }
 }
 
@@ -21,6 +23,26 @@ public struct FastPathPlanner: Sendable {
         let inputs = artifacts.isEmpty ? context.activeOutput.map { [$0] } ?? [] : artifacts
         let ids = inputs.map(\.id)
         let sizeTarget = Self.byteLimit(in: request)
+
+        if (words.contains("same") || words.contains("again")),
+           (words.contains("these") || words.contains("files") || words.contains("ones")),
+           let previous = context.previousPlan,
+           previous.steps.count == 1,
+           case .artifacts = previous.steps[0].source,
+           !inputs.isEmpty {
+            let prior = previous.steps[0]
+            if Self.supports(prior.operation, kinds: inputs.map(\.kind)) {
+                return TaskPlan(request: request, steps: [TaskStep(operation: prior.operation, source: .artifacts(ids), arguments: prior.arguments)])
+            }
+            return TaskPlan(request: request, steps: [], clarification: "The previous workflow does not accept these file types. Choose a matching file or tell me a different operation.")
+        }
+
+        if context.previousOperation == .resizeImage,
+           let image = inputs.first(where: { $0.kind == .image }),
+           let width = Self.imageWidth(in: request), (1...20_000).contains(width),
+           !words.contains("resize") {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .resizeImage, source: .artifacts([image.id]), arguments: .imageResize(width: width))])
+        }
 
         if words.contains("merge"), inputs.filter({ $0.kind == .pdf }).count >= 2 {
             var steps = [TaskStep(operation: .mergePDFs, source: .artifacts(ids))]
@@ -52,6 +74,9 @@ public struct FastPathPlanner: Sendable {
            let format = ["png", "jpeg", "jpg"].first(where: words.contains) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .convertImage, source: .artifacts([image.id]), arguments: .imageConvert(format: format == "jpg" ? "jpeg" : format))])
         }
+        if words.contains("rename"), inputs.count == 1, let name = Self.exactRenameName(in: request) {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .renameFile, source: .artifacts([inputs[0].id]), arguments: .exactRename(name: name))])
+        }
         if words.contains("rename"), !inputs.isEmpty,
            let start = request.range(of: "starting with", options: .caseInsensitive) {
             let suffix = request[start.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,12 +94,24 @@ public struct FastPathPlanner: Sendable {
         }
         let clarification: String
         if inputs.isEmpty { clarification = "Add one or more files, then tell me what you want done." }
-        else { clarification = "I don't have a reliable local workflow for that request yet. Try merging PDFs, turning images into a PDF, resizing or converting an image, renaming files, removing PDF pages, or extracting audio from a video." }
+        else { clarification = "I don't have a reliable local workflow for that request yet. Try merging PDFs, turning images into a PDF, resizing or converting an image, renaming a file, removing PDF pages, or extracting audio from a video." }
         return TaskPlan(request: request, steps: [], clarification: clarification)
     }
 
     private static func words(in request: String) -> Set<String> {
         Set(request.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+    }
+
+    private static func supports(_ operation: ToolOperation, kinds: [ArtifactKind]) -> Bool {
+        switch operation {
+        case .mergePDFs: kinds.count >= 2 && kinds.allSatisfy { $0 == .pdf }
+        case .removePDFPages, .compressPDF: kinds.count == 1 && kinds[0] == .pdf
+        case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
+        case .resizeImage, .convertImage: kinds.count == 1 && kinds[0] == .image
+        case .renameFile: kinds.count == 1
+        case .batchRename, .createArchive: !kinds.isEmpty
+        case .extractAudio: kinds.count == 1 && kinds[0] == .video
+        }
     }
 
     private static func imageWidth(in request: String) -> Int? {
@@ -85,6 +122,19 @@ public struct FastPathPlanner: Sendable {
         ]
         for pattern in patterns {
             if let value = firstCapture(pattern, in: request)?.first, let width = Int(value) { return width }
+        }
+        return nil
+    }
+
+    private static func exactRenameName(in request: String) -> String? {
+        let patterns = [
+            #"(?i)\brename\b.*?\b(?:to|as)\s+([\"'“”‘’]?)(.+?)\1\s*[.!?]*$"#,
+            #"(?i)\brename\s+(?:it|this|that)\s+([A-Za-z0-9][A-Za-z0-9 _.-]{0,100})\s*[.!?]*$"#
+        ]
+        for pattern in patterns {
+            guard let captures = firstCapture(pattern, in: request), let value = captures.last else { continue }
+            let name = value.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'“”‘’ .,!?:;")))
+            if !name.isEmpty, name.count <= 100 { return name }
         }
         return nil
     }

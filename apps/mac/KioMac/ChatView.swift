@@ -14,7 +14,7 @@ struct KioChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(Color.black.opacity(0.035))
+            Divider().overlay(Color.white.opacity(0.075))
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 20) {
@@ -42,7 +42,8 @@ struct KioChatView: View {
             }
             composer
         }
-        .background(Color(hex: 0xFAF9F6))
+        .background(Color.black)
+        .preferredColorScheme(.dark)
         .overlay {
             if isDropTarget {
                 RoundedRectangle(cornerRadius: 18)
@@ -79,7 +80,7 @@ struct KioChatView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.72))
                     .frame(width: 32, height: 32)
-                    .background(Color.white, in: Circle())
+                    .background(Color(hex: 0x1B1B1B), in: Circle())
             }
             .buttonStyle(.plain)
             .help("Add files")
@@ -122,7 +123,7 @@ struct KioChatView: View {
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 30, height: 30)
-                        .background(Color(hex: 0x313431), in: Circle())
+                        .background(Color(hex: 0x292929), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!workspace.isWorking && message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -130,8 +131,8 @@ struct KioChatView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.black.opacity(0.07), lineWidth: 1))
+            .background(Color(hex: 0x111111), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.09), lineWidth: 1))
             Text("Files are processed locally. Originals stay untouched.")
                 .font(.system(size: 10))
                 .foregroundStyle(Color.primary.opacity(0.42))
@@ -140,7 +141,7 @@ struct KioChatView: View {
         .padding(.horizontal, 22)
         .padding(.top, 12)
         .padding(.bottom, 14)
-        .background(Color(hex: 0xFAF9F6))
+        .background(Color.black)
     }
 
     private func send() {
@@ -180,7 +181,7 @@ private struct ConversationRow: View {
                     .foregroundStyle(Color.primary.opacity(0.9))
                     .padding(.horizontal, 15)
                     .padding(.vertical, 11)
-                    .background(Color(hex: 0xECEAE5), in: RoundedRectangle(cornerRadius: 17))
+                    .background(Color(hex: 0x252525), in: RoundedRectangle(cornerRadius: 17))
             }
         } else {
             HStack(alignment: .top, spacing: 11) {
@@ -188,7 +189,13 @@ private struct ConversationRow: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(item.speaker).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.primary.opacity(0.63))
                     Text(item.message).font(.system(size: 14)).foregroundStyle(Color.primary.opacity(0.88)).textSelection(.enabled)
-                    if let artifact = item.artifact { ArtifactCard(artifact: artifact) }
+                    if let artifact = item.artifact {
+                        if artifact.refreshedFromDisk() != nil { ArtifactCard(artifact: artifact) }
+                        else {
+                            Label("Historical result · \(artifact.displayName) is no longer available", systemImage: "doc.questionmark")
+                                .font(.system(size: 11)).foregroundStyle(Color.secondary)
+                        }
+                    }
                 }
                 Spacer(minLength: 48)
             }
@@ -217,7 +224,7 @@ private struct AttachmentChip: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(hex: 0x171717), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var icon: String {
@@ -241,7 +248,7 @@ private struct ArtifactCard: View {
                 .font(.system(size: 17))
                 .foregroundStyle(Color(hex: 0x748A7F))
                 .frame(width: 38, height: 42)
-                .background(Color(hex: 0xEEF1EC), in: RoundedRectangle(cornerRadius: 10))
+                .background(Color(hex: 0x202020), in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 3) {
                 Text(artifact.displayName).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                 Text(ByteCountFormatter.string(fromByteCount: artifact.sizeBytes, countStyle: .file))
@@ -255,8 +262,8 @@ private struct ArtifactCard: View {
         .font(.system(size: 10, weight: .medium))
         .padding(10)
         .frame(maxWidth: 420)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.black.opacity(0.055), lineWidth: 1))
+        .background(Color(hex: 0x141414), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.075), lineWidth: 1))
         .onDrag { NSItemProvider(object: artifact.fileURL as NSURL) }
         .contextMenu {
             Button("Copy file") {

@@ -1,0 +1,31 @@
+{
+  "schema_version": "kio-video-variants-v1",
+  "training_eligible": false,
+  "variants": [
+    {"utterance": "Open Notes", "expected_semantic": "OPEN", "expected_object": "APP"},
+    {"utterance": "Could you bring Notes up?", "expected_semantic": "OPEN", "expected_object": "APP"},
+    {"utterance": "Launch Notes", "expected_semantic": "OPEN", "expected_object": "APP"},
+    {"utterance": "Make a note", "expected_semantic": "CREATE", "expected_object": "NOTE"},
+    {"utterance": "Create another note", "expected_semantic": "CREATE", "expected_object": "NOTE"},
+    {"utterance": "Call the new note Hello", "expected_semantic": "SET_FIELD", "expected_object": "FIELD"},
+    {"utterance": "Make its title Hello", "expected_semantic": "SET_FIELD", "expected_object": "FIELD"},
+    {"utterance": "Title it Hello", "expected_semantic": "SET_FIELD", "expected_object": "FIELD"},
+    {"utterance": "Open Chrome", "expected_semantic": "OPEN", "expected_object": "APP"},
+    {"utterance": "Open Safari", "expected_semantic": "OPEN", "expected_object": "APP"},
+    {"utterance": "Google Alan Turing", "expected_semantic": "SEARCH", "expected_object": "WEB_PAGE"},
+    {"utterance": "Search Google for Alan Turing", "expected_semantic": "SEARCH", "expected_object": "WEB_PAGE"},
+    {"utterance": "Open github dot com", "expected_semantic": "NAVIGATE", "expected_object": "WEB_PAGE", "expected_url": "https://github.com/"},
+    {"utterance": "Go to wikipedia dot org", "expected_semantic": "NAVIGATE", "expected_object": "WEB_PAGE", "expected_url": "https://wikipedia.org/"},
+    {"utterance": "Take a photo", "expected_semantic": "CAPTURE", "expected_object": "PHOTO"},
+    {"utterance": "Take a picture", "expected_semantic": "CAPTURE", "expected_object": "PHOTO"}
+  ],
+  "scenario_dimensions": [
+    "app already running",
+    "browser already frontmost",
+    "prior note selected",
+    "transient dialog present",
+    "slow app launch",
+    "voice filler",
+    "mid-sentence pauses"
+  ]
+}

@@ -1,0 +1,173 @@
+{
+  "rows": [
+    {
+      "id": "test-AX",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9566,
+      "seconds": 0.6433764169923961,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-DOM",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9372,
+      "seconds": 0.11542758299037814,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-OCR",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.5368,
+      "seconds": 0.08080670807976276,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-repeated",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.6545,
+      "seconds": 0.126684624934569,
+      "operation": "CLICK",
+      "candidate_count": 8
+    },
+    {
+      "id": "test-scroll",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.8893,
+      "seconds": 0.06358691700734198,
+      "operation": "SCROLL_DOWN",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-typing",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9067,
+      "seconds": 0.11621350003406405,
+      "operation": "TYPE_TEXT",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-selection",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.8838,
+      "seconds": 0.11490295792464167,
+      "operation": "SELECT",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.6177,
+      "seconds": 0.06219437497202307,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-blocked",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.2944,
+      "seconds": 0.06334266706835479,
+      "operation": "BLOCKED",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-uncertain",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.3572,
+      "seconds": 0.05631487490609288,
+      "operation": "DONE",
+      "candidate_count": 6
+    },
+    {
+      "id": "test-financial",
+      "operation_correct": false,
+      "target_correct": true,
+      "has_target": false,
+      "correct": false,
+      "confidence": 0.4094,
+      "seconds": 0.097822375013493,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-large",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9109,
+      "seconds": 0.0987697079544887,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-history",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": true,
+      "correct": true,
+      "confidence": 0.9341,
+      "seconds": 0.10729791701305658,
+      "operation": "CLICK",
+      "candidate_count": 7
+    },
+    {
+      "id": "test-literal_done",
+      "operation_correct": true,
+      "target_correct": true,
+      "has_target": false,
+      "correct": true,
+      "confidence": 0.3571,
+      "seconds": 0.04988533293362707,
+      "operation": "DONE",
+      "candidate_count": 6
+    }
+  ],
+  "operation_accuracy": 0.7142857142857143,
+  "target_accuracy": 1,
+  "combined_accuracy": 0.7142857142857143,
+  "false_high_confidence_errors": 0,
+  "ece": 0.19936428571428572,
+  "cold_load_seconds": 5.278697041911073,
+  "first_inference_seconds": 0.6433764169923961,
+  "warm_median_seconds": 0.097822375013493,
+  "warm_p90_seconds": 0.11621350003406405,
+  "peak_rss_mib": 2853.5625,
+  "corpus_sha256": "d9e081456ac3a1682d9f10a847dfebb942b39da86d54bafdc4a08b1acdba6cf2",
+  "split": "test",
+  "model": "laya-calibrated-v1",
+  "pruning": true,
+  "history": true
+}

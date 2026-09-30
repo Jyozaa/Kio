@@ -36,6 +36,12 @@ public struct ToolExecutor: Sendable {
                 throw KioFailure.invalidInput("Choose an image and PNG or JPEG as the output format.")
             }
             return [try convertImage(input, format: format)]
+        case .renameFile:
+            guard let input = inputs.first, inputs.count == 1,
+                  case .exactRename(let name) = step.arguments, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw KioFailure.invalidInput("Choose one file and a valid new name.")
+            }
+            return [try exactRename(input, requestedName: name)]
         case .batchRename:
             guard case .rename(let prefix) = step.arguments, !prefix.isEmpty, prefix.count <= 64 else {
                 throw KioFailure.invalidInput("Choose a short name prefix for the copies.")
@@ -187,7 +193,7 @@ public struct ToolExecutor: Sendable {
         guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KioFailure.invalidInput("This image could not be opened.") }
         let height = max(1, Int((Double(image.height) * Double(width) / Double(image.width)).rounded()))
-        let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName) + "-Resized", fileExtension: Self.imageExtension(for: input.fileURL) ?? "png")
+        let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName) + "-Resized", fileExtension: "png")
         let temporary = OutputLocation.temporaryURL(beside: output)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard let colorSpace = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB),
@@ -242,6 +248,40 @@ public struct ToolExecutor: Sendable {
             return created
         } catch {
             for output in created { try? FileManager.default.removeItem(at: output.fileURL) }
+            throw error
+        }
+    }
+
+    private func exactRename(_ input: ArtifactRef, requestedName: String) throws -> ArtifactRef {
+        let requestedURL = URL(fileURLWithPath: requestedName)
+        let safeRequestedName = requestedURL.lastPathComponent
+        let requestedExtension = requestedURL.pathExtension
+        let outputExtension: String
+        let baseName: String
+        if requestedExtension.isEmpty {
+            outputExtension = input.fileURL.pathExtension
+            baseName = safeRequestedName
+        } else {
+            guard requestedExtension.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) }),
+                  let requestedType = UTType(filenameExtension: requestedExtension),
+                  let sourceType = UTType(filenameExtension: input.fileURL.pathExtension),
+                  requestedType.identifier == sourceType.identifier else {
+                throw KioFailure.invalidInput("Use the existing file extension, or leave it off to keep the current format.")
+            }
+            outputExtension = requestedExtension.lowercased()
+            baseName = requestedURL.deletingPathExtension().lastPathComponent
+        }
+        guard !baseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw KioFailure.invalidInput("Enter a file name before the extension.")
+        }
+        let output = try OutputLocation.makeURL(for: [input], baseName: baseName, fileExtension: outputExtension)
+        try FileManager.default.copyItem(at: input.fileURL, to: output)
+        do {
+            let result = try ArtifactRef.inspect(output, parentID: input.id)
+            guard result.sizeBytes == input.sizeBytes else { throw KioFailure.verification("The renamed copy did not verify.") }
+            return result
+        } catch {
+            try? FileManager.default.removeItem(at: output)
             throw error
         }
     }
@@ -456,10 +496,6 @@ public struct ToolExecutor: Sendable {
     }
 
     private static func base(_ name: String) -> String { URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent }
-    private static func imageExtension(for url: URL) -> String? {
-        let ext = url.pathExtension.lowercased()
-        return ["png", "jpg", "jpeg", "heic", "tif", "tiff", "gif"].contains(ext) ? ext : nil
-    }
     private static func imageUTI(for ext: String) -> CFString { (ext == "jpg" || ext == "jpeg" ? UTType.jpeg : UTType.png).identifier as CFString }
 }
 

@@ -41,6 +41,14 @@ private struct CryptoFixture: Decodable {
     let ciphertext: String
 }
 
+@Test func relayPayloadDecodesOlderMessagesWithoutAgentFields() throws {
+    let legacy = #"{"type":"progress","text":"Your request is running.","createdAt":"2026-09-30T00:00:00Z"}"#
+    let payload = try JSONDecoder().decode(RelayPayload.self, from: Data(legacy.utf8))
+    #expect(payload.speaker == nil)
+    #expect(payload.agent == nil)
+    #expect(payload.text == "Your request is running.")
+}
+
 private func decode(_ value: String) -> Data {
     var normalized = value.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
     let remainder = normalized.count % 4

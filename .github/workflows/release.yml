@@ -13,10 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build, test, and package
-        run: |
-          ./scripts/check.sh
-          ./scripts/package-dmg.sh
-      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/release/Kio-0.1.0.dmg build/release/Kio-0.1.0.dmg.sha256 --generate-notes
+        run: |
+          VERSION="$(./scripts/version.sh)"
+          ./scripts/check.sh
+          ./scripts/package-dmg.sh
+          gh release create "$GITHUB_REF_NAME" "build/release/Kio-$VERSION.dmg" "build/release/Kio-$VERSION.dmg.sha256" --generate-notes

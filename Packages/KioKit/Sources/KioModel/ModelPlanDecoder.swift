@@ -52,6 +52,7 @@ public enum ModelPlanDecoder {
         case .removePDFPages, .compressPDF: kinds.count == 1 && kinds[0] == .pdf
         case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
         case .resizeImage, .convertImage: kinds.count == 1 && kinds[0] == .image
+        case .renameFile: kinds.count == 1
         case .batchRename, .createArchive: !kinds.isEmpty
         case .extractAudio: kinds.count == 1 && kinds[0] == .video
         }
@@ -71,6 +72,9 @@ public enum ModelPlanDecoder {
         case .convertImage:
             guard let format = wire?.format?.lowercased(), ["png", "jpg", "jpeg"].contains(format) else { return nil }
             return .imageConvert(format: format == "jpg" ? "jpeg" : format)
+        case .renameFile:
+            guard let name = wire?.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count <= 100 else { return nil }
+            return .exactRename(name: name)
         case .batchRename:
             guard let prefix = wire?.prefix?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !prefix.isEmpty, prefix.count <= 64 else { return nil }
@@ -85,7 +89,7 @@ public enum ModelPlanDecoder {
         switch operation {
         case .mergePDFs, .removePDFPages, .imagesToPDF, .compressPDF: [.pdf]
         case .resizeImage, .convertImage: [.image]
-        case .batchRename: inputKinds
+        case .renameFile, .batchRename: inputKinds
         case .createArchive: [.other]
         case .extractAudio: [.audio]
         }
@@ -106,6 +110,7 @@ public enum ModelPlanDecoder {
     private struct WireArguments: Decodable {
         let width: Int?
         let format: String?
+        let name: String?
         let prefix: String?
         let pages: [Int]?
         let maxBytes: Int64?

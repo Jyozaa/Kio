@@ -1,0 +1,406 @@
+{
+  "trajectory_schema_version": 1,
+  "run_id": "57156845cb624a7088564bb835b8ca88",
+  "task": {
+    "id": "57156845cb624a7088564bb835b8ca88",
+    "goal": "Scroll down until Success"
+  },
+  "steps": [
+    {
+      "index": 0,
+      "goal": "Scroll down until Success",
+      "observation": {
+        "id": "6ae9b7252c74416e9bab495b0ecb5009",
+        "fingerprint": "85c200cbef7b05e67d27480993ecc202aa5c85169afbb0b97c27697b4fc2801b",
+        "title": "Kio scroll fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Kio scroll fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Kio scroll fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Local scroll workflow",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Local scroll workflow",
+            "role": "AXStaticText",
+            "value": "Local scroll workflow",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Scroll the local panel to its end. Nothing leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "Scroll the local panel to its end. Nothing leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Local setup information begins here.",
+            "role": "AXStaticText",
+            "value": "Local setup information begins here.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "End of local information.",
+            "role": "AXStaticText",
+            "value": "End of local information.",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_89cd467a7f3e_0",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_89cd467a7f3e_1",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_89cd467a7f3e_2",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_89cd467a7f3e_3",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_89cd467a7f3e_4",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_89cd467a7f3e_5",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_89cd467a7f3e_1",
+        "snapshot_id": "6ae9b7252c74416e9bab495b0ecb5009",
+        "operation": "SCROLL_DOWN",
+        "confidence": 0.7114,
+        "latency_seconds": 0.21697458298876882,
+        "operation_probability": 0.7114,
+        "target_probability": 1.0
+      },
+      "history": [],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": false,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.4438844579271972,
+        "laya": 0.21697458298876882,
+        "action": 2.690157665987499
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    },
+    {
+      "index": 1,
+      "goal": "Scroll down until Success",
+      "observation": {
+        "id": "3219da60f24f42a9afccaa13799e94c5",
+        "fingerprint": "85c200cbef7b05e67d27480993ecc202aa5c85169afbb0b97c27697b4fc2801b",
+        "title": "Kio scroll fixture - Google Chrome",
+        "elements": [
+          {
+            "id": "e_0000",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Kio scroll fixture - Google Chrome",
+            "role": "AXWindow",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0034",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Kio scroll fixture",
+            "role": "AXWebArea",
+            "value": null,
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0035",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Local scroll workflow",
+            "role": "AXHeading",
+            "value": "1",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0036",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Local scroll workflow",
+            "role": "AXStaticText",
+            "value": "Local scroll workflow",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0037",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Scroll the local panel to its end. Nothing leaves this fixture.",
+            "role": "AXStaticText",
+            "value": "Scroll the local panel to its end. Nothing leaves this fixture.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0038",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Local setup information begins here.",
+            "role": "AXStaticText",
+            "value": "Local setup information begins here.",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0039",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "End of local information.",
+            "role": "AXStaticText",
+            "value": "End of local information.",
+            "enabled": true,
+            "visible": false,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          },
+          {
+            "id": "e_0040",
+            "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+            "label": "Not complete",
+            "role": "AXStaticText",
+            "value": "Not complete",
+            "enabled": true,
+            "visible": true,
+            "source": "AX",
+            "sources": [
+              "AX"
+            ]
+          }
+        ]
+      },
+      "candidates": [
+        {
+          "id": "c_9cd462f57b88_0",
+          "operation": "SCROLL_UP",
+          "description": "SCROLL_UP",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_9cd462f57b88_1",
+          "operation": "SCROLL_DOWN",
+          "description": "SCROLL_DOWN",
+          "element_id": "e_0034"
+        },
+        {
+          "id": "c_9cd462f57b88_2",
+          "operation": "WAIT",
+          "description": "WAIT",
+          "element_id": null
+        },
+        {
+          "id": "c_9cd462f57b88_3",
+          "operation": "DONE",
+          "description": "DONE",
+          "element_id": null
+        },
+        {
+          "id": "c_9cd462f57b88_4",
+          "operation": "BLOCKED",
+          "description": "BLOCKED",
+          "element_id": null
+        },
+        {
+          "id": "c_9cd462f57b88_5",
+          "operation": "REOBSERVE",
+          "description": "REOBSERVE",
+          "element_id": null
+        }
+      ],
+      "decision": {
+        "candidate_id": "c_9cd462f57b88_1",
+        "snapshot_id": "3219da60f24f42a9afccaa13799e94c5",
+        "operation": "SCROLL_DOWN",
+        "confidence": 0.8705,
+        "latency_seconds": 0.15454333403613418,
+        "operation_probability": 0.8705,
+        "target_probability": 1.0
+      },
+      "history": [
+        "SCROLL_DOWN: SCROLL_DOWN"
+      ],
+      "guidance": "",
+      "action": {
+        "status": "executed"
+      },
+      "state_changed": false,
+      "verification": {
+        "status": "NOT_VERIFIED",
+        "evidence": [
+          {
+            "kind": "marker",
+            "expected": "Success",
+            "observed": null
+          }
+        ],
+        "reason": "Requested outcome is not independently verified."
+      },
+      "latencies": {
+        "perception": 0.31452466698829085,
+        "laya": 0.15454333403613418,
+        "action": 1.1883876249194145
+      },
+      "perception_sources": [
+        "AX"
+      ],
+      "ocr_used": false,
+      "gemini_used": false
+    }
+  ],
+  "outcome": {
+    "status": "needs_user",
+    "reason": "No progress after repeated observations.",
+    "gemini_calls": 0,
+    "verification": {
+      "status": "NOT_VERIFIED",
+      "evidence": [
+        {
+          "kind": "marker",
+          "expected": "Success",
+          "observed": null
+        }
+      ],
+      "reason": "Requested outcome is not independently verified."
+    }
+  }
+}

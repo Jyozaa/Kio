@@ -12,6 +12,8 @@ xcodebuild -quiet \
   -skipPackagePluginValidation \
   -derivedDataPath "$DERIVED_DATA" \
   build
+npm ci --prefix "$ROOT/apps/mobile"
 npm --prefix "$ROOT/apps/mobile" run build
+npm ci --prefix "$ROOT/apps/relay"
 npm --prefix "$ROOT/apps/relay" run typecheck
 npm --prefix "$ROOT/apps/relay" test
