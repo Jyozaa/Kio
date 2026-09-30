@@ -32,6 +32,7 @@ Last updated: 2026-09-30
 - The Mac answered “Is my Mac online?” with “Your Mac is online—it received this request just now.”
 - In the notch, the composer retained text and stayed expanded for over five seconds while focused; both Return and the send arrow submitted the online-status question. Reopening after a reply showed the latest message fully, and the result was no longer restored as the active output after an unrelated request and app restart.
 - The History button opened the full conversation using the same persisted messages. The notch’s complete hover, drag/drop, handoff animation, cancellation, result-action, Reduce Motion, shortcut, and multi-display checklist has not been completed.
+- A final offline/reconnect check stopped the Debug app, sent a harmless request from the deployed PWA, and confirmed that the PWA queued it while Kio was offline. Relaunching the ad-hoc-signed Debug build then blocked on the main thread in `SecItemCopyMatching` while loading the paired Keychain identity; no reconnect or reply was observed. I stopped this stalled process. macOS keychain access needs to be resolved before repeating this check. The queued request remains pending in the paired PWA.
 
 **LIVE TESTED IN LAPTOP BROWSER**
 
@@ -47,7 +48,7 @@ Last updated: 2026-09-30
 ## Not verified yet
 
 - **PHYSICAL IPHONE:** not tested; no physical iPhone was available. Manual acceptance: pair from Settings, send a text request, upload a PNG and download the resulting PDF, then run a follow-up rename.
-- Post-deployment file round-trip, offline/reconnect, no-duplicate execution, live local-model planning/repair, and notification behavior remain unverified.
+- Post-deployment file round-trip, offline/reconnect, no-duplicate execution, live local-model planning/repair, and notification behavior remain unverified. The current reconnect attempt exposed a Keychain access stall as described above.
 - Notch visual checks remain for actual hover expansion, drag/drop chips, task handoff/character animation, stop, Open/Reveal/Copy/drag-out, follow-up pipelines, Reduce Motion, global shortcut, output-folder/onboarding behavior, and display changes.
 - GitHub Actions has not run against the unpushed local commits.
 - Repository hygiene found no remaining paths matching `* 2*`; the 179 tracked duplicate paths were removed in `022e64f`, and one stale untracked `docs/BUILD_STATUS 2.md` copy was removed during final review.
