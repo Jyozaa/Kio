@@ -25,7 +25,7 @@ Last updated: 2026-09-30
 
 ## AUTOMATED TESTED
 
-- `bash scripts/check.sh` passed after the acceptance fixes: 57 Swift tests, the Xcode Debug build, mobile install/build, relay typecheck, relay smoke and lifecycle checks, and WebCrypto interoperability.
+- `./scripts/check.sh` passed from a clean tree at `feaf75d`: 57 Swift tests, the Xcode Debug build, mobile `npm ci` plus TypeScript/Vite build, relay `npm ci` plus typecheck, relay smoke and lifecycle checks, and WebCrypto interoperability.
 - `./scripts/package-dmg.sh` produced `build/release/Kio-0.1.0.dmg` and its `.sha256` file. The DMG mounted; its app bundle identity/version, code signature integrity, and checksum were verified.
 - The native registry contains 38 typed tool operations across PDF, image, archive, media, and file workflows. No arbitrary shell or generic GUI-control operation is registered.
 - `git diff --check` passed.
