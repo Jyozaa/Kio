@@ -28,24 +28,45 @@ export interface EnvelopePayload {
   artifactMime?: string;
   attachmentID?: string;
   attachmentNonce?: string;
+  attachments?: RelayAttachment[];
   taskID?: string;
   speaker?: string;
-  agent?: "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier";
+  agent?: "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier" | "scribe" | "table" | "lens" | "scout" | "patch";
   createdAt: string;
+}
+
+export interface RelayAttachment {
+  transferID: string;
+  nonce: string;
+  name: string;
+  size: number;
+  mime: string;
+}
+
+export interface QueuedRequest {
+  taskID: string;
+  text: string;
+  createdAt: string;
+  files: File[];
+  transfers: RelayAttachment[];
 }
 
 const database = "kio-mobile";
 const identityStore = "identity";
 const historyStore = "history";
+const shareStore = "shares";
+const outboxStore = "outbox";
 export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(database, 1);
+    const request = indexedDB.open(database, 3);
     request.onupgradeneeded = () => {
       const db = request.result;
-      db.createObjectStore(identityStore);
-      db.createObjectStore(historyStore, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(identityStore)) db.createObjectStore(identityStore);
+      if (!db.objectStoreNames.contains(historyStore)) db.createObjectStore(historyStore, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(shareStore)) db.createObjectStore(shareStore);
+      if (!db.objectStoreNames.contains(outboxStore)) db.createObjectStore(outboxStore, { keyPath: "taskID" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -56,7 +77,7 @@ async function storeValue<T>(storeName: string, key: IDBValidKey, value: T): Pro
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(storeName, "readwrite");
-    if (storeName === historyStore) transaction.objectStore(storeName).put(value);
+    if (storeName === historyStore || storeName === outboxStore) transaction.objectStore(storeName).put(value);
     else transaction.objectStore(storeName).put(value, key);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
@@ -82,9 +103,10 @@ export async function loadIdentity(): Promise<PhoneIdentity | undefined> {
 export async function clearIdentity(): Promise<void> {
   const db = await openDatabase();
   await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction([identityStore, historyStore], "readwrite");
+    const transaction = db.transaction([identityStore, historyStore, outboxStore], "readwrite");
     transaction.objectStore(identityStore).clear();
     transaction.objectStore(historyStore).clear();
+    transaction.objectStore(outboxStore).clear();
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });
@@ -104,6 +126,53 @@ export async function loadHistory<T>(): Promise<T[]> {
   });
   db.close();
   return result;
+}
+
+export async function saveQueuedRequest(item: QueuedRequest): Promise<void> {
+  return storeValue(outboxStore, item.taskID, item);
+}
+
+export async function loadQueuedRequests(): Promise<QueuedRequest[]> {
+  const db = await openDatabase();
+  const result = await new Promise<QueuedRequest[]>((resolve, reject) => {
+    const request = db.transaction(outboxStore).objectStore(outboxStore).getAll();
+    request.onsuccess = () => resolve(request.result as QueuedRequest[]);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return result.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function deleteQueuedRequest(taskID: string): Promise<void> {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(outboxStore, "readwrite");
+    transaction.objectStore(outboxStore).delete(taskID);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+export async function consumeSharedInput(): Promise<{ text: string; files: File[] } | undefined> {
+  const db = await openDatabase();
+  const shared = await new Promise<{ text?: string; files?: File[] } | undefined>((resolve, reject) => {
+    const transaction = db.transaction(shareStore, "readwrite");
+    const store = transaction.objectStore(shareStore);
+    const request = store.get("pending");
+    request.onsuccess = () => {
+      const value = request.result as { text?: string; files?: File[] } | undefined;
+      store.delete("pending");
+      resolve(value);
+    };
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  if (!shared) return;
+  return {
+    text: typeof shared.text === "string" ? shared.text.slice(0, 2_000) : "",
+    files: Array.isArray(shared.files) ? shared.files.slice(0, 8) : [],
+  };
 }
 
 function bytesToBase64(value: ArrayBuffer | Uint8Array): string {

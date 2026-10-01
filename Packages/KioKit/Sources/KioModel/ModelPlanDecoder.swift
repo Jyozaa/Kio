@@ -38,8 +38,12 @@ public enum ModelPlanDecoder {
             default:
                 return nil
             }
+            if operation == .researchOpenSources {
+                guard case .artifacts(let ids) = source, ids.count == 1,
+                      artifacts.first(where: { $0.id == ids[0] })?.fileURL.pathExtension.lowercased() == "kio-query" else { return nil }
+            }
             guard accepts(operation, kinds: inputKinds) else { return nil }
-            guard let arguments = typedArguments(candidate.arguments, for: operation) else { return nil }
+            guard let arguments = typedArguments(candidate.arguments, for: operation, request: request) else { return nil }
 
             let step = TaskStep(operation: operation, source: source, arguments: arguments)
             steps.append(step)
@@ -51,10 +55,18 @@ public enum ModelPlanDecoder {
     private static func accepts(_ operation: ToolOperation, kinds: [ArtifactKind]) -> Bool {
         switch operation {
         case .mergePDFs: kinds.count >= 2 && kinds.allSatisfy { $0 == .pdf }
-        case .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .compressPDF:
+        case .combineMixedPDFInputs:
+            (2...32).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf || $0 == .image }
+                && kinds.contains(.pdf) && kinds.contains(.image)
+        case .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .inspectPDF, .compressPDF:
             kinds.count == 1 && kinds[0] == .pdf
+        case .searchPDFText: kinds.count == 1 && kinds[0] == .pdf
+        case .extractPDFText, .ocrPDFText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf }
         case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
-        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .compressImage, .removeImageMetadata: kinds.count == 1 && kinds[0] == .image
+        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground: kinds.count == 1 && kinds[0] == .image
+        case .batchResizeImages, .batchConvertImages: (1...32).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
+        case .compareImages: kinds.count == 2 && kinds.allSatisfy { $0 == .image }
+        case .findSimilarImages: (2...36).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .imageContactSheet: kinds.count >= 2 && kinds.count <= 36 && kinds.allSatisfy { $0 == .image }
         case .renameFile: kinds.count == 1
         case .copyFiles, .moveFiles:
@@ -62,19 +74,73 @@ public enum ModelPlanDecoder {
         case .createFolder: kinds.count == 1 && kinds[0] == .folder
         case .findDuplicates:
             kinds.count >= 2 && kinds.count <= 200 && kinds.allSatisfy { $0 != .folder }
-        case .organizeByType, .organizeByDate:
+        case .organizeByType, .organizeByDate, .organizeByModulePattern:
             !kinds.isEmpty && kinds.count <= 200 && kinds.allSatisfy { $0 != .folder }
+        case .organizeDownloads, .findRecent: kinds.count == 1 && kinds[0] == .folder
+        case .findByName: (1...200).contains(kinds.count) && (kinds.allSatisfy { $0 == .folder } || kinds.allSatisfy { $0 != .folder })
         case .batchRename, .createArchive: !kinds.isEmpty
         case .inspectArchive, .extractZip: kinds.count == 1 && kinds[0] == .other
-        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
+        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
+        case .transcribeAudio, .generateSubtitles, .convertAudio: kinds.count == 1 && kinds[0] == .audio
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .explainText:
+            kinds.count == 1 && kinds[0] == .text
+        case .compareText: kinds.count == 2 && kinds.allSatisfy { $0 == .text }
+        case .inspectData, .dataStatistics: kinds.count == 1 && isTable(kinds[0])
+        case .importXLSX: kinds.count == 1 && kinds[0] == .table
+        case .mergeData: kinds.count >= 2 && kinds.count <= 16 && kinds.allSatisfy(isTable)
+        case .deduplicateData: (1...16).contains(kinds.count) && kinds.allSatisfy(isTable)
+        case .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns, .normalizeData:
+            kinds.count == 1 && isTable(kinds[0])
+        case .csvToJSON: kinds.count == 1 && kinds[0] == .csv
+        case .jsonToCSV: kinds.count == 1 && kinds[0] == .table
+        case .compareData: kinds.count == 2 && kinds.allSatisfy(isTable)
+        case .fetchURL: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .url }
+        case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
+        case .ocrImage, .extractStructuredText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
+        case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
+        case .explainCode, .proposePatch: kinds.count == 1 && (kinds[0] == .text || kinds[0] == .patch)
+        case .formatJSON: kinds.count == 1 && kinds[0] == .table
         }
     }
 
-    private static func typedArguments(_ wire: WireArguments?, for operation: ToolOperation) -> ToolArguments? {
+    private static func isTable(_ kind: ArtifactKind) -> Bool { kind == .csv || kind == .table }
+
+    private static func typedArguments(_ wire: WireArguments?, for operation: ToolOperation, request: String) -> ToolArguments? {
         switch operation {
-        case .mergePDFs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .removeImageMetadata, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .inspectMedia, .transcodeVideo,
-             .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate:
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo,
+             .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
+             .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads, .convertAudio:
             return ToolArguments.none
+        case .findRecent, .findByName:
+            return .textPrompt(request)
+        case .inspectData, .mergeData, .deduplicateData, .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX:
+            return ToolArguments.none
+        case .formatJSON:
+            return ToolArguments.none
+        case .fetchURL, .extractWebLinks, .researchOpenSources:
+            return ToolArguments.none
+        case .sortData:
+            guard let column = wire?.column?.trimmingCharacters(in: .whitespacesAndNewlines), !column.isEmpty, column.count <= 128 else { return nil }
+            return .tableSort(column: column, ascending: wire?.ascending ?? true)
+        case .filterData:
+            guard let column = wire?.column?.trimmingCharacters(in: .whitespacesAndNewlines), !column.isEmpty, column.count <= 128,
+                  let value = wire?.value, value.count <= 1_000 else { return nil }
+            return .tableFilter(column: column, value: value)
+        case .selectColumns, .reorderColumns:
+            guard let columns = wire?.columns, !columns.isEmpty, columns.count <= 500,
+                  columns.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 128 }),
+                  Set(columns).count == columns.count else { return nil }
+            return .tableColumns(columns)
+        case .renameColumns:
+            guard let from = (wire?.from ?? wire?.column)?.trimmingCharacters(in: .whitespacesAndNewlines), !from.isEmpty, from.count <= 128,
+                  let to = (wire?.to ?? wire?.name)?.trimmingCharacters(in: .whitespacesAndNewlines), !to.isEmpty, to.count <= 128 else { return nil }
+            return .tableRenameColumn(from: from, to: to)
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText, .searchPDFText:
+            guard !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, request.count <= 2_000 else { return nil }
+            return .textPrompt(request)
+        case .explainCode, .proposePatch:
+            guard !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, request.count <= 2_000 else { return nil }
+            return .textPrompt(request)
         case .createFolder:
             guard let name = wire?.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, name.count <= 100 else { return nil }
             return .folderName(name: name)
@@ -91,10 +157,10 @@ public enum ModelPlanDecoder {
             guard pages.count <= 200, pages.allSatisfy({ (1...100_000).contains($0) }),
                   let degrees = wire?.degrees, [90, 180, 270].contains(degrees) else { return nil }
             return .pdfRotation(indices: Array(Set(pages)).sorted(), degrees: degrees)
-        case .resizeImage:
+        case .resizeImage, .batchResizeImages:
             guard let width = wire?.width, (1...20_000).contains(width) else { return nil }
             return .imageResize(width: width)
-        case .convertImage:
+        case .convertImage, .batchConvertImages:
             guard let format = wire?.format?.lowercased(), ["png", "jpg", "jpeg"].contains(format) else { return nil }
             return .imageConvert(format: format == "jpg" ? "jpeg" : format)
         case .rotateImage:
@@ -112,7 +178,7 @@ public enum ModelPlanDecoder {
         case .thumbnailVideo:
             guard let time = wire?.timeMs ?? 0 as Int64?, (0...86_400_000).contains(time) else { return nil }
             return .mediaThumbnail(timeMilliseconds: time)
-        case .trimVideo:
+        case .trimVideo, .extractMediaClip:
             guard let start = wire?.startMs, let duration = wire?.durationMs,
                   (0...86_400_000).contains(start), (1...86_400_000).contains(duration),
                   start + duration <= 86_400_000 else { return nil }
@@ -138,19 +204,38 @@ public enum ModelPlanDecoder {
 
     private static func resultKinds(for operation: ToolOperation, inputKinds: [ArtifactKind]) -> [ArtifactKind] {
         switch operation {
-        case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .imagesToPDF, .compressPDF: [.pdf]
-        case .extractPDFText, .ocrPDFText, .inspectPDF, .inspectImage, .inspectArchive: [.text]
-        case .resizeImage, .convertImage, .rotateImage, .cropImage, .compressImage, .removeImageMetadata, .imageContactSheet: [.image]
+        case .mergePDFs, .combineMixedPDFInputs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .imagesToPDF, .compressPDF: [.pdf]
+        case .extractPDFText, .ocrPDFText: Array(repeating: .text, count: inputKinds.count)
+        case .inspectPDF, .searchPDFText, .inspectImage, .inspectArchive: [.text]
+        case .resizeImage, .convertImage, .rotateImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground, .imageContactSheet: [.image]
+        case .batchResizeImages, .batchConvertImages: Array(repeating: .image, count: inputKinds.count)
+        case .compareImages, .findSimilarImages: [.text]
         case .renameFile, .batchRename: inputKinds
         case .copyFiles, .moveFiles: Array(inputKinds.dropLast())
-        case .createFolder, .organizeByType, .organizeByDate: [.folder]
-        case .findDuplicates: [.text]
+        case .createFolder, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads: [.folder]
+        case .findDuplicates, .findRecent, .findByName: [.text]
         case .createArchive: [.other]
         case .extractZip: [.folder]
-        case .extractAudio: [.audio]
+        case .extractAudio, .convertAudio: [.audio]
+        case .transcribeAudio: [.text]
+        case .generateSubtitles: [.text, .text]
         case .inspectMedia: [.text]
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText: [.text]
+        case .inspectData, .dataStatistics, .compareData: [.text]
+        case .mergeData, .deduplicateData, .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns, .normalizeData: [.csv]
+        case .csvToJSON: [.table]
+        case .importXLSX: [.csv]
+        case .jsonToCSV: [.csv]
+        case .fetchURL: Array(repeating: .text, count: inputKinds.count)
+        case .extractWebLinks, .researchOpenSources: [.text]
+        case .ocrImage, .extractStructuredText: Array(repeating: .text, count: inputKinds.count)
+        case .extractImageTable: [.csv, .text]
+        case .extractReceipt: [.table]
+        case .explainCode: [.text]
+        case .proposePatch: [.patch, .text]
+        case .formatJSON: [.table]
         case .thumbnailVideo: [.image]
-        case .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: [.video]
+        case .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: [.video]
         }
     }
 
@@ -190,6 +275,12 @@ public enum ModelPlanDecoder {
         let timeMs: Int64?
         let startMs: Int64?
         let durationMs: Int64?
+        let column: String?
+        let value: String?
+        let ascending: Bool?
+        let columns: [String]?
+        let from: String?
+        let to: String?
     }
 }
 

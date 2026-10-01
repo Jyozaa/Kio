@@ -15,7 +15,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", exact: "3.31.4"),
         .package(url: "https://github.com/huggingface/swift-huggingface.git", exact: "0.9.0"),
-        .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.3.4")
+        .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.3.4"),
+        .package(url: "https://github.com/scinfu/SwiftSoup.git", exact: "2.13.3"),
+        .package(url: "https://github.com/CoreOffice/CoreXLSX.git", exact: "0.14.1"),
+        .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.20")
     ],
     targets: [
         .target(name: "KioCore"),
@@ -28,7 +31,7 @@ let package = Package(
             .product(name: "Tokenizers", package: "swift-transformers")
         ]),
         .systemLibrary(name: "CZlib", path: "Sources/CZlib"),
-        .target(name: "KioTools", dependencies: ["KioCore", "CZlib"]),
+        .target(name: "KioTools", dependencies: ["KioCore", "CZlib", .product(name: "SwiftSoup", package: "SwiftSoup"), .product(name: "CoreXLSX", package: "CoreXLSX"), .product(name: "ZIPFoundation", package: "ZIPFoundation")]),
         .target(name: "KioSync", dependencies: ["KioCore"]),
         .target(name: "KioUI", dependencies: ["KioCore"]),
         .testTarget(name: "KioCoreTests", dependencies: ["KioCore", "KioModel"]),

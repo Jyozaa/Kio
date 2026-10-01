@@ -1,5 +1,6 @@
 import AppKit
 import KioCore
+import KioModel
 import KioUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -7,8 +8,22 @@ import UniformTypeIdentifiers
 struct KioChatView: View {
     @ObservedObject private var workspace = KioWorkspace.shared
     @State private var message = ""
+    @State private var pastedClipboardTexts: [String] = []
+    @State private var historySearch = ""
+    @State private var workflowName = ""
+    @State private var renameTemplateID: UUID?
+    @State private var showSaveWorkflow = false
+    @State private var showRenameWorkflow = false
+    @State private var showWorkflowNotice = false
+    @State private var workflowNotice = ""
     @State private var isPickingFiles = false
+    @State private var isPickingFolder = false
     @State private var isDropTarget = false
+    @State private var targetedAgent: AgentID?
+    @State private var showAgentDropActions = false
+    @State private var agentDropAgent: AgentID = .kio
+    @State private var agentDropActions: [ChatQuickAction] = []
+    @State private var pasteKeyMonitor: Any?
     @FocusState private var messageFocused: Bool
 
     var body: some View {
@@ -18,9 +33,13 @@ struct KioChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 20) {
-                        ForEach(workspace.conversation) { item in
+                        ForEach(filteredConversation) { item in
                             ConversationRow(item: item)
                                 .id(item.id)
+                        }
+                        if !historySearch.isEmpty && filteredConversation.isEmpty {
+                            ContentUnavailableView.search(text: historySearch)
+                                .padding(.top, 48)
                         }
                         if workspace.isWorking {
                             HStack(spacing: 8) {
@@ -44,6 +63,8 @@ struct KioChatView: View {
         }
         .background(Color.black)
         .preferredColorScheme(.dark)
+        .onAppear(perform: installPasteKeyMonitor)
+        .onDisappear(perform: removePasteKeyMonitor)
         .overlay {
             if isDropTarget {
                 RoundedRectangle(cornerRadius: 18)
@@ -52,9 +73,45 @@ struct KioChatView: View {
                     .allowsHitTesting(false)
             }
         }
-        .onDrop(of: [UTType.fileURL], isTargeted: $isDropTarget, perform: acceptDrop)
+        .onDrop(of: [UTType.fileURL, .url], isTargeted: $isDropTarget, perform: acceptDrop)
         .fileImporter(isPresented: $isPickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { workspace.addURLs(urls) }
+        }
+        .fileImporter(isPresented: $isPickingFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result { workspace.addURLs(urls) }
+        }
+        .alert("Save Workflow", isPresented: $showSaveWorkflow) {
+            TextField("Workflow name", text: $workflowName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                do { try workspace.saveWorkflowTemplate(named: workflowName); workflowNotice = "Saved \(workflowName.trimmingCharacters(in: .whitespacesAndNewlines)). Run it later from Workflows." }
+                catch { workflowNotice = error.localizedDescription }
+                showWorkflowNotice = true
+            }
+        } message: {
+            Text("Save the last completed registered operation sequence for compatible files. Templates store operation names and typed arguments, not file paths.")
+        }
+        .alert("Workflow", isPresented: $showWorkflowNotice) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(workflowNotice) }
+        .alert("Rename Workflow", isPresented: $showRenameWorkflow) {
+            TextField("Workflow name", text: $workflowName)
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                guard let id = renameTemplateID,
+                      let template = workspace.workflowTemplates.first(where: { $0.id == id }) else { return }
+                do { try workspace.renameWorkflowTemplate(template, to: workflowName); workflowNotice = "Workflow renamed." }
+                catch { workflowNotice = error.localizedDescription }
+                showWorkflowNotice = true
+            }
+        } message: { Text("Choose a name up to 60 characters.") }
+        .confirmationDialog("Choose an action for \(agentDropAgent.name)", isPresented: $showAgentDropActions, titleVisibility: .visible) {
+            ForEach(agentDropActions) { action in
+                Button(action.title) { workspace.submit(action.prompt) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The dropped result is attached. Choose a registered action; Kio will use the same task planner and tools.")
         }
     }
 
@@ -70,27 +127,115 @@ struct KioChatView: View {
             }
             Spacer()
             HStack(spacing: 5) {
-                ForEach([AgentID.pip, .pixel, .zip, .echo, .clerk], id: \.self) { agent in
+                ForEach([AgentID.scribe, .table, .lens, .scout, .patch, .pip, .pixel, .zip, .echo, .clerk, .courier], id: \.self) { agent in
                     AgentAvatar(agent, size: 23)
-                        .help(agent.name)
+                        .padding(2)
+                        .background(targetedAgent == agent ? Color(hex: agent.colorHex).opacity(0.28) : .clear, in: Circle())
+                        .overlay(Circle().stroke(targetedAgent == agent ? Color(hex: agent.colorHex) : .clear, lineWidth: 1.5))
+                        .onDrop(of: [UTType.fileURL], isTargeted: Binding(
+                            get: { targetedAgent == agent },
+                            set: { active in targetedAgent = active ? agent : (targetedAgent == agent ? nil : targetedAgent) }
+                        )) { providers in
+                            acceptSpecialistDrop(providers, agent: agent)
+                        }
+                        .help("\(agent.name) · \(agent.roleDescription)")
                 }
             }
-            Button { isPickingFiles = true } label: {
+            TextField("Search history", text: $historySearch)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .padding(.horizontal, 10)
+                .frame(width: 170, height: 30)
+                .background(Color(hex: 0x151515), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.07), lineWidth: 1))
+                .accessibilityLabel("Search local conversation and artifact history")
+            workflowMenu
+            Menu {
+                Button("Add Files", systemImage: "paperclip") { isPickingFiles = true }
+                Button("Choose Folder", systemImage: "folder") { isPickingFolder = true }
+            } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.72))
                     .frame(width: 32, height: 32)
                     .background(Color(hex: 0x1B1B1B), in: Circle())
             }
-            .buttonStyle(.plain)
-            .help("Add files")
+            .menuStyle(.borderlessButton)
+            .help("Add files or choose a folder")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 15)
     }
 
+    private var workflowMenu: some View {
+        Menu {
+            if workspace.canSaveWorkflow {
+                Button("Save last workflow…", systemImage: "square.and.arrow.down") {
+                    workflowName = ""
+                    showSaveWorkflow = true
+                }
+                if !workspace.workflowTemplates.isEmpty { Divider() }
+            }
+            if workspace.workflowTemplates.isEmpty {
+                Text("No saved workflows yet")
+            } else {
+                ForEach(workspace.workflowTemplates) { template in
+                    Menu(template.name) {
+                        Button("Run on current files", systemImage: "play.fill") {
+                            message = "Run \(template.name) on these."
+                            send()
+                        }
+                        Button("Inspect steps", systemImage: "list.bullet.rectangle") {
+                            workflowNotice = template.steps.enumerated().map { "\($0.offset + 1). \($0.element.operation.rawValue)" }.joined(separator: "\n")
+                            showWorkflowNotice = true
+                        }
+                        Button("Rename…", systemImage: "pencil") {
+                            renameTemplateID = template.id
+                            workflowName = template.name
+                            showRenameWorkflow = true
+                        }
+                        Divider()
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            do { try workspace.deleteWorkflowTemplate(template); workflowNotice = "Workflow deleted." }
+                            catch { workflowNotice = error.localizedDescription }
+                            showWorkflowNotice = true
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(0.72))
+                .frame(width: 32, height: 32)
+                .background(Color(hex: 0x1B1B1B), in: Circle())
+        }
+        .menuStyle(.borderlessButton)
+        .help("Workflow templates")
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !quickActions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(quickActions) { action in
+                            Button(action.title) {
+                                message = action.prompt
+                                if action.requiresUserInput { messageFocused = true }
+                                else { send() }
+                            }
+                                .font(.system(size: 10, weight: .medium))
+                                .buttonStyle(.plain)
+                                .foregroundStyle(Color.primary.opacity(0.72))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color(hex: 0x171717), in: Capsule())
+                                .overlay(Capsule().stroke(Color.white.opacity(0.07), lineWidth: 1))
+                        }
+                    }
+                }
+            }
             if !workspace.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -108,6 +253,22 @@ struct KioChatView: View {
                         .frame(width: 34, height: 36)
                 }
                 .buttonStyle(.plain)
+                Button(action: pasteClipboardContents) {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .frame(width: 30, height: 36)
+                }
+                .buttonStyle(.plain)
+                .help("Paste text, a URL, file, or image from the clipboard")
+                Button(action: workspace.captureRegion) {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .frame(width: 30, height: 36)
+                }
+                .buttonStyle(.plain)
+                .help("Capture a screen region")
                 TextField(workspace.activeOutput == nil ? "Message Kio" : "Ask a follow-up…", text: $message, axis: .vertical)
                     .font(.system(size: 14))
                     .lineLimit(1...5)
@@ -148,7 +309,22 @@ struct KioChatView: View {
         let value = message
         message = ""
         messageFocused = false
-        workspace.submit(value)
+        workspace.submit(ClipboardComposerResolver.resolve(message: value, pastedTexts: pastedClipboardTexts))
+        pastedClipboardTexts = []
+    }
+
+    private var filteredConversation: [ConversationItem] {
+        guard !historySearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return workspace.conversation }
+        let records = workspace.conversation.map {
+            ConversationHistoryRecord(id: $0.id, speaker: $0.speaker, message: $0.message,
+                                      artifact: $0.artifact, operation: $0.operation, createdAt: $0.createdAt)
+        }
+        let matchingIDs = Set(ConversationHistorySearch.filter(records, query: historySearch).map(\.id))
+        return workspace.conversation.filter { matchingIDs.contains($0.id) }
+    }
+
+    private var quickActions: [ChatQuickAction] {
+        ContextualQuickActionCatalog.suggestions(for: workspace.attachments)
     }
 
     private func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -156,6 +332,84 @@ struct KioChatView: View {
         let group = DispatchGroup()
         let collector = ChatURLCollector()
         providers.forEach { provider in
+            let type = provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) ? UTType.fileURL.identifier : UTType.url.identifier
+            guard provider.hasItemConformingToTypeIdentifier(type) else { return }
+            group.enter()
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, _ in
+                defer { group.leave() }
+                if let url = item as? URL { collector.append(url) }
+                else if let url = item as? NSURL { collector.append(url as URL) }
+                else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { collector.append(url) }
+                else if let value = item as? String, let url = URL(string: value) { collector.append(url) }
+            }
+        }
+        group.notify(queue: .main) {
+            let dropped = collector.urls
+            workspace.addURLs(dropped.filter(\.isFileURL))
+            workspace.addWebURLs(dropped.filter { !$0.isFileURL }.map(\.absoluteString))
+        }
+        return true
+    }
+
+    private func pasteClipboardContents() {
+        let pasteboard = NSPasteboard.general
+        let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff)
+        let input = ClipboardInputResolver.resolve(
+            fileURLs: fileURLs,
+            imageData: imageData,
+            urlString: pasteboard.string(forType: .URL),
+            text: pasteboard.string(forType: .string)
+        )
+        switch input {
+        case .files(let urls): workspace.addURLs(urls)
+        case .image(let data): workspace.addClipboardImageData(data)
+        case .webURL(let value): workspace.addWebURLs([value])
+        case .text(let value):
+            message += value
+            pastedClipboardTexts.append(value)
+            messageFocused = true
+        case nil: break
+        }
+    }
+
+    @MainActor
+    private func installPasteKeyMonitor() {
+        removePasteKeyMonitor()
+        let messageFocus = $messageFocused
+        let pasteAction = pasteClipboardContents
+        pasteKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard messageFocus.wrappedValue,
+                  event.window != nil,
+                  event.window === NSApp.keyWindow,
+                  modifiers.contains(.command),
+                  !modifiers.contains(.option),
+                  !modifiers.contains(.control),
+                  !modifiers.contains(.shift),
+                  event.charactersIgnoringModifiers?.lowercased() == "v" else {
+                return event
+            }
+
+            DispatchQueue.main.async {
+                pasteAction()
+            }
+            return nil
+        }
+    }
+
+    @MainActor
+    private func removePasteKeyMonitor() {
+        if let pasteKeyMonitor {
+            NSEvent.removeMonitor(pasteKeyMonitor)
+            self.pasteKeyMonitor = nil
+        }
+    }
+
+    private func acceptSpecialistDrop(_ providers: [NSItemProvider], agent: AgentID) -> Bool {
+        let group = DispatchGroup()
+        let collector = ChatURLCollector()
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 defer { group.leave() }
@@ -164,10 +418,71 @@ struct KioChatView: View {
                 else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { collector.append(url) }
             }
         }
-        group.notify(queue: .main) { workspace.addURLs(collector.urls) }
+        group.notify(queue: .main) {
+            let urls = collector.urls.filter(\.isFileURL)
+            guard !urls.isEmpty else { return }
+            workspace.addURLs(urls)
+            agentDropAgent = agent
+            agentDropActions = specialistActions(for: agent, urls: urls)
+            if agentDropActions.isEmpty {
+                workflowNotice = "No registered \(agent.name) action matches the dropped file type."
+                showWorkflowNotice = true
+            } else {
+                showAgentDropActions = true
+            }
+        }
         return true
     }
+
+    private func specialistActions(for agent: AgentID, urls: [URL]) -> [ChatQuickAction] {
+        let artifacts = urls.compactMap { try? ArtifactRef.inspect($0) }
+        let kinds = artifacts.map(\.kind)
+        switch agent {
+        case .pip:
+            let pdfs = kinds.filter { $0 == .pdf }.count
+            guard pdfs > 0 else { return [] }
+            if pdfs > 1 { return [.init(title: "Merge PDFs", prompt: "Merge these PDFs")] }
+            return [.init(title: "Split pages", prompt: "Split this PDF into pages"), .init(title: "Extract text", prompt: "Extract text from this PDF"), .init(title: "Summarize", prompt: "Summarize this PDF"), .init(title: "OCR", prompt: "OCR this PDF")]
+        case .pixel:
+            guard kinds.contains(.image) else { return [] }
+            return [.init(title: "Resize 1200 px", prompt: "Resize this image to 1200 pixels wide"), .init(title: "Convert to PNG", prompt: "Convert this image to PNG"), .init(title: "Compress", prompt: "Compress this image"), .init(title: "Remove background", prompt: "Remove the background from this image"), .init(title: "OCR", prompt: "Extract the text from this image")]
+        case .zip:
+            if artifacts.contains(where: { $0.fileURL.pathExtension.lowercased() == "zip" }) {
+                return [.init(title: "Inspect ZIP", prompt: "Inspect this ZIP archive"), .init(title: "Extract ZIP", prompt: "Extract this ZIP archive")]
+            }
+            return artifacts.isEmpty ? [] : [.init(title: "Create ZIP", prompt: "Create a ZIP archive from these files")]
+        case .echo:
+            if kinds.contains(.video) { return [.init(title: "Extract audio", prompt: "Extract audio from this video"), .init(title: "Transcribe", prompt: "Transcribe this video"), .init(title: "Subtitles", prompt: "Generate subtitles for this video")] }
+            if kinds.contains(.audio) { return [.init(title: "Transcribe", prompt: "Transcribe this audio"), .init(title: "Subtitles", prompt: "Generate subtitles for this audio")] }
+            return []
+        case .clerk:
+            guard !artifacts.isEmpty, artifacts.allSatisfy({ $0.kind != .folder }) else { return [] }
+            return [.init(title: "Organize by type", prompt: "Organize these files by type"), .init(title: "Organize by module", prompt: "Organize these files by filename module prefix"), .init(title: "Find duplicates", prompt: "Find exact duplicate files among these")]
+        case .scribe:
+            if kinds.contains(.text) { return [.init(title: "Summarize", prompt: "Summarize this text"), .init(title: "Proofread", prompt: "Proofread this text")] }
+            return []
+        case .table:
+            guard kinds.contains(.csv) || kinds.contains(.table) else { return [] }
+            if artifacts.contains(where: { $0.fileURL.pathExtension.lowercased() == "xlsx" }) {
+                return [.init(title: "Import workbook", prompt: "Import this workbook to CSV"), .init(title: "Inspect workbook", prompt: "Inspect this workbook")]
+            }
+            return [.init(title: "Inspect", prompt: "Inspect this table"), .init(title: "Normalize", prompt: "Normalize this table"), .init(title: "Deduplicate", prompt: "Remove duplicate rows")]
+        case .lens:
+            guard kinds.contains(.image) else { return [] }
+            return [.init(title: "Read text", prompt: "Extract the text from this image"), .init(title: "Extract table", prompt: "Extract the table from this image"), .init(title: "Receipt", prompt: "Extract the fields from this receipt")]
+        case .scout:
+            guard kinds.contains(.url) else { return [] }
+            return [.init(title: "Summarize page", prompt: "Summarize this page"), .init(title: "List links", prompt: "Extract links from this page")]
+        case .patch:
+            guard artifacts.contains(where: { $0.kind == .text && ["swift", "py", "js", "ts", "tsx", "rs", "go", "java", "c", "cpp"].contains($0.fileURL.pathExtension.lowercased()) }) else { return [] }
+            return [.init(title: "Explain code", prompt: "Explain this code"), .init(title: "Propose patch", prompt: "Propose a patch for this code")]
+        case .kio, .courier:
+            return []
+        }
+    }
 }
+
+private typealias ChatQuickAction = ContextualQuickAction
 
 private struct ConversationRow: View {
     let item: ConversationItem
@@ -233,6 +548,8 @@ private struct AttachmentChip: View {
         case .image: "photo"
         case .audio: "waveform"
         case .video: "film"
+        case .csv, .table: "tablecells"
+        case .url: "link"
         case .folder: "folder"
         default: "doc"
         }
@@ -260,7 +577,16 @@ private struct ArtifactCard: View {
             Spacer(minLength: 4)
             Button("Open") { NSWorkspace.shared.open(artifact.fileURL) }
             Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([artifact.fileURL]) }
-            Button("Copy") {
+            if artifact.kind == .text, artifact.fileURL.pathExtension.lowercased() == "md" {
+                Button("Copy text") {
+                    guard let text = try? String(contentsOf: artifact.fileURL, encoding: .utf8) else { return }
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString(text, forType: .string)
+                }
+                Button("Save as TXT") { savePlainTextCopy() }
+            }
+            Button("Copy file") {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.writeObjects([artifact.fileURL as NSURL])
@@ -281,6 +607,17 @@ private struct ArtifactCard: View {
             }
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([artifact.fileURL]) }
         }
+    }
+
+    private func savePlainTextCopy() {
+        guard let text = try? String(contentsOf: artifact.fileURL, encoding: .utf8) else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = artifact.fileURL.deletingPathExtension().lastPathComponent + ".txt"
+        panel.prompt = "Save TXT"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do { try text.write(to: destination, atomically: true, encoding: .utf8) }
+        catch { NSAlert(error: error).runModal() }
     }
 }
 

@@ -155,9 +155,8 @@
 		AB000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; baseConfigurationReference = A20000000000000000000007 /* KioVersion.xcconfig */; buildSettings = {
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_IDENTITY = "-";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Kio;
-				INFOPLIST_KEY_LSUIElement = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KioMac/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.kio.mac;
 				PRODUCT_NAME = Kio;
@@ -168,9 +167,8 @@
 		AB000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; baseConfigurationReference = A20000000000000000000007 /* KioVersion.xcconfig */; buildSettings = {
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_IDENTITY = "-";
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Kio;
-				INFOPLIST_KEY_LSUIElement = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KioMac/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = app.kio.mac;
 				PRODUCT_NAME = Kio;

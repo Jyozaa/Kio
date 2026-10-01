@@ -1,65 +1,46 @@
 # Kio build and verification status
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
-## Current source and app identity
+## Source and signing
 
-- Checkout: `/Users/joe/Desktop/Kio`, branch `main`. The acceptance code is committed locally; `origin/main` is still at `9744e51` and the local branch has not been pushed.
-- Implementation commit: `9020024`; this final acceptance update changes documentation only.
-- Acceptance follow-up fix: `ead83de` keeps the notch feed at the latest message and persists active-result clearing across launches.
-- The app used for live Mac checks is built from this checkout at `/var/folders/_5/xssw295j0g3_vhrcrkrm51mw0000gn/0/KioDerivedData/Build/Products/Debug/Kio.app`, bundle ID `app.kio.mac`.
-- The older installed app at `/Users/joe/Applications/Kio.app` has bundle ID `local.companion.dev`; it is not the app used for these checks.
-- Local changes are not pushed to GitHub. GitHub Actions therefore has no run for this source state.
+- Checkout: `/Users/joe/Desktop/Kio`, branch `main`, current HEAD `b2b4872` (`docs: record clean final verification`). The feature work in this pass is in the working tree and is not committed or pushed.
+- Origin: `https://github.com/Jyozaa/Kio.git`. No CI result covers the current uncommitted tree.
+- Repository hygiene: 179 duplicate-style ` 2` paths have been removed in the current branch history, and none remain in the working tree. The invalid local ref named `main 2` pointed at a divergent snapshot; that commit is preserved on `legacy/main-2`, and the invalid ref was removed.
+- Canonical local app: `/Users/joe/Applications/Kio.app`, bundle ID `app.kio.mac`.
+- Local development signing uses the existing stable self-signed identity with fingerprint `D1BE804340BFDABFA94E9881FC65357B5B404338`. The private key remains in the user's login Keychain; the repo contains only scripts and instructions, not the key.
+- A repeated local install kept the same designated requirement. The installer no longer uses Apple Events to quit Kio, avoiding an Automation permission dialog. This confirms signing continuity; it does not prove that every macOS privacy or Keychain prompt will never appear again.
+- Public Release DMGs are ad-hoc signed and are not notarized. This is separate from the local development identity.
+- The latest GitHub Actions run for the current committed HEAD `b2b4872` is successful: [Kio CI run 36754614556](https://github.com/Jyozaa/Kio/actions/runs/36754614556). It does not cover the current uncommitted working-tree changes.
 
-## Current milestone and next action
+## Implemented in this working tree
 
-- Milestone: hardening, release packaging, relay deployment, offline reconnect, and the deployed laptop-browser file round trip are complete and recorded below.
-- Next: finish the remaining notch-specific visual checks, then do physical iPhone acceptance last. No physical iPhone is connected in this environment.
+- 12 agents: Kio, Pip, Pixel, Zip, Echo, Clerk, Courier, Scribe, Table, Lens, Scout, and Patch. The typed registry contains 87 `ToolOperation` cases.
+- Scribe reads bounded text locally for summarizing, rewriting, proofreading, translating, extracting points/actions, Markdown conversion, comparison, and explanation.
+- Table supports CSV/TSV and JSON analysis/transforms plus bounded, read-only XLSX import to CSV.
+- Lens extracts OCR, receipts, tables, and structured text locally with Vision. Scout fetches readable public web pages and links within a restricted URL policy. Patch creates a reviewable diff and separate proposed copy; it never executes or overwrites source code.
+- Mac input now includes explicit clipboard paste, URL capture, screenshot capture, Finder Services, file drops, artifact-aware follow-ups, searchable history, shared contextual actions in the notch and full chat, workflow templates, and specialist handoffs. Pip also combines ordered PDF and image inputs into one bounded, verified PDF.
+- Pixel also has a Vision attention smart crop. Echo supports extracting a bounded video clip and converting audio to a verified M4A copy.
+- The notch and full conversation composer both provide explicit clipboard paste for text, URLs, images, and files. Text pasted into the notch remains a separate Scribe source when the user types an instruction after it; Command-V is intercepted only in the focused Kio composer.
+- The PWA supports multiple attachments in both directions, explicit camera/share input, an encrypted retry queue, install metadata, agent progress, downloads, and opt-in browser notifications. Worker version `0382cb4c-37b5-4bce-84d6-aea27c8b70e1` was deployed on 2026-09-30. Reloading the existing paired Chrome profile retained its identity, history, and queued request; the 12-member roster and saved-workflow shortcut are visible. The shortcut was live-checked by listing and running the `Summarize a URL` template.
 
-## IMPLEMENTED
+## Automated verification
 
-- Mac notch composer, compact result view, history access, file drops, hover retention, output-folder selection, and character handoff/animation behavior.
-- Local fast answers and stricter tool-plan decoding, plus reusable one- and two-step follow-up pipelines.
-- Native PDF, image, archive, media, and file-management workflows. ZIP extraction validates paths and checksums, bounds decompression, and rejects unsafe entry types and unsupported encryption.
-- Encrypted optional phone relay, PWA notifications, relay workspace lifecycle cleanup, and browser downloads.
+- `./scripts/check.sh` passed on the final working tree: 14 Python checks; 60 Swift planner/model tests, 43 native tool tests, and 2 relay crypto/model tests; Mac Debug build; mobile `npm ci`, TypeScript/Vite build, and two WebCrypto tests; relay `npm ci`, typecheck, smoke/lifecycle checks, and CryptoKit interoperability. The Patch planner regression test covers the original type-annotation request and keeps explanatory questions out of the edit route. The mixed PDF/image combine, shared contextual quick-action catalog, and bounded PWA inline-text/source separation are covered by the added tests.
+- `bash scripts/package-dmg.sh` produced `build/release/Kio-0.1.0.dmg` (13,999,918 bytes) and `.sha256`. The Release build completed and the disk image passed `hdiutil verify`; SHA-256 `a4acba0990467c1c560675ec485e234206c99627ae23841111c75d681ae097db` passed. Release signing remains public ad-hoc signing and does not use the local private identity.
+- `git diff --check` and shell syntax checks passed. Test-created `node_modules`, Wrangler local state, and the package-local `.build` directory were removed after the check.
+- XLSX import uses CoreXLSX (Apache-2.0) and MIT-licensed XML/ZIP dependencies; it reads cached values and exports CSV, without recalculating formulas or importing Excel macros/formatting.
 
-## AUTOMATED TESTED
+## Live status and limits
 
-- `./scripts/check.sh` passed from a clean tree at `feaf75d`: 57 Swift tests, the Xcode Debug build, mobile `npm ci` plus TypeScript/Vite build, relay `npm ci` plus typecheck, relay smoke and lifecycle checks, and WebCrypto interoperability.
-- `./scripts/package-dmg.sh` produced `build/release/Kio-0.1.0.dmg` and its `.sha256` file. The DMG mounted; its app bundle identity/version, code signature integrity, and checksum were verified.
-- The native registry contains 38 typed tool operations across PDF, image, archive, media, and file workflows. No arbitrary shell or generic GUI-control operation is registered.
-- `git diff --check` passed.
-- Remote relay health returned `{"ok":true,"version":1}` and no remote database migrations were pending after deployment.
-- The latest GitHub Actions run is success for remote commit `9744e51` (run [36727753916](https://github.com/Jyozaa/Kio/actions/runs/36727753916)); there is no CI result for local commits because they are unpushed.
-
-## Live checks
-
-**LIVE TESTED ON MAC**
-
-- The running process path was verified as the Debug app built from this checkout (`app.kio.mac`), not the older installed app.
-- The Mac answered “Is my Mac online?” with “Your Mac is online—it received this request just now.”
-- In the notch, the composer retained text and stayed expanded for over five seconds while focused; both Return and the send arrow submitted the online-status question. Reopening after a reply showed the latest message fully, and the result was no longer restored as the active output after an unrelated request and app restart.
-- The History button opened the full conversation using the same persisted messages. On a generated PDF, Open loaded the file in Preview, Reveal selected it in Finder, and Copy pasted its file path into the unsent Kio composer; that text was cleared. Drag-out remains unverified. The notch’s complete hover, drag/drop, handoff animation, cancellation, Reduce Motion, shortcut, and multi-display checklist has not been completed.
-- Offline/reconnect passed on the deployed PWA: I stopped the Mac app, waited for the PWA to report offline, queued “Is my Mac online?”, restarted the current Debug app after the user approved its Keychain access, and observed exactly one expected reply after it came back online.
-- A live local-model image-to-PDF task completed using Pip. The single-repair fallback has only automated test coverage so far.
-
-**LIVE TESTED IN LAPTOP BROWSER**
-
-- The current-source PWA and local relay were paired in Chrome. The Mac answered the online question, converted a PNG to a PDF, and Chrome downloaded a valid one-page PDF. A follow-up rename created and downloaded `Browser-Followup-2.pdf`, confirming conflict-safe output naming. Both PDFs were checked with `pdfinfo`.
-- After the current deployment, Chrome uploaded `apps/mobile/public/kio-192.png` through the native file chooser; the selected-file chip appeared before sending. The paired Mac received it, Pip reported PDF progress, and the result returned to the PWA. Chrome downloaded and opened the result as a one-page PDF (PDF 1.3, 192 × 192 pt, 9,005 bytes).
-- A follow-up rename on that fresh result returned `Browser-Followup-3.pdf`. The suffix was expected because earlier tests had already created `Browser-Followup.pdf` and `Browser-Followup-2.pdf`; the new file downloaded and validated as a one-page PDF too.
-- The deployed PWA displayed the Mac-online state and live Pip progress. The prior offline/reconnect test also returned exactly one expected reply. Duplicate suppression under forced relay redelivery remains unverified.
-- The local relay used for the source-to-source browser round-trip has been stopped. The Mac was returned to the deployed relay URL.
-
-**DEPLOYED**
-
-- Current mobile assets and relay code were deployed to `https://kio-relay.kio-relay.workers.dev` on 2026-09-30 (Worker version `c08c188a-d1e5-462e-8d34-ff9ec017bfbf`). Remote migrations through `0005_workspace_lifecycle.sql` were applied.
-
-## Not verified yet
-
-- **PHYSICAL IPHONE:** not tested; no physical iPhone was available. Manual acceptance: pair from Settings, send a text request, upload a PNG and download the resulting PDF, then run a follow-up rename.
-- Duplicate suppression under forced relay redelivery, live local-model repair, and notification display remain unverified. Chrome's native chooser required keyboard focus/navigation to select the PNG, after which normal attachment, encrypted transfer, conversion, and download all worked; no extension file-URL permission change was needed.
-- Notification display has not been observed with browser permission enabled.
-- One deliberately vague queued test request returned `None`; the known-good offline “Is my Mac online?” request returned exactly one correct response. Vague requests that do not map to a safe registered tool plan still need clearer wording.
-- Notch visual checks remain for actual hover expansion, drag/drop chips, task handoff/character animation, stop, notch-specific result actions and drag-out, follow-up pipelines, Reduce Motion, global shortcut, output-folder/onboarding behavior, and display changes. Full-chat Open, Reveal, and Copy passed.
-- Repository hygiene found no remaining paths matching `* 2*`; the 179 tracked duplicate paths were removed in `022e64f`, and one stale untracked `docs/BUILD_STATUS 2.md` copy was removed during final review.
+- The final canonical app was rebuilt, re-signed with the existing stable self-signed `Kio Local Development` identity, atomically installed, and launched from `/Users/joe/Applications/Kio.app`. Settings shows bundle ID `app.kio.mac`, signing `Kio Local Development`, and stable identity `Yes`. The designated requirement remains tied to certificate fingerprint `D1BE804340BFDABFA94E9881FC65357B5B404338`. Pairing remained saved across repeated rebuilds; Settings reports **Mac online · 1 paired phone** and no repeat Allow prompt appeared. No Apple Development certificate or Apple account was used.
+- A second canonical rebuild with the same local identity passed the exact Patch request that had previously fallen through: “Add string type annotations to this function and show me the proposed changes first.” Patch wrote a reviewable diff and proposed copy; `greeting.py` remained byte-for-byte unchanged.
+- A live notch test pasted a 60-character meeting note, typed “Summarize this in two bullets,” and confirmed that only the typed instruction was submitted while the pasted note was attached as Scribe source. Scribe returned the two requested bullets and saved a Markdown result.
+- In the paired Chrome profile, the multiple-file control accepted two CSV attachments. “Merge these tables” ran on the Mac; Table returned a merged CSV, and the PWA displayed the downloadable result. A two-image Lens OCR request and a two-image PDF request also completed; the PDF download was confirmed in Downloads.
+- A live Mac chat accepted a PDF and PNG together, displayed the shared `Combine PDF + images` contextual action, and produced `appendix-Combined.pdf`. `pdfinfo` verified a non-empty two-page PDF; the UI reported that selected order was preserved, and both input fixtures remained intact.
+- The PWA fetched a public URL through Scout, returned a Markdown result, listed the saved `Summarize a URL` workflow, and ran that saved workflow through Scout → Scribe. A separate example.com summary was semantically poor, so URL-summary quality still needs review; the IANA template run confirms the end-to-end handoff and result delivery only.
+- A fresh browser request queued while the Mac was offline and completed after reconnect. The paired profile also returned to **Mac online** after reload. The PWA's saved workflow shortcut filled its draft and was verified by listing and running a template.
+- A live PWA inline-text request (“Summarize this short demo note in three bullets: …”) reached Scribe and returned `Clipboard-28A8FF8C-5AF1-48BC-9FC6-A29458F89E3D-Summary.md`. This confirms a bounded instruction/source split from Chrome through the encrypted relay and back to the paired page.
+- CUA reopened the canonical app's notch and verified its history control, editable composer, completed Scribe result, black coordinator eyes, and collapse control. The hover hit testing now follows the visible notch silhouette, and an empty focused composer no longer holds it open. CUA clicks did not provide a reliable pointer-only movement, so hover-out timing remains a manual check. The full chat exposed and ran the shared mixed-file quick action; the attachment-specific notch chip was not independently live-tested. File drops, specialist animation, cancellation, Reduce Motion, global shortcut, multiple displays, and result drag-out also need hands-on review.
+- Chrome's one-time site permission request for notifications was accepted during the requested PWA notification check. The paired PWA now shows **Completion notifications enabled**. A status check was sent and Chrome was backgrounded; no desktop notification toast was independently observed, so OS-level delivery remains unverified. No Apple Development certificate flow or repeated Keychain authorization was needed. A physical camera capture and OS share-target handoff require an iPhone and remain unverified. The saved-template list and execution are live-verified in Chrome. Add to Home Screen was previously confirmed by the user.
+- The relay Worker was deployed on 2026-09-30 as recorded above; no additional relay deploy has been made since. The repository remains modified and uncommitted, with no Git commit or push in this pass.

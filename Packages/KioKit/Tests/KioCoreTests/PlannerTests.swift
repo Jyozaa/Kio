@@ -12,6 +12,33 @@ import KioModel
     #expect(plan.steps.first?.owner == .pip)
 }
 
+@Test func mixedPDFAndImageInputsUseOrderedCombinedPDFTool() throws {
+    let image = try makeArtifact(name: "cover.png", kind: .image)
+    let pdf = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let plan = FastPathPlanner().plan(
+        request: "Combine these PDFs and images into one PDF",
+        artifacts: [image, pdf]
+    )
+    #expect(plan.steps.map(\.operation) == [.combineMixedPDFInputs])
+    #expect(plan.steps[0].source == .artifacts([image.id, pdf.id]))
+    #expect(plan.steps[0].owner == .pip)
+    #expect(FastPathPlanner.isCompatible(.combineMixedPDFInputs, inputKinds: [.image, .pdf]))
+    #expect(!FastPathPlanner.isCompatible(.combineMixedPDFInputs, inputKinds: [.pdf, .pdf]))
+}
+
+@Test func contextualQuickActionsAreTypeSpecificAndShared() throws {
+    let pdf = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let pdfActions = ContextualQuickActionCatalog.suggestions(for: [pdf])
+    #expect(pdfActions.map(\.title).contains("Summarize"))
+    #expect(pdfActions.map(\.title).contains("Pages…"))
+
+    let image = try makeArtifact(name: "receipt.png", kind: .image)
+    let imageActions = ContextualQuickActionCatalog.suggestions(for: [image])
+    #expect(imageActions.map(\.title).contains("OCR"))
+    #expect(imageActions.map(\.title).contains("Receipt"))
+    #expect(ContextualQuickActionCatalog.suggestions(for: []).isEmpty)
+}
+
 @Test func unsupportedRequestDoesNotInventTools() throws {
     let image = try makeArtifact(name: "photo.png", kind: .image)
     let plan = FastPathPlanner().plan(request: "Make this look cinematic", artifacts: [image])
@@ -19,11 +46,387 @@ import KioModel
     #expect(plan.clarification != nil)
 }
 
+@Test func newSpecialistRosterAndDesignTokensAreRegistered() {
+    #expect(Set([AgentID.scribe, .table, .lens, .scout, .patch]).isSubset(of: Set(AgentID.allCases)))
+    #expect(AgentID.scribe.roleDescription.contains("text"))
+    #expect(AgentID.table.roleDescription.contains("data"))
+    #expect(AgentID.lens.colorHex != AgentID.scribe.colorHex)
+    #expect(AgentID.scout.colorHex != AgentID.table.colorHex)
+    #expect(AgentID.patch.colorHex != AgentID.kio.colorHex)
+}
+
+@Test func pixelSmartCropAndEchoClipConversionRouteToRegisteredOperations() throws {
+    let image = try makeArtifact(name: "portrait.png", kind: .image)
+    let crop = FastPathPlanner().plan(request: "Smart crop this around the subject", artifacts: [image])
+    #expect(crop.steps.map(\.operation) == [.smartCropImage])
+    #expect(crop.steps.first?.owner == .pixel)
+    #expect(FastPathPlanner.hasValidArguments(.none, for: .smartCropImage))
+
+    let video = try makeArtifact(name: "interview.mp4", kind: .video)
+    let clip = FastPathPlanner().plan(request: "Extract clip from 2 seconds to 8 seconds", artifacts: [video])
+    #expect(clip.steps.map(\.operation) == [.extractMediaClip])
+    #expect(clip.steps.first?.owner == .echo)
+
+    let audio = try makeArtifact(name: "voice.wav", kind: .audio)
+    let convert = FastPathPlanner().plan(request: "Convert this audio", artifacts: [audio])
+    #expect(convert.steps.map(\.operation) == [.convertAudio])
+    #expect(FastPathPlanner.outputKinds(for: .convertAudio, inputKinds: [.audio]) == [.audio])
+}
+
+@Test func scribeRoutesTextAndPDFRequestsToRegisteredLocalOperations() throws {
+    let text = try makeArtifact(name: "notes.md", kind: .text)
+    let textPlan = FastPathPlanner().plan(request: "Summarize this", artifacts: [text])
+    #expect(textPlan.steps.map(\.operation) == [.summarizeText])
+    #expect(textPlan.steps.first?.owner == .scribe)
+    #expect(textPlan.steps.first?.arguments == .textPrompt("Summarize this"))
+
+    let pdf = try makeArtifact(name: "report.pdf", kind: .pdf)
+    let pdfPlan = FastPathPlanner().plan(request: "Summarize this PDF", artifacts: [pdf])
+    #expect(pdfPlan.steps.map(\.operation) == [.extractPDFText, .summarizeText])
+    #expect(pdfPlan.steps.last?.source == .previousStep(pdfPlan.steps[0].id))
+}
+
+@Test func tableFastPathBuildsMergeDeduplicateAndStatisticsPipeline() throws {
+    let first = try makeArtifact(name: "january.csv", kind: .csv)
+    let second = try makeArtifact(name: "february.csv", kind: .csv)
+    let plan = FastPathPlanner().plan(
+        request: "Merge these, remove duplicate rows and tell me the average amount",
+        artifacts: [first, second]
+    )
+    #expect(plan.steps.map(\.operation) == [.mergeData, .deduplicateData, .dataStatistics])
+    #expect(plan.steps.allSatisfy { $0.owner == .table })
+    #expect(plan.steps[1].source == .previousStep(plan.steps[0].id))
+    #expect(plan.steps[2].source == .previousStep(plan.steps[1].id))
+}
+
+@Test func xlsxPlannerImportsBeforeTableOperations() throws {
+    let workbook = try makeArtifact(name: "expenses.xlsx", kind: .table)
+    let inspect = FastPathPlanner().plan(request: "Inspect this workbook", artifacts: [workbook])
+    #expect(inspect.steps.map(\.operation) == [.importXLSX, .dataStatistics])
+    #expect(inspect.steps[0].owner == .table)
+    #expect(inspect.steps[1].source == .previousStep(inspect.steps[0].id))
+
+    let csv = FastPathPlanner().plan(request: "Convert this workbook to CSV", artifacts: [workbook])
+    #expect(csv.steps.map(\.operation) == [.importXLSX])
+    #expect(FastPathPlanner.outputKinds(for: .importXLSX, inputKinds: [.table]) == [.csv])
+}
+
+@Test func clerkRoutesFolderSearchAndOrganizationByName() throws {
+    let downloads = try makeArtifact(name: "Downloads", kind: .folder)
+    let organizeDownloads = FastPathPlanner().plan(request: "Organize Downloads", artifacts: [downloads])
+    #expect(organizeDownloads.steps.map(\.operation) == [.organizeDownloads])
+
+    let recent = FastPathPlanner().plan(request: "Find recent files", artifacts: [downloads])
+    #expect(recent.steps.map(\.operation) == [.findRecent])
+    #expect(recent.steps[0].owner == .clerk)
+
+    let csv = try makeArtifact(name: "Finance_invoice.csv", kind: .csv)
+    let findName = FastPathPlanner().plan(request: "Find the file named invoice", artifacts: [csv])
+    #expect(findName.steps.map(\.operation) == [.findByName])
+
+    let module = FastPathPlanner().plan(request: "Organize these files by filename module prefix", artifacts: [csv])
+    #expect(module.steps.map(\.operation) == [.organizeByModulePattern])
+}
+
+@Test func patchAndJSONFormatRequestsSelectTypedOperations() throws {
+    let source = try makeArtifact(name: "sample.swift", kind: .text)
+    let patchPlan = FastPathPlanner().plan(request: "Fix this bug in the code", artifacts: [source])
+    #expect(patchPlan.steps.map(\.operation) == [.proposePatch])
+    #expect(patchPlan.steps.first?.owner == .patch)
+
+    let explainPlan = FastPathPlanner().plan(request: "Explain this code file", artifacts: [source])
+    #expect(explainPlan.steps.map(\.operation) == [.explainCode])
+
+    let json = try makeArtifact(name: "data.json", kind: .table)
+    let formatPlan = FastPathPlanner().plan(request: "Format this JSON", artifacts: [json])
+    #expect(formatPlan.steps.map(\.operation) == [.formatJSON])
+    #expect(formatPlan.steps.first?.owner == .patch)
+}
+
+@Test func explicitCodeEditVerbsRouteToReviewablePatchWorkflow() throws {
+    let source = try makeArtifact(name: "greeting.py", kind: .text)
+
+    let addAnnotations = FastPathPlanner().plan(
+        request: "Add string type annotations to this function and show me the proposed changes first.",
+        artifacts: [source]
+    )
+    #expect(addAnnotations.steps.map(\.operation) == [.proposePatch])
+    #expect(addAnnotations.steps.first?.source == .artifacts([source.id]))
+    #expect(addAnnotations.steps.first?.arguments == .textPrompt("Add string type annotations to this function and show me the proposed changes first."))
+
+    let refactor = FastPathPlanner().plan(request: "Refactor this function", artifacts: [source])
+    #expect(refactor.steps.map(\.operation) == [.proposePatch])
+
+    let explanation = FastPathPlanner().plan(request: "Explain what changes in this function", artifacts: [source])
+    #expect(explanation.steps.map(\.operation) == [.explainCode])
+}
+
+@Test func echoRoutesLocalTranscriptsAndSubtitlesForAudioAndVideo() throws {
+    let audio = try makeArtifact(name: "meeting.m4a", kind: .audio)
+    let transcript = FastPathPlanner().plan(request: "Transcribe this audio", artifacts: [audio])
+    let subtitles = FastPathPlanner().plan(request: "Generate subtitles for this audio", artifacts: [audio])
+    #expect(transcript.steps.map(\.operation) == [.transcribeAudio])
+    #expect(transcript.steps.first?.owner == .echo)
+    #expect(subtitles.steps.map(\.operation) == [.generateSubtitles])
+
+    let video = try makeArtifact(name: "clip.mp4", kind: .video)
+    let videoSubtitles = FastPathPlanner().plan(request: "Create VTT subtitles for this video", artifacts: [video])
+    #expect(videoSubtitles.steps.map(\.operation) == [.extractAudio, .generateSubtitles])
+    #expect(videoSubtitles.steps[1].source == .previousStep(videoSubtitles.steps[0].id))
+}
+
+@Test func pipRoutesTargetedPDFPhraseSearch() throws {
+    let pdf = try makeArtifact(name: "research.pdf", kind: .pdf)
+    let plan = FastPathPlanner().plan(request: "Where does this mention branch-and-bound?", artifacts: [pdf])
+    #expect(plan.steps.map(\.operation) == [.searchPDFText])
+    #expect(plan.steps.first?.owner == .pip)
+    #expect(plan.steps.first?.arguments == .textPrompt("Where does this mention branch-and-bound?"))
+}
+
+@Test func pixelRoutesBatchActionsAndImageComparisons() throws {
+    let first = try makeArtifact(name: "first.png", kind: .image)
+    let second = try makeArtifact(name: "second.png", kind: .image)
+    let resize = FastPathPlanner().plan(request: "Resize these images to 800 pixels wide", artifacts: [first, second])
+    let convert = FastPathPlanner().plan(request: "Convert these images to PNG", artifacts: [first, second])
+    let compare = FastPathPlanner().plan(request: "Compare these images", artifacts: [first, second])
+    let similar = FastPathPlanner().plan(request: "Find similar images", artifacts: [first, second])
+    let background = FastPathPlanner().plan(request: "Remove the background from this image", artifacts: [first])
+    #expect(resize.steps.first?.operation == .batchResizeImages)
+    #expect(convert.steps.first?.operation == .batchConvertImages)
+    #expect(compare.steps.first?.operation == .compareImages)
+    #expect(similar.steps.first?.operation == .findSimilarImages)
+    #expect(background.steps.first?.operation == .removeImageBackground)
+}
+
+@Test func artifactContextResolvesOrdinalsLatestKindsAndAsksWhenAmbiguous() throws {
+    let firstPDF = try makeArtifact(name: "first.pdf", kind: .pdf)
+    let secondPDF = try makeArtifact(name: "second.pdf", kind: .pdf)
+    let table = try makeArtifact(name: "receipt.csv", kind: .csv)
+    let now = Date.now
+    let history = [
+        ArtifactContextEntry(artifact: firstPDF, operation: .mergePDFs, speaker: "Pip", createdAt: now.addingTimeInterval(-30)),
+        ArtifactContextEntry(artifact: secondPDF, operation: .removePDFPages, speaker: "Pip", createdAt: now.addingTimeInterval(-20)),
+        ArtifactContextEntry(artifact: table, operation: .extractReceipt, speaker: "Lens", createdAt: now.addingTimeInterval(-10))
+    ]
+    let resolver = ArtifactContextResolver()
+    if case .resolved(let artifact) = resolver.resolve(request: "Use the second one", history: history, mostRecentTaskResults: Array(history.prefix(2))) {
+        #expect(artifact.id == secondPDF.id)
+    } else { Issue.record("Expected the second local result to resolve") }
+    if case .resolved(let artifact) = resolver.resolve(request: "Use the latest PDF", history: history, mostRecentTaskResults: [history[2]]) {
+        #expect(artifact.id == secondPDF.id)
+    } else { Issue.record("Expected the latest PDF to resolve") }
+    if case .resolved(let artifact) = resolver.resolve(request: "Find the CSV from the receipt", history: history, mostRecentTaskResults: [history[2]]) {
+        #expect(artifact.id == table.id)
+    } else { Issue.record("Expected the receipt table to resolve") }
+    if case .clarify(let question) = resolver.resolve(request: "Use the PDF Pip made", history: history, mostRecentTaskResults: []) {
+        #expect(question.contains("first.pdf"))
+        #expect(question.contains("second.pdf"))
+    } else { Issue.record("Expected an ambiguous PDF reference to ask which file") }
+}
+
+@Test func artifactContextFiltersRecentResultsByAgentOperationAndDate() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+    let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 1, hour: 12)))
+    let today = calendar.startOfDay(for: now)
+    let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: today))
+    let yesterdayMorning = try #require(calendar.date(byAdding: .hour, value: 9, to: yesterday))
+    let todayMorning = try #require(calendar.date(byAdding: .hour, value: 9, to: today))
+    let oldCompressed = try makeArtifact(name: "old-compressed.pdf", kind: .pdf)
+    let todayCompressed = try makeArtifact(name: "today-compressed.pdf", kind: .pdf)
+    let todayReceipt = try makeArtifact(name: "today-receipt.pdf", kind: .pdf)
+    let history = [
+        ArtifactContextEntry(artifact: oldCompressed, operation: .compressPDF, speaker: "Zip", createdAt: yesterdayMorning),
+        ArtifactContextEntry(artifact: todayCompressed, operation: .compressPDF, speaker: "Zip", createdAt: todayMorning),
+        ArtifactContextEntry(artifact: todayReceipt, operation: .extractReceipt, speaker: "Lens", createdAt: todayMorning)
+    ]
+    let resolver = ArtifactContextResolver()
+
+    if case .resolved(let artifact) = resolver.resolve(
+        request: "Find the PDF Zip compressed yesterday", history: history,
+        mostRecentTaskResults: [], now: now, calendar: calendar
+    ) {
+        #expect(artifact.id == oldCompressed.id)
+    } else { Issue.record("Expected date, producing agent, and operation filters to select the old compressed PDF") }
+
+    if case .resolved(let artifact) = resolver.resolve(
+        request: "Use the PDF Lens extracted a receipt today", history: history,
+        mostRecentTaskResults: [], now: now, calendar: calendar
+    ) {
+        #expect(artifact.id == todayReceipt.id)
+    } else { Issue.record("Expected today's receipt PDF from Lens to resolve") }
+
+    if case .clarify = resolver.resolve(
+        request: "Use the PDF Zip compressed yesterday", history: [history[1]],
+        mostRecentTaskResults: [], now: now, calendar: calendar
+    ) {
+        #expect(true)
+    } else { Issue.record("Expected an unavailable dated result to request clarification") }
+}
+
+@Test func conversationHistorySearchMatchesFilenameDateOperationAndAgent() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
+    let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 1, hour: 12)))
+    let startOfToday = calendar.startOfDay(for: now)
+    let yesterday = try #require(calendar.date(byAdding: .day, value: -1, to: startOfToday))
+    let yesterdayMorning = try #require(calendar.date(byAdding: .hour, value: 10, to: yesterday))
+    let todayMorning = try #require(calendar.date(byAdding: .hour, value: 9, to: startOfToday))
+    let receipt = try makeArtifact(name: "client-receipt.pdf", kind: .pdf)
+    let research = try makeArtifact(name: "research.pdf", kind: .pdf)
+    let oldReceiptID = UUID()
+    let todayReceiptID = UUID()
+    let researchID = UUID()
+    let records = [
+        ConversationHistoryRecord(id: oldReceiptID, speaker: "Zip", message: "Compressed the receipt PDF.", artifact: receipt, operation: .compressPDF, createdAt: yesterdayMorning),
+        ConversationHistoryRecord(id: todayReceiptID, speaker: "Zip", message: "Compressed the receipt PDF.", artifact: receipt, operation: .compressPDF, createdAt: todayMorning),
+        ConversationHistoryRecord(id: researchID, speaker: "Pip", message: "Inspected the research PDF.", artifact: research, operation: .inspectPDF, createdAt: yesterdayMorning)
+    ]
+
+    #expect(ConversationHistorySearch.filter(records, query: "client-receipt", now: now, calendar: calendar).map(\.id) == [oldReceiptID, todayReceiptID])
+    #expect(ConversationHistorySearch.filter(records, query: "Find the compressed PDF from yesterday", now: now, calendar: calendar).map(\.id) == [oldReceiptID])
+    #expect(ConversationHistorySearch.filter(records, query: "Find the PDF Pip inspected yesterday", now: now, calendar: calendar).map(\.id) == [researchID])
+}
+
+@Test func clipboardInputResolverClassifiesTextURLImageAndFileWithoutReadingThePasteboard() {
+    let fileURL = URL(fileURLWithPath: "/tmp/clipboard-report.pdf")
+    let image = Data([0x89, 0x50, 0x4e, 0x47])
+
+    #expect(ClipboardInputResolver.resolve(fileURLs: [], imageData: nil, urlString: nil, text: "Notes to summarize") == .text("Notes to summarize"))
+    #expect(ClipboardInputResolver.resolve(fileURLs: [], imageData: nil, urlString: nil, text: "https://example.com/report") == .webURL("https://example.com/report"))
+    #expect(ClipboardInputResolver.resolve(fileURLs: [], imageData: image, urlString: nil, text: "ignored while an image is pasted") == .image(image))
+    #expect(ClipboardInputResolver.resolve(fileURLs: [fileURL], imageData: image, urlString: nil, text: nil) == .files([fileURL]))
+    #expect(ClipboardInputResolver.resolve(fileURLs: [], imageData: nil, urlString: "javascript:alert(1)", text: nil) == nil)
+}
+
+@Test func clipboardComposerKeepsPastedTextSeparateFromItsTaskInstruction() {
+    let pasted = "Maya will send the draft by Friday."
+    let submission = ClipboardComposerResolver.resolve(message: "Summarize this:\n\(pasted)", pastedTexts: [pasted])
+    #expect(submission.request == "Summarize this")
+    #expect(submission.pastedText == pasted)
+
+    let multiple = ClipboardComposerResolver.resolve(message: "\(pasted)\nRewrite this more formally", pastedTexts: [pasted])
+    #expect(multiple.request == "Rewrite this more formally")
+    #expect(multiple.pastedText == pasted)
+
+    let untouched = ClipboardComposerResolver.resolve(message: "Summarize this file", pastedTexts: ["different clipboard content"])
+    #expect(untouched.request == "Summarize this file")
+    #expect(untouched.pastedText == nil)
+}
+
+@Test func inlineTextSubmissionSeparatesOnlyExplicitBoundedTextSources() {
+    let summary = InlineTextSubmissionResolver.resolve(
+        message: "Summarize this note in three bullets: Kio keeps documents on the Mac. Scribe makes concise summaries."
+    )
+    #expect(summary?.request == "Summarize this note in three bullets")
+    #expect(summary?.pastedText == "Kio keeps documents on the Mac. Scribe makes concise summaries.")
+
+    let multiline = InlineTextSubmissionResolver.resolve(message: "Rewrite this more formally\nThe meeting starts at noon.")
+    #expect(multiline?.request == "Rewrite this more formally")
+    #expect(multiline?.pastedText == "The meeting starts at noon.")
+
+    #expect(InlineTextSubmissionResolver.resolve(message: "Summarize https://example.com") == nil)
+    #expect(InlineTextSubmissionResolver.resolve(message: "Move this file: report.pdf") == nil)
+    #expect(InlineTextSubmissionResolver.resolve(message: "Summarize this note:") == nil)
+}
+
+@Test func workflowTemplatesSaveTypedGraphsRebindInputsAndRejectIncompatibleFiles() throws {
+    let originalA = try makeArtifact(name: "one.csv", kind: .csv)
+    let originalB = try makeArtifact(name: "two.csv", kind: .csv)
+    let merge = TaskStep(operation: .mergeData, source: .artifacts([originalA.id, originalB.id]))
+    let deduplicate = TaskStep(operation: .deduplicateData, source: .previousStep(merge.id))
+    let task = TaskPlan(request: "Merge and deduplicate", steps: [merge, deduplicate])
+    let suite = "KioWorkflowTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let store = WorkflowTemplateStore(key: "templates", defaults: defaults)
+
+    let saved = try store.save(name: "Clean tables", plan: task, inputs: [originalA, originalB])
+    let template = try #require(saved.first)
+    let encoded = String(decoding: try #require(defaults.data(forKey: "templates")), as: UTF8.self)
+    #expect(!encoded.contains(originalA.fileURL.path))
+    #expect(WorkflowTemplateStore.requestedName(in: "Run Clean tables on these.") == "Clean tables")
+
+    let nextA = try makeArtifact(name: "three.csv", kind: .csv)
+    let nextB = try makeArtifact(name: "four.csv", kind: .csv)
+    let replay = try store.instantiate(template, request: "Run Clean tables on these", inputs: [nextA, nextB])
+    #expect(replay.steps.count == 2)
+    #expect(replay.steps[0].source == .artifacts([nextA.id, nextB.id]))
+    #expect(replay.steps[1].source == .previousStep(replay.steps[0].id))
+
+    let wrong = try makeArtifact(name: "photo.png", kind: .image)
+    #expect(throws: (any Error).self) { try store.instantiate(template, request: "Run Clean tables", inputs: [nextA, wrong]) }
+    #expect(try store.rename(id: template.id, to: "Expenses").first?.name == "Expenses")
+    #expect(try store.delete(id: template.id).isEmpty)
+}
+
+@Test func workflowTemplatesCanBeListedForTheMobileClientWithoutModelPlanning() {
+    #expect(WorkflowTemplateStore.isListingRequest("List my saved workflow templates"))
+    #expect(WorkflowTemplateStore.isListingRequest("Show workflows"))
+    #expect(!WorkflowTemplateStore.isListingRequest("Run Clean PDF on these"))
+    let template = WorkflowTemplate(name: "Clean PDF", inputKinds: [.pdf, .pdf], steps: [
+        WorkflowTemplateStep(operation: .mergePDFs, source: .inputs([0, 1]), arguments: .none)
+    ])
+    let reply = WorkflowTemplateStore.listingReply(for: [template])
+    #expect(reply.contains("Clean PDF"))
+    #expect(reply.contains("1 step"))
+    #expect(WorkflowTemplateStore.listingReply(for: []).contains("don't have any saved workflow templates"))
+}
+
+@Test func tableFastPathExtractsSortAndFilterArguments() throws {
+    let csv = try makeArtifact(name: "expenses.csv", kind: .csv)
+    let sort = FastPathPlanner().plan(request: "Sort by amount descending", artifacts: [csv])
+    let filter = FastPathPlanner().plan(request: "Filter where status is paid", artifacts: [csv])
+    #expect(sort.steps.first?.operation == .sortData)
+    #expect(sort.steps.first?.arguments == .tableSort(column: "amount", ascending: false))
+    #expect(filter.steps.first?.operation == .filterData)
+    #expect(filter.steps.first?.arguments == .tableFilter(column: "status", value: "paid"))
+}
+
+@Test func modelPlanDecoderAcceptsTypedTableOperationsAndRejectsInvalidColumns() throws {
+    let csv = try makeArtifact(name: "expenses.csv", kind: .csv)
+    let sort = #"{"steps":[{"operation":"data.sort","inputIndexes":[0],"arguments":{"column":"amount","ascending":false}}]}"#
+    #expect(ModelPlanDecoder.decode(sort, request: "Sort by amount", artifacts: [csv])?.steps.first?.arguments == .tableSort(column: "amount", ascending: false))
+    let invalid = #"{"steps":[{"operation":"data.sort","inputIndexes":[0],"arguments":{"column":"","ascending":false}}]}"#
+    #expect(ModelPlanDecoder.decode(invalid, request: "Sort by amount", artifacts: [csv]) == nil)
+}
+
+@Test func scribeComparisonRequiresAndAcceptsTwoSources() throws {
+    let first = try makeArtifact(name: "one.md", kind: .text)
+    let second = try makeArtifact(name: "two.md", kind: .text)
+    let plan = FastPathPlanner().plan(request: "Compare these", artifacts: [first, second])
+    #expect(plan.steps.first?.operation == .compareText)
+    #expect(plan.steps.first?.source == .artifacts([first.id, second.id]))
+    #expect(FastPathPlanner().plan(request: "Compare these", artifacts: [first]).steps.isEmpty)
+
+    let wire = #"{"steps":[{"operation":"text.compare","inputIndexes":[0,1],"arguments":{}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "Compare these", artifacts: [first, second])?.steps.first?.owner == .scribe)
+}
+
 @Test func fastResponseAnswersMacOnlineQuestionsWithoutAFilePlan() {
     let resolver = FastPathResponseResolver()
     #expect(resolver.response(to: "Is my Mac online?") == "Your Mac is online—it received this request just now.")
     #expect(resolver.response(to: "Check whether my Mac is online") == "Your Mac is online—it received this request just now.")
     #expect(resolver.response(to: "Make my Mac online") == nil)
+}
+
+@Test func scoutResearchUsesOnlyTheTypedInternalQueryAndKeepsScribeCompositionOptional() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("KioResearchPlan-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let queryURL = directory.appendingPathComponent("topic.kio-query")
+    try Data("perovskite solar stability".utf8).write(to: queryURL)
+    let query = try ArtifactRef.inspect(queryURL)
+
+    let search = FastPathPlanner().plan(request: "Find research papers about perovskite solar stability", artifacts: [query])
+    #expect(search.steps.map(\.operation) == [.researchOpenSources])
+    #expect(search.steps.first?.owner == .scout)
+    #expect(FastPathPlanner.outputKinds(for: .researchOpenSources, inputKinds: [.url]) == [.text])
+
+    let wire = #"{"steps":[{"operation":"web.researchOpenSources","inputIndexes":[0],"arguments":{}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "Find research papers about perovskite solar stability", artifacts: [query])?.steps.first?.owner == .scout)
+    let ordinaryURL = try makeArtifact(name: "article.kio-url", kind: .url)
+    #expect(ModelPlanDecoder.decode(wire, request: "Research this", artifacts: [ordinaryURL]) == nil)
 }
 
 @Test func plannerSummaryDoesNotContainLocalPath() throws {
@@ -105,6 +508,20 @@ import KioModel
     #expect(plan.steps.first?.owner == .pip)
     let wire = #"{"steps":[{"operation":"pdf.ocrText","inputIndexes":[0],"arguments":{}}]}"#
     #expect(ModelPlanDecoder.decode(wire, request: "OCR", artifacts: [pdf])?.steps.first?.operation == .ocrPDFText)
+}
+
+@Test func lensRoutesOCRReceiptAndTableImagesToTypedOperations() throws {
+    let image = try makeArtifact(name: "receipt.png", kind: .image)
+    let ocr = FastPathPlanner().plan(request: "Extract the text from this image", artifacts: [image])
+    let receipt = FastPathPlanner().plan(request: "Turn this receipt into a CSV row", artifacts: [image])
+    let table = FastPathPlanner().plan(request: "Extract the table rows and columns", artifacts: [image])
+    #expect(ocr.steps.map(\.operation) == [.ocrImage])
+    #expect(receipt.steps.map(\.operation) == [.extractReceipt])
+    #expect(table.steps.map(\.operation) == [.extractImageTable])
+    #expect(Set([ocr.steps[0].owner, receipt.steps[0].owner, table.steps[0].owner]) == [.lens])
+
+    let wire = #"{"steps":[{"operation":"visual.extractReceipt","inputIndexes":[0],"arguments":{}}]}"#
+    #expect(ModelPlanDecoder.decode(wire, request: "extract receipt fields", artifacts: [image])?.steps.first?.owner == .lens)
 }
 
 @Test func pixelTaskPlannerSelectsCropCompressionAndContactSheetTools() throws {
@@ -371,9 +788,7 @@ import KioModel
     state.set(.pointer, active: false)
     #expect(!state.shouldRemainExpanded)
 
-    state.set(.inputFocus, active: true)
     state.set(.composing, active: true)
-    state.set(.inputFocus, active: false)
     #expect(state.shouldRemainExpanded)
     state.set(.composing, active: false)
 

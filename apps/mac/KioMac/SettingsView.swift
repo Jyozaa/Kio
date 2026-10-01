@@ -5,6 +5,7 @@ import KioInference
 import KioSync
 import KioTools
 import KioUI
+import Security
 import ServiceManagement
 import SwiftUI
 
@@ -228,8 +229,34 @@ struct KioSettingsView: View {
     private var diagnosticsSection: some View {
         Section("Diagnostics") {
                 LabeledContent("Kio version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
+                LabeledContent("App identity", value: Bundle.main.bundleIdentifier ?? "Unknown")
+                LabeledContent("Installed at", value: Bundle.main.bundleURL.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
+                LabeledContent("Signing", value: signingAuthorities.first ?? "Ad hoc / unsigned")
+                LabeledContent("Development identity stable", value: hasStableDevelopmentIdentity ? "Yes" : "No")
                 LabeledContent("Mac", value: ProcessInfo.processInfo.operatingSystemVersionString)
                 LabeledContent("Architecture", value: ProcessInfo.processInfo.machineArchitecture)
+        }
+    }
+
+    private var signingAuthorities: [String] {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(Bundle.main.bundleURL as CFURL, SecCSFlags(rawValue: 0), &code) == errSecSuccess,
+              let code else { return [] }
+        var signingInformation: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            code,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &signingInformation
+        ) == errSecSuccess,
+        let values = signingInformation as? [String: Any],
+        let certificates = values[kSecCodeInfoCertificates as String] as? [SecCertificate] else { return [] }
+
+        return certificates.prefix(1).compactMap { SecCertificateCopySubjectSummary($0) as String? }
+    }
+
+    private var hasStableDevelopmentIdentity: Bool {
+        signingAuthorities.contains {
+            $0.hasPrefix("Apple Development:") || $0 == "Kio Local Development"
         }
     }
 

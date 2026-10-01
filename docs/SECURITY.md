@@ -4,8 +4,10 @@
 
 - No arbitrary shell, AppleScript, generic GUI automation, or model-generated code execution is registered.
 - The model proposes a plan through a synthetic `submit_plan` tool schema; Kio never dispatches it. The decoder validates operation names, actual artifact indexes, argument types/ranges, and input kinds before execution. A single repair attempt is allowed; invalid plans are rejected.
-- Deterministic Mac tools create conflict-safe outputs and check the result before returning it. Originals are preserved.
-- File processing is local. The model receives request text and file metadata only.
+- Deterministic Mac tools validate inputs and verify outputs. Transformations create conflict-safe copies; the explicit file-move operation requires a preview and user confirmation.
+- The local planner receives the request and file metadata. Scribe is a separate local-model operation that reads bounded text content from the selected source; neither path calls a hosted AI API.
+- Patch accepts only supported text/code files, writes a separate proposal plus a reviewable diff, preserves the source, and never executes proposed code.
+- Scout permits public HTTP(S) content only, blocks local/private destinations and unsafe schemes, and treats fetched page content as untrusted data rather than instructions.
 
 ## Pairing and relay
 
@@ -16,6 +18,12 @@
 - D1 stores device/message/file routing metadata needed to deliver and revoke. The Worker cannot read plaintext task messages or files and has no code execution or model capability.
 - Revoking a phone disables its credential and removes queued envelopes and file transfers. Uncollected envelopes and files expire within 24 hours.
 - Tokens/private keys remain in Keychain on Mac and browser IndexedDB on phone. The Worker stores only credential hashes.
+
+## Local app identity and user-controlled inputs
+
+- Development builds use the existing stable local signing identity and keep bundle ID `app.kio.mac`. The selection scripts store only the public certificate fingerprint and do not generate or export a key. Public builds remain ad-hoc signed. macOS owns Keychain and privacy authorization decisions; stable signing reduces identity churn but is not a promise that all future prompts disappear.
+- Clipboard data is read only when the user explicitly pastes it into Kio. Screenshot capture is an explicit action and may require macOS Screen Recording permission. Finder Services act only on the files the user selected.
+- Browser notifications are opt-in. Closed-app Web Push is not configured.
 
 ## Limits
 

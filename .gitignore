@@ -1,5 +1,6 @@
 .DS_Store
 .build/
+__pycache__/
 DerivedData/
 build/
 dist/
@@ -24,3 +25,4 @@ model-cache/
 .env
 .env.*
 !.env.example
+.dev-signing.env

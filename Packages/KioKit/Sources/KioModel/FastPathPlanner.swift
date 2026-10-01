@@ -24,6 +24,32 @@ public struct FastPathPlanner: Sendable {
         let ids = inputs.map(\.id)
         let sizeTarget = Self.byteLimit(in: request)
 
+        if inputs.count == 1, let query = inputs.first,
+           query.kind == .url, query.fileURL.pathExtension.lowercased() == "kio-query" {
+            let search = TaskStep(operation: .researchOpenSources, source: .artifacts([query.id]))
+            if words.contains("summarize") || words.contains("summarise") || words.contains("summary") {
+                let summarize = TaskStep(operation: .summarizeText, source: .previousStep(search.id), arguments: .textPrompt(request))
+                return TaskPlan(request: request, steps: [search, summarize])
+            }
+            return TaskPlan(request: request, steps: [search])
+        }
+
+        if let json = inputs.first(where: { $0.kind == .table && $0.fileURL.pathExtension.lowercased() == "json" }),
+           words.contains("format") || words.contains("pretty") || words.contains("indent") {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .formatJSON, source: .artifacts([json.id]))])
+        }
+
+        let codeInputs = inputs.filter { $0.kind == .text && Self.codeExtensions.contains($0.fileURL.pathExtension.lowercased()) }
+        if codeInputs.count == 1,
+           Self.requestsCodeEdit(words),
+           words.contains("code") || words.contains("function") || words.contains("bug") || words.contains("patch") || words.contains("swift") || words.contains("python") {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .proposePatch, source: .artifacts([codeInputs[0].id]), arguments: .textPrompt(request))])
+        }
+        if let code = codeInputs.first, words.contains("explain"),
+           words.contains("code") || words.contains("function") || words.contains("file") {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .explainCode, source: .artifacts([code.id]), arguments: .textPrompt(request))])
+        }
+
         if (words.contains("same") || words.contains("again")),
            (words.contains("these") || words.contains("files") || words.contains("ones")),
            let previous = context.previousPlan,
@@ -41,8 +67,176 @@ public struct FastPathPlanner: Sendable {
             return TaskPlan(request: request, steps: [TaskStep(operation: .resizeImage, source: .artifacts([image.id]), arguments: .imageResize(width: width))])
         }
 
-        if words.contains("merge"), inputs.filter({ $0.kind == .pdf }).count >= 2 {
-            var steps = [TaskStep(operation: .mergePDFs, source: .artifacts(ids))]
+        let comparisonImages = inputs.filter { $0.kind == .image }
+        if words.contains("compare"), comparisonImages.count == 2 {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .compareImages, source: .artifacts(comparisonImages.map(\.id)))])
+        }
+
+        if let textOperation = Self.textOperation(in: words) {
+            let textInputs = inputs.filter { $0.kind == .text }
+            if textOperation == .compareText {
+                if textInputs.count == 2 {
+                    return TaskPlan(request: request, steps: [TaskStep(operation: textOperation, source: .artifacts(textInputs.map(\.id)), arguments: .textPrompt(request))])
+                }
+                let urls = inputs.filter { $0.kind == .url }
+                if urls.count == 2 {
+                    let fetch = TaskStep(operation: .fetchURL, source: .artifacts(urls.map(\.id)))
+                    let comparison = TaskStep(operation: .compareText, source: .previousStep(fetch.id), arguments: .textPrompt(request))
+                    return TaskPlan(request: request, steps: [fetch, comparison])
+                }
+                let pdfs = inputs.filter { $0.kind == .pdf }
+                if pdfs.count == 2 {
+                    let extraction = TaskStep(
+                        operation: (words.contains("scan") || words.contains("scanned") || words.contains("ocr")) ? .ocrPDFText : .extractPDFText,
+                        source: .artifacts(pdfs.map(\.id))
+                    )
+                    let comparison = TaskStep(operation: textOperation, source: .previousStep(extraction.id), arguments: .textPrompt(request))
+                    return TaskPlan(request: request, steps: [extraction, comparison])
+                }
+                return TaskPlan(request: request, steps: [], clarification: "Choose two text, Markdown, or PDF files to compare.")
+            }
+            if textOperation != .compareText, let text = textInputs.first {
+                return TaskPlan(request: request, steps: [TaskStep(operation: textOperation, source: .artifacts([text.id]), arguments: .textPrompt(request))])
+            }
+            if textInputs.isEmpty, let pdf = inputs.first(where: { $0.kind == .pdf }) {
+                let extraction = TaskStep(
+                    operation: (words.contains("scan") || words.contains("scanned") || words.contains("ocr")) ? .ocrPDFText : .extractPDFText,
+                    source: .artifacts([pdf.id])
+                )
+                let transform = TaskStep(operation: textOperation, source: .previousStep(extraction.id), arguments: .textPrompt(request))
+                return TaskPlan(request: request, steps: [extraction, transform])
+            }
+        }
+
+        let xlsxInputs = inputs.filter { $0.fileURL.pathExtension.lowercased() == "xlsx" }
+        if !xlsxInputs.isEmpty {
+            guard xlsxInputs.count == 1 else {
+                return TaskPlan(request: request, steps: [], clarification: "Import one XLSX workbook at a time. Kio can then work with its CSV output.")
+            }
+            let workbook = xlsxInputs[0]
+            let imported = TaskStep(operation: .importXLSX, source: .artifacts([workbook.id]))
+            let resultSource = StepSource.previousStep(imported.id)
+            if words.contains("inspect") || words.contains("analyze") || words.contains("analyse") || words.contains("statistics") || words.contains("stats") || words.contains("average") || words.contains("mean") || words.contains("median") || words.contains("summarize") || words.contains("summary") {
+                return TaskPlan(request: request, steps: [imported, TaskStep(operation: .dataStatistics, source: resultSource)])
+            }
+            if words.contains("deduplicate") || words.contains("duplicates") || (words.contains("remove") && words.contains("duplicate")) {
+                return TaskPlan(request: request, steps: [imported, TaskStep(operation: .deduplicateData, source: resultSource)])
+            }
+            if words.contains("normalize") || words.contains("clean") {
+                return TaskPlan(request: request, steps: [imported, TaskStep(operation: .normalizeData, source: resultSource)])
+            }
+            if words.contains("sort") || words.contains("order") {
+                guard let column = Self.tableColumn(in: request) else {
+                    return TaskPlan(request: request, steps: [], clarification: "Which column should Table sort by after importing the workbook?")
+                }
+                let ascending = !(words.contains("descending") || words.contains("desc"))
+                return TaskPlan(request: request, steps: [imported, TaskStep(operation: .sortData, source: resultSource, arguments: .tableSort(column: column, ascending: ascending))])
+            }
+            if words.contains("filter") {
+                guard let (column, value) = Self.tableFilter(in: request) else {
+                    return TaskPlan(request: request, steps: [], clarification: "Which column and value should Table filter for after importing the workbook?")
+                }
+                return TaskPlan(request: request, steps: [imported, TaskStep(operation: .filterData, source: resultSource, arguments: .tableFilter(column: column, value: value))])
+            }
+            return TaskPlan(request: request, steps: [imported])
+        }
+
+        let tableInputs = inputs.filter { $0.kind == .csv || $0.kind == .table }
+        if !tableInputs.isEmpty {
+            let tableIDs = tableInputs.map(\.id)
+            if words.contains("compare") || words.contains("comparison") {
+                if tableInputs.count == 2 {
+                    return TaskPlan(request: request, steps: [TaskStep(operation: .compareData, source: .artifacts(tableIDs))])
+                }
+                return TaskPlan(request: request, steps: [], clarification: "Choose two CSV, TSV, or JSON tables to compare.")
+            }
+
+            var tableSteps: [TaskStep] = []
+            var currentSource: StepSource = .artifacts(tableIDs)
+            if words.contains("merge"), tableInputs.count >= 2 {
+                let merge = TaskStep(operation: .mergeData, source: .artifacts(tableIDs))
+                tableSteps.append(merge)
+                currentSource = .previousStep(merge.id)
+            }
+            if words.contains("deduplicate") || words.contains("duplicates") || (words.contains("remove") && words.contains("duplicate")) {
+                let deduplicate = TaskStep(operation: .deduplicateData, source: currentSource)
+                tableSteps.append(deduplicate)
+                currentSource = .previousStep(deduplicate.id)
+            }
+            if words.contains("average") || words.contains("mean") || words.contains("median") || words.contains("statistics") || words.contains("stats") || words.contains("missing") || words.contains("unique") {
+                tableSteps.append(TaskStep(operation: .dataStatistics, source: currentSource))
+                return TaskPlan(request: request, steps: tableSteps)
+            }
+            if words.contains("merge"), tableInputs.count >= 2 { return TaskPlan(request: request, steps: tableSteps) }
+            if words.contains("convert"), words.contains("json"), tableInputs.count == 1 {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .csvToJSON, source: .artifacts([tableIDs[0]]))])
+            }
+            if words.contains("convert"), words.contains("csv"), tableInputs.count == 1, tableInputs[0].fileURL.pathExtension.lowercased() == "json" {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .jsonToCSV, source: .artifacts([tableIDs[0]]))])
+            }
+            if words.contains("normalize"), tableInputs.count == 1 {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .normalizeData, source: .artifacts([tableIDs[0]]))])
+            }
+            if words.contains("sort") || words.contains("order") {
+                guard tableInputs.count == 1, let column = Self.tableColumn(in: request) else {
+                    return TaskPlan(request: request, steps: [], clarification: "Which column should Table sort by?")
+                }
+                let ascending = !(words.contains("descending") || words.contains("desc"))
+                return TaskPlan(request: request, steps: [TaskStep(operation: .sortData, source: .artifacts([tableIDs[0]]), arguments: .tableSort(column: column, ascending: ascending))])
+            }
+            if words.contains("filter"), tableInputs.count == 1 {
+                guard let (column, value) = Self.tableFilter(in: request) else {
+                    return TaskPlan(request: request, steps: [], clarification: "Which column and value should Table filter for?")
+                }
+                return TaskPlan(request: request, steps: [TaskStep(operation: .filterData, source: .artifacts([tableIDs[0]]), arguments: .tableFilter(column: column, value: value))])
+            }
+            if words.contains("inspect") || words.contains("analyze") || words.contains("analyse") || words.contains("summary") || words.contains("summarize") || words.contains("summarise") {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .inspectData, source: .artifacts([tableIDs[0]]))])
+            }
+            if !tableSteps.isEmpty { return TaskPlan(request: request, steps: tableSteps) }
+        }
+
+        let urlInputs = inputs.filter { $0.kind == .url }
+        if !urlInputs.isEmpty {
+            let urlIDs = urlInputs.map(\.id)
+            if words.contains("compare") || words.contains("comparison") {
+                guard urlInputs.count == 2 else {
+                    return TaskPlan(request: request, steps: [], clarification: "Choose two public URLs to compare.")
+                }
+                let fetch = TaskStep(operation: .fetchURL, source: .artifacts(urlIDs))
+                let compare = TaskStep(operation: .compareText, source: .previousStep(fetch.id), arguments: .textPrompt(request))
+                return TaskPlan(request: request, steps: [fetch, compare])
+            }
+            if words.contains("link") || words.contains("links") {
+                guard urlInputs.count == 1 else { return TaskPlan(request: request, steps: [], clarification: "Choose one URL to extract links from.") }
+                return TaskPlan(request: request, steps: [TaskStep(operation: .extractWebLinks, source: .artifacts([urlIDs[0]]))])
+            }
+            if let operation = Self.textOperation(in: words), urlInputs.count == 1 {
+                let fetch = TaskStep(operation: .fetchURL, source: .artifacts([urlIDs[0]]))
+                let transform = TaskStep(operation: operation, source: .previousStep(fetch.id), arguments: .textPrompt(request))
+                return TaskPlan(request: request, steps: [fetch, transform])
+            }
+            if urlInputs.count == 1, words.contains("fetch") || words.contains("read") || words.contains("extract") {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .fetchURL, source: .artifacts([urlIDs[0]]))])
+            }
+        }
+
+        let pdfInputs = inputs.filter { $0.kind == .pdf }
+        let imageInputs = inputs.filter { $0.kind == .image }
+        let mixedDocumentInputs = inputs.filter { $0.kind == .pdf || $0.kind == .image }
+        if !pdfInputs.isEmpty, !imageInputs.isEmpty,
+           words.contains("pdf") || words.contains("combine") || words.contains("merge") || words.contains("join") {
+            guard (2...32).contains(mixedDocumentInputs.count) else {
+                return TaskPlan(request: request, steps: [], clarification: "Choose 2 to 32 PDF and image files to combine.")
+            }
+            var steps = [TaskStep(operation: .combineMixedPDFInputs, source: .artifacts(mixedDocumentInputs.map(\.id)))]
+            if let sizeTarget, let createPDF = steps.last {
+                steps.append(TaskStep(operation: .compressPDF, source: .previousStep(createPDF.id), arguments: .pdfCompression(maxBytes: sizeTarget)))
+            }
+            return TaskPlan(request: request, steps: steps)
+        }
+        if words.contains("merge"), pdfInputs.count >= 2 {
+            var steps = [TaskStep(operation: .mergePDFs, source: .artifacts(pdfInputs.map(\.id)))]
             if let sizeTarget, let merge = steps.last {
                 steps.append(TaskStep(operation: .compressPDF, source: .previousStep(merge.id), arguments: .pdfCompression(maxBytes: sizeTarget)))
             }
@@ -50,6 +244,10 @@ public struct FastPathPlanner: Sendable {
         }
         if words.contains("split"), let pdf = inputs.first(where: { $0.kind == .pdf }) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .splitPDF, source: .artifacts([pdf.id]))])
+        }
+        if let pdf = inputs.first(where: { $0.kind == .pdf }),
+           words.contains("mention") || words.contains("search") || (words.contains("find") && words.contains("pdf")) {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .searchPDFText, source: .artifacts([pdf.id]), arguments: .textPrompt(request))])
         }
         if words.contains("extract"), (words.contains("page") || words.contains("pages")),
            let pdf = inputs.first(where: { $0.kind == .pdf }), let pages = Self.pageRange(in: request) {
@@ -82,8 +280,8 @@ public struct FastPathPlanner: Sendable {
            let range = Self.pageRange(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .removePDFPages, source: .artifacts([pdf.id]), arguments: .removePages(indices: range))])
         }
-        if words.contains("pdf"), inputs.contains(where: { $0.kind == .image }) {
-            var steps = [TaskStep(operation: .imagesToPDF, source: .artifacts(ids))]
+        if words.contains("pdf"), !imageInputs.isEmpty {
+            var steps = [TaskStep(operation: .imagesToPDF, source: .artifacts(imageInputs.map(\.id)))]
             if let sizeTarget, let createPDF = steps.last {
                 steps.append(TaskStep(operation: .compressPDF, source: .previousStep(createPDF.id), arguments: .pdfCompression(maxBytes: sizeTarget)))
             }
@@ -93,9 +291,40 @@ public struct FastPathPlanner: Sendable {
            sizeTarget != nil || words.contains("compress") || words.contains("smaller") {
             return TaskPlan(request: request, steps: [TaskStep(operation: .compressPDF, source: .artifacts([pdf.id]), arguments: .pdfCompression(maxBytes: sizeTarget))])
         }
-        if words.contains("resize"), let image = inputs.first(where: { $0.kind == .image }),
+        let selectedImages = inputs.filter { $0.kind == .image }
+        if let image = selectedImages.first,
+           words.contains("crop"), ["smart", "auto", "automatic", "subject", "focus"].contains(where: words.contains) {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .smartCropImage, source: .artifacts([image.id]))])
+        }
+        if words.contains("resize"), !selectedImages.isEmpty,
            let width = Self.imageWidth(in: request), (1...20_000).contains(width) {
-            return TaskPlan(request: request, steps: [TaskStep(operation: .resizeImage, source: .artifacts([image.id]), arguments: .imageResize(width: width))])
+            let operation: ToolOperation = selectedImages.count > 1 ? .batchResizeImages : .resizeImage
+            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(selectedImages.map(\.id)), arguments: .imageResize(width: width))])
+        }
+        let visualInputs = selectedImages
+        if words.contains("compare"), !visualInputs.isEmpty {
+            guard visualInputs.count == 2 else { return TaskPlan(request: request, steps: [], clarification: "Choose exactly two images to compare.") }
+            return TaskPlan(request: request, steps: [TaskStep(operation: .compareImages, source: .artifacts(visualInputs.map(\.id)))])
+        }
+        if words.contains("similar"), !visualInputs.isEmpty {
+            guard (2...36).contains(visualInputs.count) else { return TaskPlan(request: request, steps: [], clarification: "Choose 2 to 36 images to look for approximate visual matches.") }
+            return TaskPlan(request: request, steps: [TaskStep(operation: .findSimilarImages, source: .artifacts(visualInputs.map(\.id)))])
+        }
+        if words.contains("background"), words.contains("remove"), visualInputs.count == 1 {
+            return TaskPlan(request: request, steps: [TaskStep(operation: .removeImageBackground, source: .artifacts([visualInputs[0].id]))])
+        }
+        if !visualInputs.isEmpty {
+            if words.contains("receipt") || words.contains("invoice") {
+                guard visualInputs.count == 1 else { return TaskPlan(request: request, steps: [], clarification: "Process one receipt or invoice image at a time.") }
+                return TaskPlan(request: request, steps: [TaskStep(operation: .extractReceipt, source: .artifacts([visualInputs[0].id]))])
+            }
+            if words.contains("table") || words.contains("spreadsheet") || words.contains("rows") || words.contains("columns") {
+                guard visualInputs.count == 1 else { return TaskPlan(request: request, steps: [], clarification: "Extract one pictured table at a time.") }
+                return TaskPlan(request: request, steps: [TaskStep(operation: .extractImageTable, source: .artifacts([visualInputs[0].id]))])
+            }
+            if ["ocr", "text", "read", "extract", "transcribe"].contains(where: words.contains) {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .ocrImage, source: .artifacts(visualInputs.prefix(8).map(\.id)))])
+            }
         }
         if words.contains("rotate"), let image = inputs.first(where: { $0.kind == .image }),
            let degrees = Self.rotationDegrees(in: request) {
@@ -119,9 +348,10 @@ public struct FastPathPlanner: Sendable {
         if let image = inputs.first(where: { $0.kind == .image }), sizeTarget != nil || words.contains("compress") || words.contains("smaller") {
             return TaskPlan(request: request, steps: [TaskStep(operation: .compressImage, source: .artifacts([image.id]), arguments: .imageCompression(maxBytes: sizeTarget))])
         }
-        if words.contains("convert"), let image = inputs.first(where: { $0.kind == .image }),
+        if words.contains("convert"), !selectedImages.isEmpty,
            let format = ["png", "jpeg", "jpg"].first(where: words.contains) {
-            return TaskPlan(request: request, steps: [TaskStep(operation: .convertImage, source: .artifacts([image.id]), arguments: .imageConvert(format: format == "jpg" ? "jpeg" : format))])
+            let operation: ToolOperation = selectedImages.count > 1 ? .batchConvertImages : .convertImage
+            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(selectedImages.map(\.id)), arguments: .imageConvert(format: format == "jpg" ? "jpeg" : format))])
         }
         if words.contains("rename"), inputs.count == 1, let name = Self.exactRenameName(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .renameFile, source: .artifacts([inputs[0].id]), arguments: .exactRename(name: name))])
@@ -154,6 +384,39 @@ public struct FastPathPlanner: Sendable {
            let name = Self.folderName(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .createFolder, source: .artifacts([parent.id]), arguments: .folderName(name: name))])
         }
+        if words.contains("organize"), (words.contains("download") || words.contains("downloads")), let folder = inputs.first(where: { $0.kind == .folder }) {
+            guard folder.fileURL.lastPathComponent.lowercased() == "downloads" else {
+                return TaskPlan(request: request, steps: [], clarification: "Choose the Downloads folder itself so Clerk can make an organized copy of its files.")
+            }
+            return TaskPlan(request: request, steps: [TaskStep(operation: .organizeDownloads, source: .artifacts([folder.id]))])
+        }
+        if words.contains("organize"), (words.contains("download") || words.contains("downloads")) {
+            return TaskPlan(request: request, steps: [], clarification: "Choose the Downloads folder first. Clerk will organize verified copies and keep the originals in place.")
+        }
+        if words.contains("find"), words.contains("recent") {
+            guard let folder = inputs.first(where: { $0.kind == .folder }) else {
+                return TaskPlan(request: request, steps: [], clarification: "Choose the folder Clerk should search for recent files.")
+            }
+            return TaskPlan(request: request, steps: [TaskStep(operation: .findRecent, source: .artifacts([folder.id]), arguments: .textPrompt(request))])
+        }
+        if words.contains("find"), (words.contains("name") || words.contains("named") || words.contains("filename")) {
+            if let folder = inputs.first(where: { $0.kind == .folder }) {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .findByName, source: .artifacts([folder.id]), arguments: .textPrompt(request))])
+            }
+            let files = inputs.filter { $0.kind != .folder }
+            if !files.isEmpty {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .findByName, source: .artifacts(files.map(\.id)), arguments: .textPrompt(request))])
+            }
+            return TaskPlan(request: request, steps: [], clarification: "Choose a folder or files for Clerk to search by name.")
+        }
+        if words.contains("organize"), words.contains("module") {
+            let files = inputs.filter { $0.kind != .folder }
+            guard !files.isEmpty else {
+                return TaskPlan(request: request, steps: [], clarification: "Choose the files Clerk should group by their filename module prefix.")
+            }
+            let step = TaskStep(operation: .organizeByModulePattern, source: .artifacts(files.map(\.id)))
+            return TaskPlan(request: request, steps: [step])
+        }
         if words.contains("find"), words.contains("duplicate"), inputs.count >= 2, inputs.allSatisfy({ $0.kind != .folder }) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .findDuplicates, source: .artifacts(ids))])
         }
@@ -171,6 +434,16 @@ public struct FastPathPlanner: Sendable {
             return TaskPlan(request: request, steps: [TaskStep(operation: .createArchive, source: .artifacts(ids))])
         }
         if let video = inputs.first(where: { $0.kind == .video }) {
+            if words.contains("subtitle") || words.contains("subtitles") || words.contains("caption") || words.contains("captions") || words.contains("srt") || words.contains("vtt") {
+                let extract = TaskStep(operation: .extractAudio, source: .artifacts([video.id]))
+                let subtitles = TaskStep(operation: .generateSubtitles, source: .previousStep(extract.id))
+                return TaskPlan(request: request, steps: [extract, subtitles])
+            }
+            if words.contains("transcribe") || words.contains("transcription") {
+                let extract = TaskStep(operation: .extractAudio, source: .artifacts([video.id]))
+                let transcript = TaskStep(operation: .transcribeAudio, source: .previousStep(extract.id))
+                return TaskPlan(request: request, steps: [extract, transcript])
+            }
             if words.contains("inspect") || words.contains("details") || words.contains("info") {
                 return TaskPlan(request: request, steps: [TaskStep(operation: .inspectMedia, source: .artifacts([video.id]))])
             }
@@ -178,8 +451,9 @@ public struct FastPathPlanner: Sendable {
                 let time = Self.videoTimeMilliseconds(in: request) ?? 0
                 return TaskPlan(request: request, steps: [TaskStep(operation: .thumbnailVideo, source: .artifacts([video.id]), arguments: .mediaThumbnail(timeMilliseconds: time))])
             }
-            if words.contains("trim"), let range = Self.videoTrimRange(in: request) {
-                return TaskPlan(request: request, steps: [TaskStep(operation: .trimVideo, source: .artifacts([video.id]),
+            if (words.contains("trim") || words.contains("clip") || words.contains("extract")), let range = Self.videoTrimRange(in: request) {
+                let operation: ToolOperation = words.contains("clip") || words.contains("extract") ? .extractMediaClip : .trimVideo
+                return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts([video.id]),
                                                                    arguments: .mediaTrim(startMilliseconds: range.0, durationMilliseconds: range.1))])
             }
             if words.contains("resize"), let width = Self.imageWidth(in: request), [640, 960, 1280].contains(width) {
@@ -197,6 +471,17 @@ public struct FastPathPlanner: Sendable {
            let video = inputs.first(where: { $0.kind == .video }) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .extractAudio, source: .artifacts([video.id]))])
         }
+        if let audio = inputs.first(where: { $0.kind == .audio }) {
+            if words.contains("convert") || words.contains("transcode") {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .convertAudio, source: .artifacts([audio.id]))])
+            }
+            if words.contains("subtitle") || words.contains("subtitles") || words.contains("caption") || words.contains("captions") || words.contains("srt") || words.contains("vtt") {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .generateSubtitles, source: .artifacts([audio.id]))])
+            }
+            if words.contains("transcribe") || words.contains("transcription") || words.contains("transcript") {
+                return TaskPlan(request: request, steps: [TaskStep(operation: .transcribeAudio, source: .artifacts([audio.id]))])
+            }
+        }
         let clarification: String
         if inputs.isEmpty { clarification = "Add one or more files, then tell me what you want done." }
         else { clarification = "I don't have a reliable local workflow for that request yet. Try merging, splitting, inspecting, or editing PDF pages; converting or resizing images; renaming files; creating a ZIP; or extracting audio from a video." }
@@ -207,24 +492,110 @@ public struct FastPathPlanner: Sendable {
         Set(request.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
     }
 
+    private static func requestsCodeEdit(_ words: Set<String>) -> Bool {
+        let editVerbs: Set<String> = [
+            "add", "annotate", "change", "edit", "fix", "implement", "modify", "patch",
+            "refactor", "remove", "rename", "replace", "update"
+        ]
+        return !words.isDisjoint(with: editVerbs)
+    }
+
+    private static func textOperation(in words: Set<String>) -> ToolOperation? {
+        if words.contains("compare") || words.contains("comparison") { return .compareText }
+        if words.contains("translate") || words.contains("translation") { return .translateText }
+        if words.contains("proofread") || words.contains("proofreading") || (words.contains("grammar") && words.contains("fix")) { return .proofreadText }
+        if words.contains("rewrite") || words.contains("rephrase") { return .rewriteText }
+        if words.contains("action") && (words.contains("item") || words.contains("items")) || words.contains("todo") { return .actionItemsText }
+        if words.contains("key") && words.contains("points") { return .keyPointsText }
+        if words.contains("markdown") { return .toMarkdownText }
+        if words.contains("explain") || words.contains("simplify") { return .explainText }
+        if words.contains("summarize") || words.contains("summarise") || words.contains("summary") { return .summarizeText }
+        return nil
+    }
+
+    private static func tableColumn(in request: String) -> String? {
+        guard let captures = firstCapture(#"(?i)\bby\s+(?:the\s+)?(?:column\s+)?[\"']?([^\"'\n,.!?]+)"#, in: request),
+              let value = captures.last?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty,
+              value.count <= 128 else { return nil }
+        return value
+            .replacingOccurrences(of: #"(?i)\s+(?:ascending|descending|asc|desc)$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"(?i)\s+column$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func tableFilter(in request: String) -> (String, String)? {
+        guard let captures = firstCapture(#"(?i)\bwhere\s+([^=]+?)\s+(?:is|equals?|=)\s+(.+?)(?:[.!?]|$)"#, in: request), captures.count == 2 else { return nil }
+        let column = captures[0].trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+        let value = captures[1].trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+        guard !column.isEmpty, column.count <= 128, !value.isEmpty, value.count <= 1_000 else { return nil }
+        return (column, value)
+    }
+
     private static func supports(_ operation: ToolOperation, kinds: [ArtifactKind]) -> Bool {
         switch operation {
         case .mergePDFs: kinds.count >= 2 && kinds.allSatisfy { $0 == .pdf }
-        case .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .compressPDF:
+        case .combineMixedPDFInputs:
+            (2...32).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf || $0 == .image }
+                && kinds.contains(.pdf) && kinds.contains(.image)
+        case .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .inspectPDF, .compressPDF:
             kinds.count == 1 && kinds[0] == .pdf
+        case .searchPDFText: kinds.count == 1 && kinds[0] == .pdf
+        case .extractPDFText, .ocrPDFText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf }
         case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
-        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .compressImage, .removeImageMetadata: kinds.count == 1 && kinds[0] == .image
+        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground: kinds.count == 1 && kinds[0] == .image
+        case .batchResizeImages, .batchConvertImages: (1...32).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
+        case .compareImages: kinds.count == 2 && kinds.allSatisfy { $0 == .image }
+        case .findSimilarImages: (2...36).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .imageContactSheet: kinds.count >= 2 && kinds.count <= 36 && kinds.allSatisfy { $0 == .image }
         case .renameFile: kinds.count == 1
         case .copyFiles, .moveFiles: kinds.count >= 2 && kinds.last == .folder && kinds.dropLast().allSatisfy { $0 != .folder }
         case .createFolder: kinds.count == 1 && kinds[0] == .folder
         case .findDuplicates: kinds.count >= 2 && kinds.count <= 200 && kinds.allSatisfy { $0 != .folder }
-        case .organizeByType, .organizeByDate: !kinds.isEmpty && kinds.count <= 200 && kinds.allSatisfy { $0 != .folder }
+        case .organizeByType, .organizeByDate, .organizeByModulePattern: !kinds.isEmpty && kinds.count <= 200 && kinds.allSatisfy { $0 != .folder }
+        case .organizeDownloads, .findRecent: kinds.count == 1 && kinds[0] == .folder
+        case .findByName: (1...200).contains(kinds.count) && (kinds.allSatisfy { $0 == .folder } || kinds.allSatisfy { $0 != .folder })
         case .batchRename, .createArchive: !kinds.isEmpty
         case .inspectArchive, .extractZip: kinds.count == 1 && kinds[0] == .other
-        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
+        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
+        case .convertAudio: kinds.count == 1 && kinds[0] == .audio
+        case .transcribeAudio, .generateSubtitles: kinds.count == 1 && kinds[0] == .audio
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .explainText:
+            kinds.count == 1 && kinds[0] == .text
+        case .compareText: kinds.count == 2 && kinds.allSatisfy { $0 == .text }
+        case .inspectData, .dataStatistics: kinds.count == 1 && isTable(kinds[0])
+        case .importXLSX: kinds.count == 1 && kinds[0] == .table
+        case .mergeData: kinds.count >= 2 && kinds.count <= 16 && kinds.allSatisfy(isTable)
+        case .deduplicateData: (1...16).contains(kinds.count) && kinds.allSatisfy(isTable)
+        case .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns, .normalizeData:
+            kinds.count == 1 && isTable(kinds[0])
+        case .csvToJSON: kinds.count == 1 && kinds[0] == .csv
+        case .jsonToCSV: kinds.count == 1 && kinds[0] == .table
+        case .compareData: kinds.count == 2 && kinds.allSatisfy(isTable)
+        case .fetchURL: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .url }
+        case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
+        case .ocrImage: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
+        case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
+        case .extractStructuredText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
+        case .explainCode, .proposePatch: kinds.count == 1 && (kinds[0] == .text || kinds[0] == .patch)
+        case .formatJSON: kinds.count == 1 && kinds[0] == .table
         }
     }
+
+    private static let codeExtensions: Set<String> = ["swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"]
+
+    public static func isCompatible(_ operation: ToolOperation, inputKinds: [ArtifactKind]) -> Bool {
+        supports(operation, kinds: inputKinds)
+    }
+
+    public static func hasValidArguments(_ arguments: ToolArguments, for operation: ToolOperation) -> Bool {
+        validArguments(arguments, for: operation)
+    }
+
+    public static func outputKinds(for operation: ToolOperation, inputKinds: [ArtifactKind]) -> [ArtifactKind] {
+        resultKinds(for: operation, inputKinds: inputKinds)
+    }
+
+    private static func isTable(_ kind: ArtifactKind) -> Bool { kind == .csv || kind == .table }
 
     /// Rebuilds only known pipeline shapes from registered operations. Source IDs and step IDs
     /// always belong to this request; no previous file reference is carried into the new plan.
@@ -239,7 +610,7 @@ public struct FastPathPlanner: Sendable {
         case 1:
             allowedShape = true
         case 2:
-            allowedShape = (previous[0].operation == .mergePDFs || previous[0].operation == .imagesToPDF)
+            allowedShape = (previous[0].operation == .mergePDFs || previous[0].operation == .imagesToPDF || previous[0].operation == .combineMixedPDFInputs)
                 && previous[1].operation == .compressPDF
                 && previous[1].source == .previousStep(previous[0].id)
         default:
@@ -268,9 +639,12 @@ public struct FastPathPlanner: Sendable {
 
     private static func validArguments(_ arguments: ToolArguments, for operation: ToolOperation) -> Bool {
         switch operation {
-        case .mergePDFs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .removeImageMetadata, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .inspectMedia, .transcodeVideo,
-             .findDuplicates, .organizeByType, .organizeByDate:
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo,
+             .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText, .convertAudio,
+             .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
             arguments == .none
+        case .findRecent, .findByName:
+            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
         case .removePDFPages, .extractPDFPages:
             if case .removePages(let indices) = arguments {
                 !indices.isEmpty && indices.allSatisfy { (1...100_000).contains($0) } && Set(indices).count == indices.count
@@ -283,9 +657,9 @@ public struct FastPathPlanner: Sendable {
             if case .pdfRotation(let indices, let degrees) = arguments {
                 indices.count <= 200 && indices.allSatisfy { (1...100_000).contains($0) } && [90, 180, 270].contains(degrees)
             } else { false }
-        case .resizeImage:
+        case .resizeImage, .batchResizeImages:
             if case .imageResize(let width) = arguments { (1...20_000).contains(width) } else { false }
-        case .convertImage:
+        case .convertImage, .batchConvertImages:
             if case .imageConvert(let format) = arguments { ["png", "jpeg"].contains(format) } else { false }
         case .rotateImage:
             if case .imageRotation(let degrees) = arguments { [90, 180, 270].contains(degrees) } else { false }
@@ -297,7 +671,7 @@ public struct FastPathPlanner: Sendable {
             if case .imageCompression(let maxBytes) = arguments { maxBytes.map { (1...1_000_000_000).contains($0) } ?? true } else { false }
         case .thumbnailVideo:
             if case .mediaThumbnail(let time) = arguments { (0...86_400_000).contains(time) } else { false }
-        case .trimVideo:
+        case .trimVideo, .extractMediaClip:
             if case .mediaTrim(let start, let duration) = arguments { (0...86_400_000).contains(start) && (1...86_400_000).contains(duration) && start + duration <= 86_400_000 } else { false }
         case .resizeVideo:
             if case .mediaResize(let width) = arguments { [640, 960, 1280].contains(width) } else { false }
@@ -313,24 +687,64 @@ public struct FastPathPlanner: Sendable {
             if case .folderName(let name) = arguments { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100 } else { false }
         case .compressPDF:
             if case .pdfCompression(let maxBytes) = arguments { maxBytes.map { $0 > 0 } ?? true } else { false }
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText:
+            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+        case .inspectData, .mergeData, .deduplicateData, .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX:
+            arguments == .none
+        case .fetchURL, .extractWebLinks, .researchOpenSources:
+            arguments == .none
+        case .explainCode, .proposePatch:
+            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+        case .searchPDFText:
+            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+        case .formatJSON:
+            arguments == .none
+        case .sortData:
+            if case .tableSort(let column, _) = arguments { !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128 } else { false }
+        case .filterData:
+            if case .tableFilter(let column, let value) = arguments { !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128 && value.count <= 1_000 } else { false }
+        case .selectColumns, .reorderColumns:
+            if case .tableColumns(let columns) = arguments { !columns.isEmpty && columns.count <= 500 && Set(columns).count == columns.count && columns.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 128 } } else { false }
+        case .renameColumns:
+            if case .tableRenameColumn(let from, let to) = arguments { !from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && from.count <= 128 && !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && to.count <= 128 } else { false }
         }
     }
 
     private static func resultKinds(for operation: ToolOperation, inputKinds: [ArtifactKind]) -> [ArtifactKind] {
         switch operation {
-        case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .imagesToPDF, .compressPDF: [.pdf]
-        case .extractPDFText, .ocrPDFText, .inspectPDF, .inspectImage, .inspectArchive: [.text]
-        case .resizeImage, .convertImage, .rotateImage, .cropImage, .compressImage, .removeImageMetadata, .imageContactSheet: [.image]
+        case .mergePDFs, .combineMixedPDFInputs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .imagesToPDF, .compressPDF: [.pdf]
+        case .extractPDFText, .ocrPDFText: Array(repeating: .text, count: inputKinds.count)
+        case .inspectPDF, .searchPDFText, .inspectImage, .inspectArchive: [.text]
+        case .ocrImage, .extractStructuredText: Array(repeating: .text, count: inputKinds.count)
+        case .extractImageTable: [.csv, .text]
+        case .extractReceipt: [.table]
+        case .explainCode: [.text]
+        case .proposePatch: [.patch, .text]
+        case .formatJSON: [.table]
+        case .resizeImage, .convertImage, .rotateImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground, .imageContactSheet: [.image]
+        case .batchResizeImages, .batchConvertImages: Array(repeating: .image, count: inputKinds.count)
+        case .compareImages, .findSimilarImages: [.text]
         case .renameFile, .batchRename: inputKinds
         case .copyFiles, .moveFiles: Array(inputKinds.dropLast())
-        case .createFolder, .organizeByType, .organizeByDate: [.folder]
-        case .findDuplicates: [.text]
+        case .createFolder, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads: [.folder]
+        case .findDuplicates, .findRecent, .findByName: [.text]
         case .createArchive: [.other]
         case .extractZip: [.folder]
         case .extractAudio: [.audio]
+        case .transcribeAudio: [.text]
+        case .generateSubtitles: [.text, .text]
         case .inspectMedia: [.text]
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText: [.text]
+        case .inspectData, .dataStatistics, .compareData: [.text]
+        case .mergeData, .deduplicateData, .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns, .normalizeData: [.csv]
+        case .csvToJSON: [.table]
+        case .importXLSX: [.csv]
+        case .jsonToCSV: [.csv]
+        case .fetchURL: Array(repeating: .text, count: inputKinds.count)
+        case .extractWebLinks, .researchOpenSources: [.text]
         case .thumbnailVideo: [.image]
-        case .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: [.video]
+        case .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: [.video]
+        case .convertAudio: [.audio]
         }
     }
 

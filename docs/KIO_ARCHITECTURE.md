@@ -28,3 +28,14 @@ The Mac polls the relay and is the only executor. Offline phone requests remain 
 ## Earlier experimental implementation
 
 The prior CUA-based assistant is retained separately in `apps/macos` and `agent` on the integrated repository branch. The new product does not import or execute that architecture.
+
+## Assistant capabilities in the current tree
+
+`AgentID` has 12 members: Kio, Pip, Pixel, Zip, Echo, Clerk, Courier, Scribe, Table, Lens, Scout, and Patch. The current typed operation registry has 87 `ToolOperation` cases. Plans may compose registered operations into bounded pipelines; each step receives only validated artifact references and typed arguments.
+
+- **Scribe** sends bounded text from supported local text files to the local model for summaries, rewrites, proofreading, translation, key points, action items, Markdown conversion, comparison, or plain-language explanation. The output is a separate Markdown file.
+- **Table** parses CSV/TSV and JSON for inspection, statistics, sorting, filtering, column selection/renaming/reordering, normalization, merge, deduplication, comparison, and format conversion. Its XLSX path reads cached cell values from bounded workbooks and creates CSV; it does not run Excel macros or recalculate formulas.
+- **Lens** uses Apple Vision locally for image OCR, receipt extraction, table extraction, and structured text. **Scout** fetches readable content and links from permitted public HTTP(S) URLs. **Patch** uses the local model to explain or propose bounded text/code changes, then writes a separate copy and diff for review; it does not apply changes to the source or execute code.
+- Explicit clipboard paste accepts text, URLs, images, and files. Screenshot capture is user-initiated. Finder Services can send selected files to the composer. Searchable history, recent-artifact references, contextual actions, and saved workflow templates are local Mac features.
+- Pip combines selected PDF and image inputs in their original order into a bounded, verified PDF. The notch and full chat use the same type-aware quick-action catalog and planner route.
+- The optional PWA supports multiple attachments, camera/share input, encrypted retry, specialist progress, result download, and opt-in browser notifications. The Mac remains the planner and executor. Changes in `apps/mobile` must be deployed separately before they appear at the public PWA origin.

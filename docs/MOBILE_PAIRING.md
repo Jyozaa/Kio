@@ -40,6 +40,21 @@ If the Mac is offline, the PWA states that the task will start when Kio reconnec
 
 ## Current validation limits
 
-The local smoke test exercises one-time pairing, device authentication, actual encryption/decryption, multi-chunk file transfer in both directions, queue acknowledgement, per-workspace/global transfer bounds, per-device and workspace-creation rate limits, tamper rejection, and revocation. The public PWA and Worker health endpoint have been checked. In the previously deployed Chrome PWA, a live “Is my Mac online?” round trip, remote image-to-PDF task, follow-up rename, and offline queue/reconnect were verified. That deployed check predates the current un-deployed PWA agent-avatar and relay quota changes. A generated 96×64 PNG produced a valid one-page 96×64 PDF; the returned and renamed PDF files were downloaded to `~/Downloads/Kio` and validated. The user confirmed that Add to Home Screen works on iOS, though a physical iPhone file-task round trip was not independently observed.
+`./scripts/check.sh` passes the local PWA typecheck/build and WebCrypto tests, plus relay authentication, encryption, multi-chunk transfer, queue acknowledgement, bounds, rate-limit, tamper, lifecycle, and revocation checks. Worker version `0382cb4c-37b5-4bce-84d6-aea27c8b70e1` was deployed on 2026-09-30.
 
-The Mac handles “Is my Mac online?” with a deterministic read-only response that confirms receipt of the phone request without invoking model planning. The path is unit-tested and verified live through the paired Chrome PWA.
+The existing paired Chrome profile was live-checked after the Mac rebuild: Settings reported **Mac online · 1 paired phone**. The PWA accepted two CSV files in one request, ran “Merge these tables” on the Mac, and displayed the resulting downloadable CSV. Two receipt images also completed Lens OCR and a PDF round trip; the PDF download was confirmed. Offline queue/reconnect, URL fetch, saved-workflow listing and execution, and prior result-download/rename flows were live-checked. The Chrome notification control was exercised but did not reach an enabled state, and no notification was observed. A desktop browser cannot verify iPhone camera capture or the OS share-target handoff. Forced duplicate-delivery behavior remains unverified in Chrome.
+
+The user previously confirmed that Add to Home Screen works. No physical iPhone file-task round trip was observed. Complete this manual checklist on iPhone:
+
+1. Add Kio to the Home Screen from Safari.
+2. Pair the PWA with the Mac using the QR code.
+3. Send a text request.
+4. Send multiple photos.
+5. Use the camera flow for a receipt.
+6. Confirm specialist progress appears.
+7. Download a CSV and a PDF result.
+8. Paste or share a URL into Kio.
+9. Queue a task while the Mac is offline.
+10. Reconnect the Mac and confirm one completion.
+11. Check an opt-in completion notification.
+12. Revoke the phone pairing.

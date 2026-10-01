@@ -42,6 +42,8 @@ final class KioAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSApp.servicesProvider = self
+        NSRegisterServicesProvider(self, "Kio")
         NotchPanelController.shared.show()
         installGlobalShortcut()
         LocalRelayManager.shared.onIncomingRequest = { phoneID, payload, attachmentData in
@@ -49,6 +51,17 @@ final class KioAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         LocalRelayManager.shared.activate()
         showFirstRunIfNeeded()
+    }
+
+    @objc func sendToKio(_ pasteboard: NSPasteboard, userData: String,
+                        error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        guard !files.isEmpty, files.count <= 32 else {
+            error.pointee = "Choose between one and 32 Finder files or folders." as NSString
+            return
+        }
+        KioWorkspace.shared.addURLs(files)
+        NotchPanelController.shared.activateForInput()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

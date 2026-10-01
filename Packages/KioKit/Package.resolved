@@ -1,6 +1,15 @@
 {
-  "originHash" : "148a1afb8e7e516191063177ceb1e85606c6acf151acf60ed2056167276c016b",
+  "originHash" : "15d0ce094772eeac62723868d0a01ba93b788202c06834915a22e9e93dbc1f51",
   "pins" : [
+    {
+      "identity" : "corexlsx",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/CoreOffice/CoreXLSX.git",
+      "state" : {
+        "revision" : "b7cc8d3b79c07c2a781d82db645d7cec24106e08",
+        "version" : "0.14.1"
+      }
+    },
     {
       "identity" : "eventsource",
       "kind" : "remoteSourceControl",
@@ -110,12 +119,39 @@
       }
     },
     {
+      "identity" : "swiftsoup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/scinfu/SwiftSoup.git",
+      "state" : {
+        "revision" : "e40910293caa6d94802e1a69b80517c88e77eaff",
+        "version" : "2.13.3"
+      }
+    },
+    {
+      "identity" : "xmlcoder",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/maxdesiatov/XMLCoder.git",
+      "state" : {
+        "revision" : "ac411bd6ab342780be0dfe6f679410f791d751d9",
+        "version" : "0.11.1"
+      }
+    },
+    {
       "identity" : "yyjson",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ibireme/yyjson.git",
       "state" : {
         "revision" : "8b4a38dc994a110abaec8a400615567bd996105f",
         "version" : "0.12.0"
+      }
+    },
+    {
+      "identity" : "zipfoundation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/weichsel/ZIPFoundation.git",
+      "state" : {
+        "revision" : "22787ffb59de99e5dc1fbfe80b19c97a904ad48d",
+        "version" : "0.9.20"
       }
     }
   ],

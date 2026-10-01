@@ -41,7 +41,9 @@ enum ConversationPersistence {
         let descriptor = FetchDescriptor<StoredConversationEntry>(sortBy: [SortDescriptor(\.createdAt)])
         guard let entries = try? context.fetch(descriptor), !entries.isEmpty else { return nil }
         let items = entries.map { entry in
-            ConversationItem(id: entry.id, speaker: entry.speaker, message: entry.message, artifact: entry.artifactData.flatMap { try? JSONDecoder().decode(ArtifactRef.self, from: $0) })
+            ConversationItem(id: entry.id, speaker: entry.speaker, message: entry.message,
+                             artifact: entry.artifactData.flatMap { try? JSONDecoder().decode(ArtifactRef.self, from: $0) },
+                             createdAt: entry.createdAt, operation: entry.operationRawValue.flatMap(ToolOperation.init(rawValue:)))
         }
         let plan = UserDefaults.standard.data(forKey: "kio.previousPlan").flatMap { try? JSONDecoder().decode(TaskPlan.self, from: $0) }
         let latestOutputIndex = entries.lastIndex { $0.artifactData != nil }
@@ -96,7 +98,8 @@ enum ConversationPersistence {
         guard let container else { return }
         let artifact = item.artifact.flatMap { try? JSONEncoder().encode($0) }
         let context = ModelContext(container)
-        context.insert(StoredConversationEntry(id: item.id, speaker: item.speaker, message: item.message, artifactData: artifact, operationRawValue: operation?.rawValue))
+        context.insert(StoredConversationEntry(id: item.id, speaker: item.speaker, message: item.message,
+                                               artifactData: artifact, operationRawValue: operation?.rawValue, createdAt: item.createdAt))
         do { try context.save() }
         catch { return }
         let descriptor = FetchDescriptor<StoredConversationEntry>(sortBy: [SortDescriptor(\.createdAt)])

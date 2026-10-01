@@ -6,7 +6,7 @@ import Security
 import UniformTypeIdentifiers
 import os
 
-private struct RelayCredential: Codable {
+private struct RelayCredential: Codable, Sendable {
     let deviceID: String
     let authToken: String
     let privateKey: String
@@ -27,7 +27,7 @@ public final class LocalRelayManager: ObservableObject {
     @Published public private(set) var statusMessage = "Relay not configured"
     @Published public private(set) var lastError: String?
 
-    public var onIncomingRequest: (@MainActor (String, RelayPayload, Data?) -> Void)?
+    public var onIncomingRequest: (@MainActor (String, RelayPayload, [Data]?) -> Void)?
 
     private let logger = Logger(subsystem: "app.kio.mac", category: "Relay")
     private let session: URLSession
@@ -37,6 +37,7 @@ public final class LocalRelayManager: ObservableObject {
     private var publicKey: P256.KeyAgreement.PublicKey?
     private var baseURL: URL?
     private var pollTask: Task<Void, Never>?
+    private var credentialRestoreTask: Task<Void, Never>?
     private var knownDevices: [String: RelayDevice] = [:]
 
     private init() {
@@ -54,18 +55,34 @@ public final class LocalRelayManager: ObservableObject {
     public func activate() { startPollingIfPaired() }
 
     public func configure(relayURL raw: String) {
-        pollTask?.cancel()
-        pollTask = nil
-        pairingURL = nil
-        devices = []
-        knownDevices = [:]
         guard let url = Self.validBaseURL(raw) else {
+            pollTask?.cancel()
+            pollTask = nil
+            credentialRestoreTask?.cancel()
+            credentialRestoreTask = nil
             baseURL = nil
             isConfigured = false
             isOnline = false
             statusMessage = "Enter the deployed Kio relay URL"
             return
         }
+
+        // A Keychain read may be waiting on macOS authorization even if its
+        // awaiting task was cancelled. Reusing an in-flight check prevents
+        // repeated Connect clicks from stacking Security.framework prompts.
+        if baseURL == url, pollTask != nil || credentialRestoreTask != nil {
+            isConfigured = true
+            UserDefaults.standard.set(url.absoluteString, forKey: "kio.relayURL")
+            return
+        }
+
+        pollTask?.cancel()
+        pollTask = nil
+        credentialRestoreTask?.cancel()
+        credentialRestoreTask = nil
+        pairingURL = nil
+        devices = []
+        knownDevices = [:]
         baseURL = url
         UserDefaults.standard.set(url.absoluteString, forKey: "kio.relayURL")
         isConfigured = true
@@ -119,36 +136,48 @@ public final class LocalRelayManager: ObservableObject {
         } catch { lastError = error.localizedDescription }
     }
 
-    public func sendReply(type: String, text: String, taskID: String?, artifactURL: URL?, to deviceID: String, speaker: String? = nil, agent: String? = nil) async {
+    public func sendReply(type: String, text: String, taskID: String?, artifactURL: URL?, artifactURLs: [URL]? = nil,
+                          to deviceID: String, speaker: String? = nil, agent: String? = nil) async {
         guard let baseURL, let credential, let privateKey else { return }
         do {
-            var fileName: String?
-            var fileSize: Int?
-            var fileType: String?
-            var attachmentID: String?
-            var attachmentNonce: String?
-            var exceededFileLimit = false
+            var manifest: [RelayAttachment] = []
+            var legacyName: String?
+            var legacySize: Int?
+            var legacyMime: String?
+            var legacyID: String?
+            var legacyNonce: String?
+            var transferNote: String?
             let devices = try await fetchDevices(baseURL: baseURL, credential: credential)
             guard let recipient = devices.first(where: { $0.id == deviceID && $0.role == "phone" }) else { throw RelayError.deviceUnavailable }
-            if let artifactURL {
-                fileName = artifactURL.lastPathComponent
-                fileSize = (try? artifactURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-                fileType = UTType(filenameExtension: artifactURL.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-                if let fileSize, fileSize > 0, fileSize <= 50 * 1024 * 1024 {
-                    let data = try Data(contentsOf: artifactURL, options: .mappedIfSafe)
-                    let transfer = try await uploadEncryptedFile(data, recipientID: deviceID, recipientPublicKey: recipient.publicKey, baseURL: baseURL, credential: credential, privateKey: privateKey)
-                    attachmentID = transfer.id
-                    attachmentNonce = transfer.nonce
-                } else if (fileSize ?? 0) > 50 * 1024 * 1024 {
-                    lastError = "That result exceeds the 50 MB phone-transfer limit and remains on this Mac."
-                    fileName = nil
-                    fileType = nil
-                    fileSize = nil
-                    exceededFileLimit = true
-                }
+            let urls = Array((artifactURLs ?? artifactURL.map { [$0] } ?? []).prefix(8))
+            var uploadedBytes = 0
+            var skipped = 0
+            for url in urls {
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                guard size > 0, size <= 50 * 1_024 * 1_024,
+                      uploadedBytes + size <= 150 * 1_024 * 1_024 else { skipped += 1; continue }
+                let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                let transfer = try await uploadEncryptedFile(data, recipientID: deviceID, recipientPublicKey: recipient.publicKey, baseURL: baseURL, credential: credential, privateKey: privateKey)
+                let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                manifest.append(RelayAttachment(transferID: transfer.id, nonce: transfer.nonce, name: url.lastPathComponent, size: size, mime: mime))
+                uploadedBytes += size
             }
-            let responseText = exceededFileLimit ? "\(text) The file is larger than the 50 MB phone-transfer limit, so it remains on this Mac." : text
-            let payload = RelayPayload(type: type, text: responseText, artifactName: fileName, artifactSize: fileSize, artifactMime: fileType, attachmentID: attachmentID, attachmentNonce: attachmentNonce, taskID: taskID, speaker: speaker, agent: agent)
+            if urls.count > 8 { skipped += urls.count - 8 }
+            if skipped > 0 {
+                transferNote = " \(skipped) result file\(skipped == 1 ? " was" : "s were") too large or beyond the phone transfer limit, and remain available on this Mac."
+                lastError = "Some result files exceeded the phone transfer limit."
+            }
+            if manifest.count == 1, let first = manifest.first {
+                legacyName = first.name
+                legacySize = first.size
+                legacyMime = first.mime
+                legacyID = first.transferID
+                legacyNonce = first.nonce
+            }
+            let payload = RelayPayload(type: type, text: text + (transferNote ?? ""), artifactName: legacyName,
+                                        artifactSize: legacySize, artifactMime: legacyMime, attachmentID: legacyID,
+                                        attachmentNonce: legacyNonce, attachments: manifest.isEmpty ? nil : manifest,
+                                        taskID: taskID, speaker: speaker, agent: agent)
             let sealed = try Self.seal(payload, recipientPublicKey: recipient.publicKey, privateKey: privateKey, workspaceID: credential.deviceID)
             try await postEnvelope(sealed, recipientID: deviceID, baseURL: baseURL, credential: credential)
         } catch {
@@ -158,14 +187,40 @@ public final class LocalRelayManager: ObservableObject {
     }
 
     private func startPollingIfPaired() {
-        guard pollTask == nil, let baseURL else { return }
-        do { try loadCredentialIfPresent() } catch { lastError = error.localizedDescription; return }
-        guard let credential else {
-            isOnline = false
-            statusMessage = "Pair a phone to activate the relay"
-            return
+        guard pollTask == nil, credentialRestoreTask == nil, let baseURL else { return }
+        isOnline = false
+        statusMessage = "Checking saved phone pairing…"
+        lastError = nil
+        let keychain = self.keychain
+        credentialRestoreTask = Task { [weak self] in
+            await self?.restoreCredentialAndStartPolling(baseURL: baseURL, keychain: keychain)
         }
-        pollTask = Task { [weak self] in await self?.pollLoop(baseURL: baseURL, credential: credential) }
+    }
+
+    private func restoreCredentialAndStartPolling(baseURL: URL, keychain: RelayKeychain) async {
+        defer { credentialRestoreTask = nil }
+        do {
+            // SecItemCopyMatching can wait for a macOS Keychain authorization
+            // sheet. Keep that wait off the main actor so Kio remains responsive.
+            let saved = try await Task.detached(priority: .userInitiated) {
+                try keychain.read()
+            }.value
+            guard !Task.isCancelled, self.baseURL == baseURL else { return }
+            guard let saved else {
+                isOnline = false
+                statusMessage = "Pair a phone to activate the relay"
+                logger.notice("No saved relay pairing identity was found for the configured URL")
+                return
+            }
+            try applyCredential(saved)
+            logger.info("Loaded the saved relay identity and started connection attempts")
+            pollTask = Task { [weak self] in await self?.pollLoop(baseURL: baseURL, credential: saved) }
+        } catch {
+            guard !Task.isCancelled, self.baseURL == baseURL else { return }
+            lastError = error.localizedDescription
+            statusMessage = "Could not access the saved phone pairing"
+            logger.error("Could not load the saved relay identity: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func pollLoop(baseURL: URL, credential: RelayCredential) async {
@@ -196,28 +251,41 @@ public final class LocalRelayManager: ObservableObject {
                         await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
                         continue
                     }
-                    var attachmentData: Data?
-                    var attachmentTransferID: String?
-                    if payload.attachmentID != nil || payload.attachmentNonce != nil {
-                        guard let transferID = payload.attachmentID, let nonce = payload.attachmentNonce else {
+                    var attachmentData: [Data] = []
+                    var attachmentTransferIDs: [String] = []
+                    let manifest: [RelayAttachment]
+                    if let attachments = payload.attachments {
+                        guard (1...8).contains(attachments.count), attachments.allSatisfy({ (1...50 * 1_024 * 1_024).contains($0.size) }),
+                              attachments.reduce(0, { $0 + $1.size }) <= 150 * 1_024 * 1_024 else {
+                            lastError = "This phone request has too many attachments or exceeds Kio's transfer limit."
+                            await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
+                            continue
+                        }
+                        manifest = attachments
+                    } else if payload.attachmentID != nil || payload.attachmentNonce != nil {
+                        guard let transferID = payload.attachmentID, let nonce = payload.attachmentNonce,
+                              let name = payload.artifactName, let size = payload.artifactSize, size > 0, size <= 50 * 1_024 * 1_024 else {
                             lastError = "A phone request had incomplete attachment details and was discarded."
                             await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
                             continue
                         }
-                        do {
-                            attachmentData = try await downloadEncryptedFile(transferID, nonce: nonce, senderPublicKey: envelope.senderPublicKey, declaredSize: payload.artifactSize, baseURL: baseURL, credential: credential, privateKey: privateKey)
-                            attachmentTransferID = transferID
-                        } catch {
-                            logger.error("Phone file transfer failed verification: \(error.localizedDescription, privacy: .public)")
-                            lastError = "A phone attachment could not be verified; the request was discarded."
-                            await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
-                            continue
+                        manifest = [RelayAttachment(transferID: transferID, nonce: nonce, name: name, size: size, mime: payload.artifactMime ?? "application/octet-stream")]
+                    } else { manifest = [] }
+
+                    do {
+                        for attachment in manifest {
+                            let data = try await downloadEncryptedFile(attachment.transferID, nonce: attachment.nonce, senderPublicKey: envelope.senderPublicKey, declaredSize: attachment.size, baseURL: baseURL, credential: credential, privateKey: privateKey)
+                            attachmentData.append(data)
+                            attachmentTransferIDs.append(attachment.transferID)
                         }
+                    } catch {
+                        logger.error("Phone file transfer failed verification: \(error.localizedDescription, privacy: .public)")
+                        lastError = "A phone attachment could not be verified; the request was discarded."
+                        await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
+                        continue
                     }
-                    onIncomingRequest?(envelope.senderID, payload, attachmentData)
-                    if let attachmentTransferID {
-                        await acknowledgeFile(attachmentTransferID, baseURL: baseURL, credential: credential)
-                    }
+                    onIncomingRequest?(envelope.senderID, payload, attachmentData.isEmpty ? nil : attachmentData)
+                    for attachmentTransferID in attachmentTransferIDs { await acknowledgeFile(attachmentTransferID, baseURL: baseURL, credential: credential) }
                     await acknowledge(envelope.id, baseURL: baseURL, credential: credential)
                 }
             } catch is CancellationError { break }
@@ -301,7 +369,11 @@ public final class LocalRelayManager: ObservableObject {
     }
 
     private func loadCredentialIfPresent() throws {
-        guard let credential = try keychain.read() else { return }
+        guard let saved = try keychain.read() else { return }
+        try applyCredential(saved)
+    }
+
+    private func applyCredential(_ credential: RelayCredential) throws {
         let keyData = Self.decode(credential.privateKey)
         let key = try P256.KeyAgreement.PrivateKey(rawRepresentation: keyData)
         self.credential = credential
@@ -390,7 +462,7 @@ private enum RelayError: LocalizedError {
     }
 }
 
-private struct RelayKeychain {
+private struct RelayKeychain: Sendable {
     private let service = "app.kio.mac.relay"
     private let account = "device-identity-v1"
 

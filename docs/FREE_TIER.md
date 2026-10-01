@@ -1,6 +1,6 @@
 # Free-tier relay
 
-The Mac app and native file tools work without a Cloudflare account. Phone pairing is optional. The configured Worker uses Cloudflare Workers Free and one D1 database; it does not require a paid model API, R2, or a custom domain.
+Kio's mandatory recurring cost is £0. The Mac app, local model, and native file tools work without a Cloudflare account. Phone pairing is optional. The configured Worker uses the Cloudflare Workers Free and D1 architecture; it does not require a paid model API, R2, or a custom domain. Cloudflare can change its free-plan quotas, so verify the provider limits before deployment.
 
 ## Kio's bounds
 
@@ -12,8 +12,8 @@ The Mac app and native file tools work without a Cloudflare account. Phone pairi
 
 The limits are enforced in D1 as well as in request preflight checks. Rejected uploads return a capacity or rate-limit error; they do not silently consume another workspace's allowance. Revoked/expired device credentials are not used to read queued data.
 
-## Cloudflare's published Free limits
+## Provider limits
 
-Cloudflare currently lists 100,000 Worker requests per day, 10 ms CPU per invocation, 5 million D1 rows read per day, 100,000 D1 rows written per day, and 500 MB per D1 database. Exceeding the daily D1 read/write quotas causes D1 queries to fail until the quota resets; Kio returns a specific retry-after-midnight message for those D1 errors. Cloudflare can change these limits; review the official [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), and [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) before deploying.
+Kio's enforced bounds do not guarantee that Cloudflare's separate service quotas will be available. Review the official [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/), and [D1 limits](https://developers.cloudflare.com/d1/platform/limits/) before deploying. If a free service limit is reached, local Mac workflows remain usable without the relay.
 
-The 384 MiB active transfer ceiling is a Kio safety margin, not a billing allowance. If a free service limit is reached, local Mac workflows remain usable without the relay.
+The 384 MiB active transfer ceiling is a Kio safety margin, not a billing allowance.

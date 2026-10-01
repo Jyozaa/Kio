@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   acknowledgeTransfer,
   clearIdentity,
+  consumeSharedInput,
+  deleteQueuedRequest,
   downloadEncryptedFile,
   decryptPayload,
   encryptPayload,
@@ -9,17 +11,21 @@ import {
   invitationFromLocation,
   loadHistory,
   loadIdentity,
+  loadQueuedRequests,
   pairPhone,
   randomID,
   saveHistory,
+  saveQueuedRequest,
   uploadEncryptedFile,
   MAX_FILE_BYTES,
   type EnvelopePayload,
+  type QueuedRequest,
   type PhoneIdentity,
 } from "./crypto";
 
-type AgentName = "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier";
-interface HistoryItem { id: string; role: "user" | "kio" | "agent" | "status"; text: string; speaker?: string; agent?: AgentName; name?: string; size?: number; mime?: string; attachmentBlob?: Blob; createdAt: string }
+type AgentName = "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier" | "scribe" | "table" | "lens" | "scout" | "patch";
+interface HistoryAttachment { name: string; size: number; mime: string; blob: Blob }
+interface HistoryItem { id: string; taskID?: string; role: "user" | "kio" | "agent" | "status"; text: string; speaker?: string; agent?: AgentName; name?: string; size?: number; mime?: string; attachmentBlob?: Blob; attachments?: HistoryAttachment[]; createdAt: string }
 interface RelayEnvelope { id: string; senderID: string; nonce: string; ciphertext: string; createdAt: string }
 interface DeviceStatus { macOnline: boolean; macLastSeen: string | null }
 
@@ -51,18 +57,27 @@ export default function App() {
   const [downloadURLs, setDownloadURLs] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<DeviceStatus>({ macOnline: false, macLastSeen: null });
   const [request, setRequest] = useState("");
-  const [file, setFile] = useState<File>();
+  const [files, setFiles] = useState<File[]>([]);
+  const [queuedTaskIDs, setQueuedTaskIDs] = useState<string[]>([]);
   const [pairing, setPairing] = useState(Boolean(invitationFromLocation()));
   const [deviceName, setDeviceName] = useState("My iPhone");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showDeviceMenu, setShowDeviceMenu] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const flushingOutbox = useRef(false);
 
   useEffect(() => {
-    void Promise.all([loadIdentity(), loadHistory<HistoryItem>()]).then(([savedIdentity, savedMessages]) => {
+    void Promise.all([loadIdentity(), loadHistory<HistoryItem>(), consumeSharedInput(), loadQueuedRequests()]).then(([savedIdentity, savedMessages, shared, queued]) => {
       setIdentity(savedIdentity);
       setMessages(savedMessages.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+      setQueuedTaskIDs(queued.map((item) => item.taskID));
+      if (shared) {
+        setRequest(shared.text);
+        if (shared.files.length <= 8 && shared.files.every((file) => file.size > 0 && file.size <= MAX_FILE_BYTES)
+            && shared.files.reduce((sum, file) => sum + file.size, 0) <= 150 * 1024 * 1024) setFiles(shared.files);
+        else setError("The shared files exceed Kio's phone attachment limits.");
+      }
       if (!savedIdentity && !invitationFromLocation()) setPairing(false);
     }).catch(() => setError("I couldn't open this device's saved Kio session."));
   }, []);
@@ -72,13 +87,62 @@ export default function App() {
     void saveHistory(item);
   }, []);
 
+  const deliverQueued = useCallback(async (item: QueuedRequest, selectedIdentity: PhoneIdentity) => {
+    const deviceResponse = await fetch(apiURL(selectedIdentity.relayURL, "/devices"), { headers: { authorization: `Bearer ${selectedIdentity.authToken}` } });
+    if (!deviceResponse.ok) throw new Error(await errorText(deviceResponse));
+    const deviceData = await deviceResponse.json() as { devices: Array<{ id: string; publicKey: string }> };
+    const mac = deviceData.devices.find((device) => device.id === selectedIdentity.macDeviceID);
+    if (!mac) throw new Error("The paired Mac is no longer available. Pair this phone again from Kio Settings.");
+    const transfers = [...item.transfers];
+    for (let index = transfers.length; index < item.files.length; index += 1) {
+      const chosenFile = item.files[index];
+      const transfer = await uploadEncryptedFile(selectedIdentity, selectedIdentity.macDeviceID, mac.publicKey, chosenFile);
+      transfers.push({ transferID: transfer.id, nonce: transfer.nonce, name: chosenFile.name, size: chosenFile.size, mime: chosenFile.type || "application/octet-stream" });
+      await saveQueuedRequest({ ...item, transfers });
+    }
+    const legacy = item.files.length === 1 ? transfers[0] : undefined;
+    const payload: EnvelopePayload = {
+      type: "request", text: item.text, taskID: item.taskID, createdAt: item.createdAt,
+      ...(transfers.length ? { attachments: transfers } : {}),
+      ...(legacy ? { artifactName: legacy.name, artifactMime: legacy.mime, artifactSize: legacy.size, attachmentID: legacy.transferID, attachmentNonce: legacy.nonce } : {}),
+    };
+    const sealed = await encryptPayload(selectedIdentity, mac.publicKey, payload);
+    const response = await fetch(apiURL(selectedIdentity.relayURL, "/messages"), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${selectedIdentity.authToken}` },
+      body: JSON.stringify({ recipientID: selectedIdentity.macDeviceID, ...sealed }),
+    });
+    if (!response.ok) throw new Error(await errorText(response));
+    await deleteQueuedRequest(item.taskID);
+    setQueuedTaskIDs((current) => current.filter((id) => id !== item.taskID));
+    const macStatusResponse = await fetch(apiURL(selectedIdentity.relayURL, "/status"), { headers: { authorization: `Bearer ${selectedIdentity.authToken}` } });
+    const macStatus = macStatusResponse.ok ? await macStatusResponse.json() as DeviceStatus : undefined;
+    if (macStatus && !macStatus.macOnline) append({ id: randomID(), role: "status", text: "Mac offline · the relay accepted this queued task for Kio to start when it reconnects.", createdAt: new Date().toISOString() });
+  }, [append]);
+
+  const flushQueued = useCallback(async (selectedIdentity: PhoneIdentity) => {
+    if (flushingOutbox.current) return;
+    flushingOutbox.current = true;
+    try {
+      const queued = await loadQueuedRequests();
+      setQueuedTaskIDs(queued.map((item) => item.taskID));
+      for (const item of queued) {
+        try { await deliverQueued(item, selectedIdentity); }
+        catch { break; }
+      }
+    } finally { flushingOutbox.current = false; }
+  }, [deliverQueued]);
+
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
     const urls: Record<string, string> = {};
-    for (const message of messages) if (message.attachmentBlob) urls[message.id] = URL.createObjectURL(message.attachmentBlob);
+    for (const message of messages) {
+      if (message.attachmentBlob) urls[message.id] = URL.createObjectURL(message.attachmentBlob);
+      message.attachments?.forEach((file, index) => { urls[`${message.id}:${index}`] = URL.createObjectURL(file.blob); });
+    }
     setDownloadURLs(urls);
     return () => Object.values(urls).forEach(URL.revokeObjectURL);
   }, [messages]);
@@ -96,20 +160,26 @@ export default function App() {
             fetch(apiURL(identity.relayURL, "/inbox?wait=18"), { headers: { authorization: `Bearer ${identity.authToken}` }, signal: controller.signal }),
           ]);
           if (statusResponse.ok) setStatus(await statusResponse.json() as DeviceStatus);
+          await flushQueued(identity);
           if (!inboxResponse.ok) throw new Error(await errorText(inboxResponse));
           const data = await inboxResponse.json() as { messages: RelayEnvelope[] };
           for (const envelope of data.messages) {
             try {
               if (envelope.senderID !== identity.macDeviceID) throw new Error("Unexpected sender");
               const payload = await decryptPayload<EnvelopePayload>(identity, identity.macPublicKey, envelope.nonce, envelope.ciphertext);
-              let attachmentBlob: Blob | undefined;
-              if (payload.attachmentID && payload.attachmentNonce) {
-                const bytes = await downloadEncryptedFile(identity, identity.macPublicKey, payload.attachmentID, payload.attachmentNonce);
-                if (payload.artifactSize !== bytes.byteLength) throw new Error("Transfer size did not verify");
-                attachmentBlob = new Blob([bytes], { type: payload.artifactMime || "application/octet-stream" });
-                await acknowledgeTransfer(identity, payload.attachmentID);
+              const incomingFiles = payload.attachments ?? (payload.attachmentID && payload.attachmentNonce && payload.artifactName
+                ? [{ transferID: payload.attachmentID, nonce: payload.attachmentNonce, name: payload.artifactName,
+                    size: payload.artifactSize ?? 0, mime: payload.artifactMime || "application/octet-stream" }]
+                : []);
+              if (incomingFiles.length > 8 || incomingFiles.reduce((sum, file) => sum + file.size, 0) > 150 * 1024 * 1024) throw new Error("The result exceeded Kio's phone transfer limit");
+              const resultFiles: HistoryAttachment[] = [];
+              for (const file of incomingFiles) {
+                const bytes = await downloadEncryptedFile(identity, identity.macPublicKey, file.transferID, file.nonce);
+                if (file.size !== bytes.byteLength) throw new Error("Transfer size did not verify");
+                resultFiles.push({ name: file.name, size: file.size, mime: file.mime, blob: new Blob([bytes], { type: file.mime }) });
+                await acknowledgeTransfer(identity, file.transferID);
               }
-              const knownAgents: AgentName[] = ["kio", "pip", "pixel", "zip", "echo", "clerk", "courier"];
+              const knownAgents: AgentName[] = ["kio", "pip", "pixel", "zip", "echo", "clerk", "courier", "scribe", "table", "lens", "scout", "patch"];
               const agent = knownAgents.includes(payload.agent as AgentName) ? payload.agent as AgentName : undefined;
               const item: HistoryItem = {
                 id: envelope.id,
@@ -117,10 +187,11 @@ export default function App() {
                 speaker: payload.speaker || (agent ? agent[0].toUpperCase() + agent.slice(1) : undefined),
                 agent,
                 text: payload.text,
-                name: payload.artifactName,
-                size: payload.artifactSize,
-                mime: payload.artifactMime,
-                attachmentBlob,
+                name: resultFiles.length ? resultFiles.map((file) => file.name).join(", ") : payload.artifactName,
+                size: resultFiles.length ? resultFiles.reduce((sum, file) => sum + file.size, 0) : payload.artifactSize,
+                mime: resultFiles[0]?.mime ?? payload.artifactMime,
+                attachmentBlob: resultFiles.length === 1 ? resultFiles[0].blob : undefined,
+                attachments: resultFiles.length > 1 ? resultFiles : undefined,
                 createdAt: payload.createdAt ?? envelope.createdAt,
               };
               append(item);
@@ -150,52 +221,59 @@ export default function App() {
     };
     void poll();
     return () => { stopped = true; controller?.abort(); };
-  }, [identity, append]);
+  }, [identity, append, flushQueued]);
 
-  const addFile = (selected?: File) => {
+  const addFiles = (selected?: FileList | File[]) => {
     setError("");
-    if (selected && selected.size > MAX_FILE_BYTES) {
-      setError("Choose a file smaller than 50 MB for secure phone transfer.");
+    if (!selected) return;
+    const incoming = Array.from(selected);
+    if (files.length + incoming.length > 8) { setError("Attach up to 8 files per request."); return; }
+    if (incoming.some((entry) => entry.size <= 0 || entry.size > MAX_FILE_BYTES)) {
+      setError("Each phone attachment must be between 1 byte and 50 MB.");
       return;
     }
-    setFile(selected);
+    const combined = [...files, ...incoming];
+    if (combined.reduce((sum, entry) => sum + entry.size, 0) > 150 * 1024 * 1024) {
+      setError("Attachments in one request must total no more than 150 MB.");
+      return;
+    }
+    setFiles(combined);
   };
 
   const send = async () => {
-    if (!identity || busy || (!request.trim() && !file)) return;
+    if (!identity || busy || (!request.trim() && files.length === 0)) return;
     setBusy(true);
     setError("");
-    const text = request.trim() || (file ? `Use the attached file: ${file.name}` : "");
+    const text = request.trim() || (files.length ? `Use the attached file${files.length === 1 ? "" : "s"}: ${files.map((entry) => entry.name).join(", ")}` : "");
     const createdAt = new Date().toISOString();
     const taskID = randomID();
-    append({ id: taskID, role: "user", text, name: file?.name, size: file?.size, createdAt });
+    const chosenFiles = files;
+    const queued: QueuedRequest = { taskID, text, createdAt, files: chosenFiles, transfers: [] };
+    append({ id: taskID, taskID, role: "user", text, name: chosenFiles.map((entry) => entry.name).join(", ") || undefined, size: chosenFiles.reduce((sum, entry) => sum + entry.size, 0), createdAt });
     setRequest("");
-    const chosenFile = file;
-    setFile(undefined);
+    setFiles([]);
     try {
-      const deviceResponse = await fetch(apiURL(identity.relayURL, "/devices"), { headers: { authorization: `Bearer ${identity.authToken}` } });
-      if (!deviceResponse.ok) throw new Error(await errorText(deviceResponse));
-      const deviceData = await deviceResponse.json() as { devices: Array<{ id: string; publicKey: string }> };
-      const mac = deviceData.devices.find((device) => device.id === identity.macDeviceID);
-      if (!mac) throw new Error("The paired Mac is no longer available. Pair this phone again from Kio Settings.");
-      const transfer = chosenFile ? await uploadEncryptedFile(identity, identity.macDeviceID, mac.publicKey, chosenFile) : undefined;
-      const payload: EnvelopePayload = {
-        type: "request", text, taskID, createdAt,
-        ...(chosenFile && transfer ? { artifactName: chosenFile.name, artifactMime: chosenFile.type || "application/octet-stream", artifactSize: chosenFile.size, attachmentID: transfer.id, attachmentNonce: transfer.nonce } : {}),
-      };
-      const sealed = await encryptPayload(identity, mac.publicKey, payload);
-      const response = await fetch(apiURL(identity.relayURL, "/messages"), {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${identity.authToken}` },
-        body: JSON.stringify({ recipientID: identity.macDeviceID, ...sealed }),
-      });
-      if (!response.ok) throw new Error(await errorText(response));
-      if (!status.macOnline) append({ id: randomID(), role: "status", text: "Mac offline · this task will start when Kio reconnects.", createdAt: new Date().toISOString() });
+      await saveQueuedRequest(queued);
+      setQueuedTaskIDs((current) => [...new Set([...current, taskID])]);
+      await deliverQueued(queued, identity);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Couldn't queue that message.");
+      setError(`Saved on this phone. Kio will retry when the relay is available. ${caught instanceof Error ? caught.message : "Couldn't send that message."}`);
     } finally {
       setBusy(false);
     }
+  };
+
+  const retryQueued = async (taskID: string) => {
+    if (!identity || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const queued = (await loadQueuedRequests()).find((item) => item.taskID === taskID);
+      if (!queued) { setQueuedTaskIDs((current) => current.filter((id) => id !== taskID)); return; }
+      await deliverQueued(queued, identity);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The queued request is still waiting for a connection.");
+    } finally { setBusy(false); }
   };
 
   const completePairing = async () => {
@@ -257,23 +335,25 @@ export default function App() {
         </div>}
       </div>
     </header>
-    <div className="crew"><span>YOUR CREW</span><div className="crew-row">{(["pip", "pixel", "zip", "echo", "clerk", "courier"] as AgentName[]).map((agent) => <AgentFace key={agent} agent={agent} size={23} />)}<small>Pip · Pixel · Zip · Echo · Clerk</small></div></div>
+    <div className="crew"><span>YOUR CREW</span><div className="crew-row">{(["scribe", "table", "lens", "scout", "patch", "pip", "pixel", "zip", "echo", "clerk", "courier"] as AgentName[]).map((agent) => <AgentFace key={agent} agent={agent} size={23} />)}<small>Scribe · Table · Lens · Scout · Patch · Pip · Pixel · Zip · Echo · Clerk · Courier</small></div></div>
     <section className="conversation" ref={listRef} aria-live="polite">
       {messages.length === 0 && <div className="welcome"><AgentFace agent="kio" size={52} /><h2>What can I help with?</h2><p>Send a request and your Mac will take it from here.</p></div>}
       {messages.map((message) => <article key={message.id} className={`message ${message.role} agent-${message.agent ?? "kio"}`}>
         {(message.role === "kio" || message.role === "agent") && <div className="message-speaker"><AgentFace agent={message.agent ?? "kio"} size={22} /><span className="speaker">{message.speaker ?? "Kio"}</span></div>}
-        <div className="bubble">{message.text}{message.name && <div className="file-pill"><span>▧</span><span>{message.name}<small>{prettySize(message.size)}</small></span></div>}{downloadURLs[message.id] && message.name && <a className="download-result" download={message.name} href={downloadURLs[message.id]}>Download to this phone ↓</a>}</div>
+        <div className="bubble">{message.text}{message.name && <div className="file-pill"><span>▧</span><span>{message.name}<small>{prettySize(message.size)}</small></span></div>}{downloadURLs[message.id] && message.name && <a className="download-result" download={message.name} href={downloadURLs[message.id]}>Download to this phone ↓</a>}{message.attachments?.map((file, index) => <a key={`${message.id}-${file.name}`} className="download-result" download={file.name} href={downloadURLs[`${message.id}:${index}`]}>Download {file.name} to this phone ↓</a>)}{message.taskID && queuedTaskIDs.includes(message.taskID) && <div className="queued-request"><small>Saved on this phone · waiting to send</small><button disabled={busy} onClick={() => void retryQueued(message.taskID!)}>Retry now</button></div>}</div>
         <time>{new Date(message.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>
       </article>)}
       {error && <p className="error inline-error" role="alert">{error}</p>}
     </section>
     <footer className="composer-area">
       <p className={`offline-note ${status.macOnline ? "hidden" : ""}`}><span>◌</span> Mac offline. Your task will start when Kio reconnects.</p>
-      {file && <div className="selected-file">▧ {file.name} <button onClick={() => setFile(undefined)} aria-label="Remove attachment">×</button></div>}
+      {files.length > 0 && <div className="selected-files">{files.map((file, index) => <div className="selected-file" key={`${file.name}-${file.lastModified}-${index}`}>▧ {file.name} <button onClick={() => setFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}>×</button></div>)}</div>}
+      {!request.trim() && files.length === 0 && <button className="workflow-shortcut" onClick={() => setRequest("List my saved workflow templates")}>List saved workflows</button>}
       <div className="composer">
-        <label className="attach" aria-label="Attach a file">＋<input type="file" onChange={(event) => addFile(event.target.files?.[0])} /></label>
+        <label className="attach" aria-label="Attach files">＋<input type="file" multiple onChange={(event) => { addFiles(event.target.files ?? undefined); event.target.value = ""; }} /></label>
+        <label className="attach camera" aria-label="Take a photo">▧<input type="file" accept="image/*" capture="environment" onChange={(event) => { addFiles(event.target.files ?? undefined); event.target.value = ""; }} /></label>
         <textarea value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }} placeholder="Message Kio" rows={1} />
-        <button className="send" onClick={() => void send()} disabled={busy || (!request.trim() && !file)} aria-label="Send message">{busy ? "…" : "↑"}</button>
+        <button className="send" onClick={() => void send()} disabled={busy || (!request.trim() && files.length === 0)} aria-label="Send message">{busy ? "…" : "↑"}</button>
       </div>
       <p className="composer-foot">Encrypted between this phone and your Mac</p>
       {!window.matchMedia("(display-mode: standalone)").matches && <p className="install-hint">In Safari: <strong>Share → Add to Home Screen</strong></p>}

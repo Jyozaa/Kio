@@ -1,15 +1,20 @@
 # Kio
 
-Kio is a local-first macOS file assistant built around the MacBook notch. Add files, describe a supported task, and Kio plans it locally and runs a registered native workflow. Originals are preserved; completed outputs are checked before Kio reports success.
+Kio is a local-first macOS file assistant built around the MacBook notch. Add files, describe a supported task, and Kio plans it locally and runs a registered native workflow. Transformations preserve their sources; moving files requires explicit confirmation. Completed outputs are checked before Kio reports success.
 
 ## What works
 
-- Native SwiftUI/AppKit notch panel, menu bar entry, conversation window, drag and drop, and Option-Command-K shortcut.
-- Deterministic PDF merge/page removal/compression, image-to-PDF/resize/convert, conflict-safe batch rename copies, ZIP creation, and audio extraction from video.
-- Task-local follow-ups and persistent on-device conversation history.
-- Optional on-device MLX planner using Qwen3.5 2B 4-bit. The model download and a model-planned image-to-PDF workflow were exercised in the built app; no hosted AI API is used.
-- Optional mobile PWA paired by a one-time QR code. P-256 ECDH, HKDF, and AES-GCM protect message and file contents end to end; the Mac remains the execution authority.
-- Optional Cloudflare Worker + D1 relay. The relay stores envelope ciphertext and temporary encrypted file chunks, not readable task content.
+Kio accepts dropped files and folders, pasted text/URLs/images/files, screenshots copied to the clipboard, and explicit region captures. Finder's **Send to Kio** service can attach selected files. Fast paths handle obvious requests locally; the optional on-device Qwen planner selects only registered operations.
+
+- **PDFs:** merge, combine PDFs and images in selection order, inspect, search selectable text with page snippets, extract text, OCR, split, reorder, rotate, remove pages, remove blank pages, extract pages, and compress.
+- **Images and visual understanding:** single and batch resize/convert, rotate, manual and Vision smart crop, compress, metadata removal, contact sheets, approximate image comparison/similarity, Vision background removal, OCR, table extraction, structured text, and receipt fields.
+- **Tables:** quoted CSV/TSV and JSON table parsing; inspect/statistics, merge, deduplicate, sort, filter, select/rename/reorder columns, normalize, compare, and CSV/JSON conversion. XLSX import is read-only, bounded, and exports values to CSV; it does not calculate formulas or preserve workbook formatting/macros.
+- **Text and code:** local-model summarize, rewrite, proofread, translate, key points, action items, Markdown conversion, comparison, and explanation. Patch proposes a separate copy and diff; it never runs generated code or replaces the source automatically.
+- **Web and URLs:** Scout fetches public HTTP(S) pages for readable text or links, searches free Crossref and Europe PMC research metadata, and treats page content as untrusted data.
+- **Media:** inspect, thumbnail, trim or extract a clip, resize, transcode, compress, extract/convert audio to M4A, and optional on-device transcription/subtitles.
+- **Files:** conflict-safe rename copies, duplicate reports, date/type organization into verified copies, ZIP creation/inspection/safe extraction, and confirmed file moves.
+- **Workflows and history:** typed reusable workflow templates, shared contextual action chips in the notch and full chat, local artifact references, and searchable on-device conversations.
+- **Mobile:** optional encrypted PWA pairing, multi-file transfer in both directions, camera/photo/file and URL sharing, retryable offline queue, task progress, output downloads, and notifications where supported.
 
 See [Build status](docs/BUILD_STATUS.md) for the checked paths and known gaps.
 
@@ -24,7 +29,9 @@ bash scripts/build-mac.sh
 
 The canonical check installs the PWA and relay dependencies with `npm ci` from their lockfiles before building them. `bash scripts/bootstrap.sh` is optional when you only want to pre-resolve the Swift package.
 
-Package a locally signed app and DMG:
+For a stable local development signature and canonical install location, see [Stable local macOS development signing](docs/DEV_SIGNING.md) and run `bash scripts/dev-run.sh`. This selects the existing self-signed local identity, not an Apple Development certificate, and installs to `~/Applications/Kio.app`. It does not create or import a signing key. Public builds use a separate signing path.
+
+Package an ad-hoc-signed Release app and DMG:
 
 ```sh
 bash scripts/package-dmg.sh
@@ -45,7 +52,7 @@ bash apps/relay/scripts/check-local.sh
 
 The PWA is a static Vite build in `apps/mobile/dist`; Wrangler serves it from the Worker. Run `npx wrangler login` once, then `bash scripts/deploy-relay.sh`. The script prepares the free D1 database, applies migrations, builds the PWA, and deploys. Follow [Mobile pairing](docs/MOBILE_PAIRING.md) to pair. Cloudflare authorization is required only to deploy the optional relay; Mac file processing does not require it.
 
-The deployed phone app is available at [kio-relay.kio-relay.workers.dev](https://kio-relay.kio-relay.workers.dev). Pair it from Kio Settings before sending tasks.
+The previously deployed phone app is available at [kio-relay.kio-relay.workers.dev](https://kio-relay.kio-relay.workers.dev). It may lag behind the current source until the latest PWA and Worker are deployed. Pair it from Kio Settings before sending tasks.
 
 ## Architecture and privacy
 

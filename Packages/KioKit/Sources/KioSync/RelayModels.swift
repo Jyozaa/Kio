@@ -35,12 +35,13 @@ public struct RelayPayload: Codable, Sendable {
     public let artifactMime: String?
     public let attachmentID: String?
     public let attachmentNonce: String?
+    public let attachments: [RelayAttachment]?
     public let taskID: String?
     public let speaker: String?
     public let agent: String?
     public let createdAt: String
 
-    public init(type: String, text: String, artifactName: String? = nil, artifactSize: Int? = nil, artifactMime: String? = nil, attachmentID: String? = nil, attachmentNonce: String? = nil, taskID: String? = nil, speaker: String? = nil, agent: String? = nil, createdAt: String = ISO8601DateFormatter().string(from: Date())) {
+    public init(type: String, text: String, artifactName: String? = nil, artifactSize: Int? = nil, artifactMime: String? = nil, attachmentID: String? = nil, attachmentNonce: String? = nil, attachments: [RelayAttachment]? = nil, taskID: String? = nil, speaker: String? = nil, agent: String? = nil, createdAt: String = ISO8601DateFormatter().string(from: Date())) {
         self.type = type
         self.text = text
         self.artifactName = artifactName
@@ -48,10 +49,27 @@ public struct RelayPayload: Codable, Sendable {
         self.artifactMime = artifactMime
         self.attachmentID = attachmentID
         self.attachmentNonce = attachmentNonce
+        self.attachments = attachments
         self.taskID = taskID
         self.speaker = speaker
         self.agent = agent
         self.createdAt = createdAt
+    }
+}
+
+public struct RelayAttachment: Codable, Sendable, Equatable {
+    public let transferID: String
+    public let nonce: String
+    public let name: String
+    public let size: Int
+    public let mime: String
+
+    public init(transferID: String, nonce: String, name: String, size: Int, mime: String) {
+        self.transferID = transferID
+        self.nonce = nonce
+        self.name = name
+        self.size = size
+        self.mime = mime
     }
 }
 

@@ -2,11 +2,11 @@ import Foundation
 import UniformTypeIdentifiers
 
 public enum ArtifactKind: String, Codable, CaseIterable, Sendable {
-    case pdf, image, audio, video, text, csv, folder, other
+    case pdf, image, audio, video, text, csv, table, url, patch, folder, other
 }
 
 public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
-    case kio, pip, pixel, zip, echo, clerk, courier
+    case kio, pip, pixel, zip, echo, clerk, courier, scribe, table, lens, scout, patch
 
     public var id: String { rawValue }
     public var name: String { rawValue.capitalized }
@@ -19,6 +19,28 @@ public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
         case .echo: 0xB9A4D5
         case .clerk: 0xD9A0A8
         case .courier: 0xE88979
+        case .scribe: 0xC3B4DE
+        case .table: 0xD7C477
+        case .lens: 0x77C4D2
+        case .scout: 0x6FB5AA
+        case .patch: 0x8793A6
+        }
+    }
+
+    public var roleDescription: String {
+        switch self {
+        case .kio: "Task coordinator"
+        case .pip: "PDF specialist"
+        case .pixel: "Image specialist"
+        case .zip: "Archive specialist"
+        case .echo: "Audio and video specialist"
+        case .clerk: "File organization specialist"
+        case .courier: "Phone and file transfer specialist"
+        case .scribe: "Document and text specialist"
+        case .table: "CSV and data specialist"
+        case .lens: "OCR and visual interpretation specialist"
+        case .scout: "Web and public research specialist"
+        case .patch: "Bounded text transformation specialist"
         }
     }
 }
@@ -53,7 +75,11 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
         else if type?.conforms(to: .image) == true { kind = .image }
         else if type?.conforms(to: .audio) == true { kind = .audio }
         else if type?.conforms(to: .movie) == true || type?.conforms(to: .video) == true { kind = .video }
-        else if url.pathExtension.lowercased() == "csv" { kind = .csv }
+        else if ["kio-url", "kio-query"].contains(url.pathExtension.lowercased()) { kind = .url }
+        else if ["patch", "srt", "vtt"].contains(url.pathExtension.lowercased()) { kind = url.pathExtension.lowercased() == "patch" ? .patch : .text }
+        else if ["csv", "tsv"].contains(url.pathExtension.lowercased()) { kind = .csv }
+        else if ["json", "xlsx"].contains(url.pathExtension.lowercased()) { kind = .table }
+        else if ["txt", "md", "markdown", "swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"].contains(url.pathExtension.lowercased()) { kind = .text }
         else if type?.conforms(to: .text) == true { kind = .text }
         else { kind = .other }
         return ArtifactRef(displayName: url.lastPathComponent, kind: kind, fileURL: url, sizeBytes: Int64(values.fileSize ?? 0), parentID: parentID)
@@ -101,12 +127,20 @@ public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case extractPDFText = "pdf.extractText"
     case ocrPDFText = "pdf.ocrText"
     case inspectPDF = "pdf.inspect"
+    case searchPDFText = "pdf.search"
+    case combineMixedPDFInputs = "pdf.combineMixedInputs"
     case imagesToPDF = "image.toPDF"
     case resizeImage = "image.resize"
+    case batchResizeImages = "image.batchResize"
     case convertImage = "image.convert"
+    case batchConvertImages = "image.batchConvert"
+    case compareImages = "image.compare"
+    case findSimilarImages = "image.findSimilar"
+    case removeImageBackground = "image.removeBackground"
     case rotateImage = "image.rotate"
     case inspectImage = "image.inspect"
     case cropImage = "image.crop"
+    case smartCropImage = "image.smartCrop"
     case compressImage = "image.compress"
     case removeImageMetadata = "image.removeMetadata"
     case imageContactSheet = "image.contactSheet"
@@ -116,19 +150,60 @@ public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case moveFiles = "file.move"
     case createFolder = "file.createFolder"
     case findDuplicates = "file.findDuplicates"
+    case findRecent = "file.findRecent"
+    case findByName = "file.findByName"
     case organizeByType = "file.organizeByType"
     case organizeByDate = "file.organizeByDate"
+    case organizeByModulePattern = "file.organizeByModulePattern"
+    case organizeDownloads = "file.organizeDownloads"
     case createArchive = "archive.createZip"
     case inspectArchive = "archive.inspect"
     case extractZip = "archive.extractZip"
     case compressPDF = "pdf.compress"
     case extractAudio = "media.extractAudio"
+    case transcribeAudio = "audio.transcribe"
+    case generateSubtitles = "media.generateSubtitles"
+    case extractMediaClip = "media.extractClip"
+    case convertAudio = "audio.convert"
     case inspectMedia = "media.inspect"
     case thumbnailVideo = "media.thumbnail"
     case trimVideo = "media.trim"
     case resizeVideo = "media.resizeVideo"
     case transcodeVideo = "media.transcode"
     case compressVideo = "media.compressVideo"
+    case summarizeText = "text.summarize"
+    case rewriteText = "text.rewrite"
+    case proofreadText = "text.proofread"
+    case translateText = "text.translate"
+    case keyPointsText = "text.keyPoints"
+    case actionItemsText = "text.actionItems"
+    case toMarkdownText = "text.toMarkdown"
+    case compareText = "text.compare"
+    case explainText = "text.explain"
+    case inspectData = "data.inspect"
+    case mergeData = "data.merge"
+    case deduplicateData = "data.deduplicate"
+    case sortData = "data.sort"
+    case filterData = "data.filter"
+    case selectColumns = "data.selectColumns"
+    case renameColumns = "data.renameColumns"
+    case reorderColumns = "data.reorderColumns"
+    case dataStatistics = "data.statistics"
+    case csvToJSON = "data.csvToJSON"
+    case jsonToCSV = "data.jsonToCSV"
+    case normalizeData = "data.normalize"
+    case compareData = "data.compare"
+    case importXLSX = "data.importXLSX"
+    case fetchURL = "web.fetchReadableText"
+    case extractWebLinks = "web.extractLinks"
+    case researchOpenSources = "web.researchOpenSources"
+    case ocrImage = "visual.ocr"
+    case extractImageTable = "visual.extractTable"
+    case extractReceipt = "visual.extractReceipt"
+    case extractStructuredText = "visual.extractStructuredText"
+    case explainCode = "code.explain"
+    case proposePatch = "code.proposePatch"
+    case formatJSON = "data.formatJSON"
 }
 
 public enum StepSource: Codable, Sendable, Hashable {
@@ -154,6 +229,11 @@ public enum ToolArguments: Codable, Sendable, Hashable {
     case pageOrder(indices: [Int])
     case pdfRotation(indices: [Int], degrees: Int)
     case pdfCompression(maxBytes: Int64?)
+    case textPrompt(String)
+    case tableSort(column: String, ascending: Bool)
+    case tableFilter(column: String, value: String)
+    case tableColumns([String])
+    case tableRenameColumn(from: String, to: String)
 }
 
 public struct TaskStep: Codable, Identifiable, Sendable, Hashable {
@@ -169,13 +249,24 @@ public struct TaskStep: Codable, Identifiable, Sendable, Hashable {
         self.arguments = arguments
     }
 
-    public var owner: AgentID {
-        switch operation {
-        case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF: .pip
-        case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .compressImage, .removeImageMetadata, .imageContactSheet: .pixel
-        case .renameFile, .batchRename, .copyFiles, .moveFiles, .createFolder, .findDuplicates, .organizeByType, .organizeByDate: .clerk
+    public var owner: AgentID { operation.owner }
+}
+
+public extension ToolOperation {
+    var owner: AgentID {
+        switch self {
+        case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .searchPDFText, .combineMixedPDFInputs, .imagesToPDF: .pip
+        case .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText: .lens
+        case .explainCode, .proposePatch, .formatJSON: .patch
+        case .resizeImage, .batchResizeImages, .convertImage, .batchConvertImages, .compareImages, .findSimilarImages, .removeImageBackground, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .imageContactSheet: .pixel
+        case .renameFile, .batchRename, .copyFiles, .moveFiles, .createFolder, .findDuplicates, .findRecent, .findByName,
+             .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads: .clerk
         case .createArchive, .inspectArchive, .extractZip, .compressPDF: .zip
-        case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: .echo
+        case .extractAudio, .transcribeAudio, .generateSubtitles, .extractMediaClip, .convertAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .resizeVideo, .transcodeVideo, .compressVideo: .echo
+        case .fetchURL, .extractWebLinks, .researchOpenSources: .scout
+        case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText: .scribe
+        case .inspectData, .mergeData, .deduplicateData, .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns,
+             .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX: .table
         }
     }
 }
@@ -280,7 +371,7 @@ public struct TaskExecutionState: Sendable, Equatable {
 }
 
 public enum NotchInteractionReason: Hashable, Sendable {
-    case pointer, inputFocus, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover
+    case pointer, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover
 }
 
 /// Centralizes the reasons the expanded notch must remain available for interaction.

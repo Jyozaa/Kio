@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import KioCore
+import KioModel
 import KioUI
 import os
 import SwiftUI
@@ -79,7 +80,9 @@ final class NotchPanelController: ObservableObject {
     }
 
     func pointerChanged(_ inside: Bool, hoverExpansion: Bool, dwellMilliseconds: Int) {
+        guard interaction.isActive(.pointer) != inside else { return }
         interaction.set(.pointer, active: inside)
+        logger.info("Pointer crossed notch boundary: inside=\(inside, privacy: .public); remaining reasons=\(String(describing: self.interaction), privacy: .public)")
         if inside {
             collapseTask?.cancel()
             collapseTask = nil
@@ -97,7 +100,6 @@ final class NotchPanelController: ObservableObject {
     }
 
     func inputFocusChanged(_ focused: Bool) {
-        interaction.set(.inputFocus, active: focused)
         if focused {
             cancelCollapse()
             setExpanded(true)
@@ -186,7 +188,6 @@ final class NotchPanelController: ObservableObject {
 
     func collapse() {
         guard !KioWorkspace.shared.isWorking else { return }
-        interaction.set(.inputFocus, active: false)
         interaction.set(.composing, active: false)
         interaction.set(.pointer, active: false)
         interaction.set(.attachments, active: false)
@@ -219,7 +220,11 @@ final class NotchPanelController: ObservableObject {
         cancelCollapse()
         collapseTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let self, !self.interaction.shouldRemainExpanded else { return }
+            guard !Task.isCancelled, let self else { return }
+            guard !self.interaction.shouldRemainExpanded else {
+                self.logger.info("Notch kept open by active interaction reasons: \(String(describing: self.interaction), privacy: .public)")
+                return
+            }
             self.setExpanded(false, force: true)
         }
     }
@@ -288,6 +293,8 @@ private struct NotchContents: View {
     @ObservedObject var controller: NotchPanelController
     @State private var isTargeted = false
     @State private var command = ""
+    @State private var pastedClipboardTexts: [String] = []
+    @State private var pasteKeyMonitor: Any?
     @State private var stageMascotAgent: AgentID = .kio
     @State private var coordinatorHasDeparted = false
     @State private var agentHasArrived = false
@@ -355,9 +362,23 @@ private struct NotchContents: View {
         }
         .frame(width: controller.layout.hostWidth, height: controller.layout.hostHeight, alignment: .top)
         .preferredColorScheme(.dark)
-        .contentShape(NotchInteractionRegion(progress: controller.isExpanded ? 1 : 0, layout: controller.layout))
-        .onHover { controller.pointerChanged($0, hoverExpansion: hoverExpansion, dwellMilliseconds: hoverDwellMilliseconds) }
+        .onAppear(perform: installPasteKeyMonitor)
+        .onDisappear(perform: removePasteKeyMonitor)
+        .contentShape(NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: controller.layout))
         .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let location):
+                let layout = controller.layout
+                let silhouette = NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: layout)
+                let bounds = CGRect(origin: .zero, size: CGSize(width: layout.hostWidth, height: layout.hostHeight))
+                let inside = silhouette.path(in: bounds).contains(location)
+                controller.pointerChanged(inside, hoverExpansion: hoverExpansion,
+                                          dwellMilliseconds: hoverDwellMilliseconds)
+            case .ended:
+                controller.pointerChanged(false, hoverExpansion: hoverExpansion,
+                                          dwellMilliseconds: hoverDwellMilliseconds)
+                pointerGaze = .zero
+            }
             guard !reduceMotion, controller.isExpanded else { pointerGaze = .zero; return }
             guard case .active(let location) = phase else { pointerGaze = .zero; return }
             let layout = controller.layout
@@ -370,7 +391,7 @@ private struct NotchContents: View {
                 height: min(1, max(-1, (location.y - mascotCenterY) / max(1, contentHeight * 0.48)))
             )
         }
-        .onDrop(of: [UTType.fileURL], isTargeted: $isTargeted, perform: acceptDrop)
+        .onDrop(of: [UTType.fileURL, .url], isTargeted: $isTargeted, perform: acceptDrop)
         .onChange(of: isTargeted) { _, value in controller.draggingChanged(value) }
         .onChange(of: commandFocused) { _, value in controller.inputFocusChanged(value) }
         .onChange(of: command) { _, value in controller.composingChanged(!value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
@@ -461,7 +482,10 @@ private struct NotchContents: View {
                     .accessibilityLabel("Collapse Kio")
                 }
                 conversationFeed
-                    .frame(height: workspace.attachments.isEmpty ? 58 : 43)
+                    .frame(height: workspace.attachments.isEmpty ? 58 : 34)
+                if !quickActions.isEmpty {
+                    quickActionStrip
+                }
                 if !workspace.attachments.isEmpty {
                     attachmentStrip
                 }
@@ -599,6 +623,34 @@ private struct NotchContents: View {
         .frame(height: 21)
     }
 
+    private var quickActions: [ContextualQuickAction] {
+        ContextualQuickActionCatalog.suggestions(for: workspace.attachments)
+    }
+
+    private var quickActionStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 5) {
+                ForEach(quickActions) { action in
+                    Button(action.title) {
+                        command = action.prompt
+                        if action.requiresUserInput { commandFocused = true }
+                        else { sendCommand() }
+                    }
+                    .font(.system(size: 8, weight: .medium))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.76))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.075), in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.07), lineWidth: 1))
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(height: 19)
+        .accessibilityLabel("Suggested actions for attached files")
+    }
+
     private var mascotStage: some View {
         ZStack {
             AgentBlob(.kio, mood: baseMascotMood, size: 66, gazeTarget: mascotGaze)
@@ -648,6 +700,16 @@ private struct NotchContents: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(isTargeted ? Color(hex: AgentID.pixel.colorHex) : Color.white.opacity(0.55))
                 .accessibilityHidden(true)
+            Button(action: pasteClipboardContents) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .frame(width: 20, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Paste text, a URL, file, or image")
+            .help("Paste text, a URL, file, or image from the clipboard")
             TextField("", text: $command, prompt: Text(inputPrompt).foregroundColor(.white.opacity(0.58)), axis: .vertical)
                 .font(.system(size: 12))
                 .lineLimit(1...2)
@@ -686,17 +748,75 @@ private struct NotchContents: View {
     }
 
     private func sendCommand() {
-        let value = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !workspace.isWorking else { return }
+        let submission = ClipboardComposerResolver.resolve(message: command, pastedTexts: pastedClipboardTexts)
+        guard !submission.request.isEmpty || submission.pastedText != nil,
+              !workspace.isWorking else { return }
         command = ""
+        pastedClipboardTexts = []
         commandFocused = false
-        workspace.submit(value)
+        workspace.submit(submission)
     }
 
     private func beginNewRequest() {
         workspace.startNewRequest()
         command = ""
+        pastedClipboardTexts = []
         controller.activateForInput()
+    }
+
+    private func pasteClipboardContents() {
+        let pasteboard = NSPasteboard.general
+        let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        let imageData = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff)
+        let input = ClipboardInputResolver.resolve(
+            fileURLs: fileURLs,
+            imageData: imageData,
+            urlString: pasteboard.string(forType: .URL),
+            text: pasteboard.string(forType: .string)
+        )
+        switch input {
+        case .files(let urls): workspace.addURLs(urls)
+        case .image(let data): workspace.addClipboardImageData(data)
+        case .webURL(let value): workspace.addWebURLs([value])
+        case .text(let value):
+            command += value
+            pastedClipboardTexts.append(value)
+            commandFocused = true
+        case nil: break
+        }
+    }
+
+    @MainActor
+    private func installPasteKeyMonitor() {
+        removePasteKeyMonitor()
+        let commandFocus = $commandFocused
+        let pasteAction = pasteClipboardContents
+        pasteKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard commandFocus.wrappedValue,
+                  event.window != nil,
+                  event.window === NSApp.keyWindow,
+                  modifiers.contains(.command),
+                  !modifiers.contains(.option),
+                  !modifiers.contains(.control),
+                  !modifiers.contains(.shift),
+                  event.charactersIgnoringModifiers?.lowercased() == "v" else {
+                return event
+            }
+
+            DispatchQueue.main.async {
+                pasteAction()
+            }
+            return nil
+        }
+    }
+
+    @MainActor
+    private func removePasteKeyMonitor() {
+        if let pasteKeyMonitor {
+            NSEvent.removeMonitor(pasteKeyMonitor)
+            self.pasteKeyMonitor = nil
+        }
     }
 
     private func copyFileURL(_ url: URL) {
@@ -712,15 +832,21 @@ private struct NotchContents: View {
         let group = DispatchGroup()
         for provider in providers {
             group.enter()
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            let type = provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                ? UTType.fileURL.identifier
+                : UTType.url.identifier
+            guard provider.hasItemConformingToTypeIdentifier(type) else { group.leave(); continue }
+            provider.loadItem(forTypeIdentifier: type, options: nil) { item, _ in
                 defer { group.leave() }
                 if let url = item as? URL { collector.add(url) }
                 else if let url = item as? NSURL { collector.add(url as URL) }
                 else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { collector.add(url) }
+                else if let value = item as? String, let url = URL(string: value) { collector.add(url) }
             }
         }
         group.notify(queue: .main) {
-            workspace.addURLs(collector.values)
+            workspace.addURLs(collector.values.filter(\.isFileURL))
+            workspace.addWebURLs(collector.values.filter { !$0.isFileURL }.map(\.absoluteString))
             controller.draggingChanged(false)
         }
         return true
@@ -811,26 +937,6 @@ private struct NotchSilhouette: Shape {
                       control2: CGPoint(x: topLeft - shoulder * 0.45, y: rect.minY))
         path.closeSubpath()
         return path
-    }
-}
-
-private struct NotchInteractionRegion: Shape {
-    var progress: CGFloat
-    let layout: NotchLayout
-
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let t = min(1, max(0, progress))
-        let width = layout.notchWidth + (layout.expandedWidth - layout.notchWidth) * t + 76
-        let collapsedHeight = layout.notchHeight
-        let height = collapsedHeight + (layout.expandedHeight - collapsedHeight) * t + 52
-        let interactionRect = CGRect(x: rect.midX - width / 2, y: rect.minY,
-                                     width: min(rect.width, width), height: min(rect.height, height))
-        return Path(roundedRect: interactionRect, cornerRadius: min(30, interactionRect.height * 0.28))
     }
 }
 

@@ -116,6 +116,11 @@ public enum OutputLocation {
         let fm = FileManager.default
         let parents = Set(inputs.map { $0.fileURL.deletingLastPathComponent().standardizedFileURL })
         if let selected = access.customFolder() { return selected }
+        if inputs.allSatisfy({
+            let inbox = $0.fileURL.deletingLastPathComponent()
+            return inbox.lastPathComponent == "ClipboardInbox" && inbox.deletingLastPathComponent().lastPathComponent == "Kio"
+        }) { return try defaultFolder() }
+        if inputs.allSatisfy({ $0.kind == .url }) { return try defaultFolder() }
         if parents.count == 1, let parent = parents.first, fm.isWritableFile(atPath: parent.path) { return parent }
         return try defaultFolder()
     }
