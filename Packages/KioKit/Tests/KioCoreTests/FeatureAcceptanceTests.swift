@@ -150,6 +150,67 @@ import KioCore
     #expect(!CueTextAlignment(script: " \n … ").isFinished)
 }
 
+@Test func cueResponsiveTrackingFollowsPartialSpeechQuicklyAndMonotonically() {
+    var cue = CueTextAlignment(script: "Welcome to Kio. Today I am testing the teleprompter. The words should follow my voice in real time.")
+    let partials = ["Welcome", "Welcome to Kio", "Welcome to Kio today", "today I am testing",
+                    "today I am testing the teleprompter", "the words should follow",
+                    "the words should follow my voice", "my voice in real time"]
+    var positions: [Int] = []
+    for partial in partials {
+        positions.append(cue.consume(partial, confidence: 0.9, policy: .responsive))
+    }
+    #expect(positions == positions.sorted())
+    #expect(positions.last == cue.tokens.count)
+    #expect(positions[1] >= 3)
+    #expect(positions[4] >= 9)
+    #expect(cue.recentSpokenWords == "my voice in real time")
+}
+
+@Test func cueResponsiveTrackingToleratesRevisionsOmissionsFillersAndSmallSubstitutions() {
+    var cue = CueTextAlignment(script: "The words should follow my voice smoothly. I want to show you how Kio works.")
+    let start = cue.consume("the words should follow my boys", confidence: 0.9, policy: .responsive)
+    let corrected = cue.consume("the words should follow my voice", confidence: 0.9, policy: .responsive)
+    #expect(start > 0)
+    #expect(corrected >= start)
+    #expect(cue.consume("smoothly I want uh to show you how Kio works", confidence: 0.9, policy: .responsive) == cue.tokens.count)
+
+    var skipped = CueTextAlignment(script: "I want to show you how Kio works")
+    #expect(skipped.consume("I want show you how Kio works", confidence: 0.9, policy: .responsive) == skipped.tokens.count)
+
+    var repeated = CueTextAlignment(script: "that that example is intentional")
+    #expect(repeated.consume("that that example", confidence: 0.9, policy: .responsive) == 3)
+}
+
+@Test func cueResponsiveTrackingRequiresConfirmationForLargeAccidentalJumps() {
+    let script = (0..<40).map { "unique\($0)" }.joined(separator: " ")
+    var cue = CueTextAlignment(script: script)
+    let farPhrase = (30..<38).map { "unique\($0)" }.joined(separator: " ")
+    #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) == 0)
+    #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) >= 35)
+}
+
+@Test func cueWaveformSmoothingBoundsAndThrottlesSamples() {
+    var waveform = CueWaveformState(capacity: 4, smoothing: 0.5, minimumInterval: 0.04)
+    #expect(waveform.levels.count == 4)
+    let firstAccepted = waveform.append(power: 0.25, at: 1)
+    #expect(firstAccepted)
+    let first = waveform.displayedLevel
+    #expect(first > 0 && first < 1)
+    let throttled = waveform.append(power: 1, at: 1.01)
+    #expect(!throttled)
+    let secondAccepted = waveform.append(power: 1, at: 1.05)
+    #expect(secondAccepted)
+    #expect(waveform.levels.count == 4)
+    #expect(waveform.displayedLevel > first)
+    let nanAccepted = waveform.append(power: .nan, at: 1.10)
+    #expect(nanAccepted)
+    #expect(waveform.displayedLevel.isFinite)
+    #expect(waveform.levels.allSatisfy { $0.isFinite && $0 >= 0 && $0 <= 1 })
+    let silenceAccepted = waveform.append(power: 0, at: 1.15)
+    #expect(silenceAccepted)
+    #expect(waveform.displayedLevel < 1)
+}
+
 @Test func cueContextClassicScrollAndVoiceActivityRemainBounded() {
     let cue = CueTextAlignment(script: (0..<100).map { "distinctive\($0)" }.joined(separator: " "))
     #expect(cue.upcomingContextWords.count == 32)

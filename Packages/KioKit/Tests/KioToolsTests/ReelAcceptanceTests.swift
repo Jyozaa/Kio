@@ -61,6 +61,24 @@ import KioCore
     #expect(ReelMediaRouter.isPreparedBinary("yt-dlp", in: folder))
 }
 
+@Test func reelManifestPinsBundledRuntimeVersionsPathsAndLicenses() throws {
+    let manifest = try #require(ReelRuntimeManifest.bundled)
+    #expect(manifest.architecture == "arm64-apple-darwin")
+    #expect(manifest.component("yt-dlp")?.version == "2026.08.19")
+    #expect(manifest.component("deno")?.version == "2.9.7")
+    #expect(manifest.component("ffmpeg")?.license.contains("LGPL") == true)
+    #expect(manifest.component("lame")?.license == "LGPL-2.0-or-later")
+    #expect(manifest.component("streamlink")?.version == "8.6.0")
+    #expect(manifest.component("gallery-dl") == nil)
+    #expect(manifest.wheels.count == 20)
+    #expect(manifest.wheels.allSatisfy { $0.sha256.count == 64 && $0.url.host == "files.pythonhosted.org" })
+
+    let root = URL(fileURLWithPath: "/tmp/Kio.app/Contents/Resources/Reel")
+    #expect(ReelRuntime.url(for: "deno", in: root, manifest: manifest)?.path == root.appendingPathComponent("deno").path)
+    #expect(ReelRuntime.url(for: "python", in: root, manifest: manifest)?.path == root.appendingPathComponent("streamlink/python/bin/python3.12").path)
+    #expect(ReelRuntime.url(for: "ffprobe", in: root, manifest: manifest)?.path == root.appendingPathComponent("ffmpeg/bin/ffprobe").path)
+}
+
 @Test func reelOutputPolicyContainsFilesAndEnforcesCountAndByteCaps() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("KioReelOutput-\(UUID().uuidString)", isDirectory: true)
     let outside = FileManager.default.temporaryDirectory.appendingPathComponent("KioReelOutside-\(UUID().uuidString).mp4")

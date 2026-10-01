@@ -22,7 +22,7 @@
 
 ## Reel downloads and Cue audio
 
-- Reel downloads fixed helper versions only from pinned URLs after the explicit **Prepare Reel** action. SHA-256 is checked before install/version probes; helper state is stored in Kio's Application Support directory. The Streamlink Python runtime and every wheel are pinned and checksum-verified as well.
+- Reel executes only the arm64 helper runtime bundled under `Kio.app/Contents/Resources/Reel`. Build-time artifacts and every Streamlink wheel are pinned and SHA-256 checked from `Packages/KioKit/Sources/KioTools/Resources/ReelRuntime.json`; Kio has no helper download/install code path. yt-dlp receives explicit bundled Deno and FFmpeg paths, ignores user config/plugins, and uses typed arguments. Reel does not read browser cookies or bypass DRM.
 - Reel uses Foundation `Process` with a Kio-controlled executable and typed argument builders. It does not invoke a shell, read browser cookies, send login credentials, or bypass DRM. Public URL validation is performed before media work; incomplete task outputs are kept in temporary directories and removed on cancellation.
 - Cue asks for microphone and Speech Recognition access only when a mode that needs them starts. Classic mode uses no microphone. Cue does not request Accessibility or Screen Recording access.
 

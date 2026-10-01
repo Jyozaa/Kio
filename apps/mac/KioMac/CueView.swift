@@ -24,23 +24,36 @@ private func requestCueSpeechAuthorization() async -> SFSpeechRecognizerAuthoriz
     }
 }
 
-private final class CueAudioTapContext: @unchecked Sendable {
-    private let request: SFSpeechAudioBufferRecognitionRequest?
-    private let onPower: @MainActor (Float) -> Void
+private final class CueAudioBufferPacket: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+    init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+}
 
-    init(request: SFSpeechAudioBufferRecognitionRequest?, onPower: @escaping @MainActor (Float) -> Void) {
-        self.request = request
+private final class CueAudioTapContext: @unchecked Sendable {
+    private let appendAudio: @Sendable (AVAudioPCMBuffer) -> Void
+    private let onPower: @MainActor (Float) -> Void
+    private let lock = NSLock()
+    private var lastPowerUpdate = 0.0
+
+    init(appendAudio: @escaping @Sendable (AVAudioPCMBuffer) -> Void, onPower: @escaping @MainActor (Float) -> Void) {
+        self.appendAudio = appendAudio
         self.onPower = onPower
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
-        request?.append(buffer)
+        appendAudio(buffer)
         guard let channel = buffer.floatChannelData?.pointee else { return }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return }
         var sum: Float = 0
         for index in 0..<count { sum += channel[index] * channel[index] }
         let power = sqrt(sum / Float(count))
+        lock.lock()
+        let now = ProcessInfo.processInfo.systemUptime
+        let shouldPublish = now - lastPowerUpdate >= 1.0 / 25.0
+        if shouldPublish { lastPowerUpdate = now }
+        lock.unlock()
+        guard shouldPublish else { return }
         Task { @MainActor [onPower] in onPower(power) }
     }
 }
@@ -52,7 +65,16 @@ private func cueAudioTapBlock(context: CueAudioTapContext) -> AVAudioNodeTapBloc
 private enum CueMode: String, CaseIterable, Identifiable {
     case wordTracking = "Word Tracking"
     case classic = "Classic"
-    case voicePaced = "Voice-Paced"
+    case followMyVoice = "Follow My Voice"
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "Classic": self = .classic
+        case "Follow My Voice", "Voice-Paced": self = .followMyVoice
+        case "Word Tracking": self = .wordTracking
+        default: return nil
+        }
+    }
     var id: String { rawValue }
 }
 
@@ -74,50 +96,176 @@ private enum CueTextSize: String, CaseIterable, Identifiable {
 }
 
 @MainActor
+private protocol CueSpeechBackend: AnyObject {
+    var name: String { get }
+    func append(_ buffer: AVAudioPCMBuffer)
+    func stop()
+}
+
+@MainActor
+private final class LegacyCueSpeechBackend: CueSpeechBackend {
+    let name = "Speech Recognition"
+    private let request: SFSpeechAudioBufferRecognitionRequest
+    private var task: SFSpeechRecognitionTask?
+
+    init(recognizer: SFSpeechRecognizer, hints: [String], generation: Int,
+         onTranscript: @escaping (String, Float, Int) -> Void) {
+        request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.taskHint = .dictation
+        request.contextualStrings = Array(hints.prefix(32))
+        task = recognizer.recognitionTask(with: request) { result, _ in
+            guard let result else { return }
+            let text = result.bestTranscription.formattedString
+            let confidence = result.bestTranscription.segments.last?.confidence ?? 0
+            Task { @MainActor in onTranscript(text, confidence, generation) }
+        }
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) { request.append(buffer) }
+    func stop() { request.endAudio(); task?.cancel(); task = nil }
+}
+
+@available(macOS 26.0, *)
+@MainActor
+private final class ModernCueSpeechBackend: CueSpeechBackend {
+    let name = "SpeechAnalyzer"
+    private let transcriber: SpeechTranscriber
+    private let analyzer: SpeechAnalyzer
+    private var continuation: AsyncStream<AnalyzerInput>.Continuation?
+    private var resultTask: Task<Void, Never>?
+    private var analysisTask: Task<Void, Never>?
+
+    init(transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer) {
+        self.transcriber = transcriber
+        self.analyzer = analyzer
+    }
+
+    static func prepared(locale: Locale, format: AVAudioFormat) async throws -> ModernCueSpeechBackend {
+        guard SpeechTranscriber.isAvailable,
+              await SpeechTranscriber.supportedLocale(equivalentTo: locale) != nil else {
+            throw CueFailure.unavailable("SpeechAnalyzer is unavailable for this language.")
+        }
+        let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        try await analyzer.prepareToAnalyze(in: format)
+        return ModernCueSpeechBackend(transcriber: transcriber, analyzer: analyzer)
+    }
+
+    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int) {
+        let (inputs, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        self.continuation = continuation
+        resultTask = Task { @MainActor [transcriber] in
+            do {
+                for try await result in transcriber.results {
+                    onTranscript(String(result.text.characters), 1, generation)
+                }
+            } catch { }
+        }
+        analysisTask = Task { [analyzer] in
+            do { try await analyzer.start(inputSequence: inputs) }
+            catch { }
+        }
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer) { continuation?.yield(AnalyzerInput(buffer: buffer)) }
+    func stop() {
+        continuation?.finish()
+        continuation = nil
+        resultTask?.cancel()
+        resultTask = nil
+        analysisTask?.cancel()
+        analysisTask = nil
+        Task { await analyzer.cancelAndFinishNow() }
+    }
+}
+
+@MainActor
 private final class CueSpeechRecognizer: ObservableObject {
     var onTranscript: ((String, Float, Int) -> Void)?
     var onPower: ((Float) -> Void)?
     private let engine = AVAudioEngine()
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
-    private var recognizer: SFSpeechRecognizer?
+    private var backend: (any CueSpeechBackend)?
+    private var audioContinuation: AsyncStream<CueAudioBufferPacket>.Continuation?
+    private var audioConsumerTask: Task<Void, Never>?
+    private var warmedLocaleIdentifier: String?
+    private var warmedSampleRate: Double?
+    private var warmedChannelCount: AVAudioChannelCount?
+    private var warmedLegacyRecognizer: SFSpeechRecognizer?
+    private var warmedBackend: (any CueSpeechBackend)?
+
+    func preheat(locale: Locale) {
+        guard warmedLocaleIdentifier != locale.identifier else { return }
+        warmedLocaleIdentifier = locale.identifier
+        warmedLegacyRecognizer = SFSpeechRecognizer(locale: locale)
+        guard #available(macOS 26.0, *) else { return }
+        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
+        let format = inputFormat.sampleRate > 0
+            ? inputFormat
+            : AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
+        warmedSampleRate = format.sampleRate
+        warmedChannelCount = format.channelCount
+        let localeIdentifier = locale.identifier
+        Task { [weak self] in
+            guard let self else { return }
+            let backend = try? await ModernCueSpeechBackend.prepared(locale: locale, format: format)
+            guard self.warmedLocaleIdentifier == localeIdentifier else { return }
+            self.warmedBackend = backend
+        }
+    }
 
     func start(locale: Locale, hints: [String], generation: Int, recognizeWords: Bool) async throws {
         let micAllowed = await requestCueMicrophonePermission()
         guard micAllowed else { throw CueFailure.permission("Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone.") }
-        let recognizer: SFSpeechRecognizer?
+        stop()
         if recognizeWords {
             let speechStatus = await requestCueSpeechAuthorization()
             guard speechStatus == .authorized else { throw CueFailure.permission("Speech Recognition access is off. Enable Kio in System Settings → Privacy & Security → Speech Recognition. Classic mode remains available.") }
-            guard let selected = SFSpeechRecognizer(locale: locale), selected.isAvailable else { throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.") }
-            recognizer = selected
-        } else { recognizer = nil }
-        self.recognizer = recognizer
-        stop()
-        let request: SFSpeechAudioBufferRecognitionRequest?
-        if recognizeWords {
-            let created = SFSpeechAudioBufferRecognitionRequest()
-            created.shouldReportPartialResults = true
-            created.taskHint = .dictation
-            created.contextualStrings = Array(hints.prefix(32))
-            request = created
-        } else { request = nil }
-        self.request = request
+        }
+        let selectedRecognizer = recognizeWords
+            ? (warmedLocaleIdentifier == locale.identifier ? warmedLegacyRecognizer : SFSpeechRecognizer(locale: locale))
+            : nil
+        if recognizeWords && selectedRecognizer == nil { throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.") }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
-        let audioContext = CueAudioTapContext(request: request) { [weak self] power in
+        var chosenBackend: (any CueSpeechBackend)?
+        if recognizeWords {
+            if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
+                chosenBackend = warmedLocaleIdentifier == locale.identifier
+                    && warmedSampleRate == format.sampleRate && warmedChannelCount == format.channelCount
+                    ? warmedBackend : nil
+                if chosenBackend == nil { chosenBackend = try? await ModernCueSpeechBackend.prepared(locale: locale, format: format) }
+            }
+            if chosenBackend == nil, let selectedRecognizer, selectedRecognizer.isAvailable {
+                chosenBackend = LegacyCueSpeechBackend(recognizer: selectedRecognizer, hints: hints, generation: generation) { [weak self] text, confidence, generation in
+                    self?.onTranscript?(text, confidence, generation)
+                }
+            }
+            guard let chosenBackend else { throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.") }
+            if #available(macOS 26.0, *), let modern = chosenBackend as? ModernCueSpeechBackend {
+                modern.start(onTranscript: { [weak self] text, confidence, generation in
+                    self?.onTranscript?(text, confidence, generation)
+                }, generation: generation)
+            }
+        }
+        backend = chosenBackend
+        let (audioStream, audioContinuation) = AsyncStream<CueAudioBufferPacket>.makeStream(
+            bufferingPolicy: .bufferingNewest(64)
+        )
+        self.audioContinuation = audioContinuation
+        self.audioConsumerTask = Task { @MainActor [weak self] in
+            for await packet in audioStream {
+                guard !Task.isCancelled else { return }
+                self?.backend?.append(packet.buffer)
+            }
+        }
+        let audioContext = CueAudioTapContext(appendAudio: { buffer in
+            audioContinuation.yield(CueAudioBufferPacket(buffer))
+        }) { [weak self] power in
             self?.onPower?(power)
         }
         input.installTap(onBus: 0, bufferSize: 1_024, format: format,
                          block: cueAudioTapBlock(context: audioContext))
-        if let recognizer, let request {
-            task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-                guard let result else { _ = error; return }
-                let text = result.bestTranscription.formattedString
-                let confidence = result.bestTranscription.segments.last?.confidence ?? 0
-                Task { @MainActor [weak self] in self?.onTranscript?(text, confidence, generation) }
-            }
-        }
         engine.prepare()
         try engine.start()
     }
@@ -125,10 +273,12 @@ private final class CueSpeechRecognizer: ObservableObject {
     func stop() {
         if engine.isRunning { engine.stop() }
         if engine.inputNode.numberOfInputs > 0 { engine.inputNode.removeTap(onBus: 0) }
-        request?.endAudio()
-        task?.cancel()
-        task = nil
-        request = nil
+        audioContinuation?.finish()
+        audioContinuation = nil
+        audioConsumerTask?.cancel()
+        audioConsumerTask = nil
+        backend?.stop()
+        backend = nil
     }
 
 }
@@ -157,9 +307,11 @@ struct CueSurfaceView: View {
     @State private var alignment = CueTextAlignment(script: "")
     @State private var voiceState = CueVoiceActivityState()
     @State private var classicClock = CueClassicClock()
-    @State private var voicePosition: Double = 0
     @State private var lastTick = Date.now
     @State private var transcriptGeneration = 0
+    @State private var controlsVisible = false
+    @State private var controlsHovered = false
+    @State private var controlsHideTask: Task<Void, Never>?
     @State private var fileImporter = false
     @StateObject private var speech = CueSpeechRecognizer()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -181,7 +333,9 @@ struct CueSurfaceView: View {
         .onChange(of: isActive) { _, value in onActiveChange(value) }
         .onAppear {
             if !initialText.isEmpty { script = initialText; initialText = "" }
+            speech.preheat(locale: activeLocale)
         }
+        .onChange(of: mode) { _, _ in speech.preheat(locale: activeLocale) }
     }
 
     private var setup: some View {
@@ -259,7 +413,7 @@ struct CueSurfaceView: View {
     }
 
     private var teleprompter: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 0) {
             if complete {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(hex: AgentID.cue.colorHex))
                 Text("Script complete").font(.system(size: 12, weight: .semibold))
@@ -267,67 +421,135 @@ struct CueSurfaceView: View {
                     .buttonStyle(.bordered).controlSize(.small)
             } else {
                 ScrollViewReader { proxy in
-                    ScrollView {
-                        cueText
-                            .padding(.vertical, 22)
+                    ZStack(alignment: .top) {
+                        ScrollView {
+                            cueText
+                                .padding(.vertical, 12)
+                        }
+                        .scrollIndicators(.hidden)
+                        .onChange(of: visiblePosition) { _, value in
+                            guard alignment.tokens.indices.contains(value) else { return }
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { proxy.scrollTo(value, anchor: .center) }
+                        }
+                        if controlsVisible {
+                            controlsOverlay
+                                .padding(.top, 2)
+                                .transition(.opacity)
+                                .zIndex(2)
+                                .onHover { hovering in
+                                    controlsHovered = hovering
+                                    if !hovering { scheduleControlsHide() }
+                                }
+                        }
                     }
-                    .scrollIndicators(.hidden)
-                    .onChange(of: readPosition) { _, value in
-                        guard alignment.tokens.indices.contains(value) else { return }
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) { proxy.scrollTo(value, anchor: .center) }
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        if case .active = phase { revealControls() }
                     }
                 }
-                .contentShape(Rectangle())
-                HStack(spacing: 8) {
-                    Button(paused ? "Resume" : "Pause") { paused.toggle(); lastTick = .now }
-                    Button("Restart") { restart() }
-                    textSizeMenu
-                    if mode != .wordTracking {
-                        Slider(value: $speed, in: 60...260, step: 10).frame(maxWidth: 72).help("Reading speed")
-                    }
-                    Spacer()
-                    Text("\(min(readPosition, alignment.tokens.count)) / \(alignment.tokens.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.58))
-                    Button("Done") { exitCue() }.help("Done and close Cue")
-                }
-                .buttonStyle(.bordered).controlSize(.mini)
+                statusStrip
             }
         }
         .foregroundStyle(.white.opacity(0.93))
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 8)
         .task(id: isActive) {
-            guard isActive, mode != .wordTracking, !complete else { return }
-            while !Task.isCancelled && isActive && !complete {
+            guard isActive, mode == .classic, !complete else { return }
+            while !Task.isCancelled && isActive && !complete && mode == .classic {
                 try? await Task.sleep(for: .milliseconds(120))
                 guard !Task.isCancelled else { return }
-                if mode == .classic { advanceClassic() }
-                else { advanceVoicePaced() }
+                advanceClassic()
             }
         }
         .onKeyPress(.space) {
-            guard mode != .wordTracking else { return .ignored }
+            guard mode == .classic else { return .ignored }
             paused.toggle(); return .handled
+        }
+    }
+
+    private var visiblePosition: Int {
+        let lead = mode == .followMyVoice && voiceState.isSpeaking && !paused ? 1 : 0
+        return min(max(0, readPosition + lead), max(0, alignment.tokens.count - 1))
+    }
+
+    private var statusStrip: some View {
+        HStack(spacing: 8) {
+            CueWaveform(levels: voiceState.waveform.levels, speaking: voiceState.isSpeaking)
+                .frame(width: 92, height: 22)
+            Text(alignment.recentSpokenWords.isEmpty ? (paused ? "Paused" : mode == .classic ? "Classic" : "Listening…") : "\(alignment.recentSpokenWords)…")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: paused ? "pause.fill" : mode == .classic ? "text.alignleft" : "mic.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(paused || mode == .classic ? .white.opacity(0.42) : Color(hex: AgentID.cue.colorHex))
+                .accessibilityLabel(paused ? "Paused" : mode == .classic ? "Classic scrolling" : "Listening")
+            Button { exitCue() } label: { Image(systemName: "xmark.circle.fill") }
+                .buttonStyle(.plain).foregroundStyle(.white.opacity(0.7)).help("Done and close Cue")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var controlsOverlay: some View {
+        HStack(spacing: 7) {
+            Button(paused ? "Resume" : "Pause") { paused.toggle(); lastTick = .now }
+            Button("Restart") { restart() }
+            textSizeMenu
+            if mode == .classic {
+                Slider(value: $speed, in: 60...260, step: 10).frame(maxWidth: 82).help("Reading speed")
+            }
+            Spacer(minLength: 0)
+            Text("\(min(readPosition, alignment.tokens.count)) / \(alignment.tokens.count)")
+                .font(.system(size: 8, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
+        }
+        .buttonStyle(.bordered).controlSize(.mini)
+        .padding(5)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func revealControls() {
+        controlsHideTask?.cancel()
+        controlsVisible = true
+        scheduleControlsHide()
+    }
+
+    private func scheduleControlsHide() {
+        controlsHideTask?.cancel()
+        controlsHideTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(2_800))
+            guard !Task.isCancelled, !controlsHovered else { return }
+            withAnimation(.easeOut(duration: 0.18)) { controlsVisible = false }
         }
     }
 
     private var cueText: some View {
         let ns = script as NSString
+        let start = max(0, visiblePosition - 14)
+        let end = min(alignment.tokens.count, max(visiblePosition + 24, 32))
+        let window = start..<end
         return CueFlowLayout(spacing: 4, lineSpacing: 8) {
-            ForEach(Array(alignment.tokens.enumerated()), id: \.offset) { index, token in
+            ForEach(Array(window), id: \.self) { index in
+                let token = alignment.tokens[index]
                 let end = index + 1 < alignment.tokens.count ? alignment.tokens[index + 1].range.location : ns.length
                 let range = NSRange(location: token.range.location, length: max(0, end - token.range.location))
                 let fragment = range.location <= ns.length && NSMaxRange(range) <= ns.length ? ns.substring(with: range) : token.text
                 Text(fragment)
-                    .font(.system(size: textSize.points, weight: .medium, design: .rounded))
-                    .foregroundStyle(index < readPosition ? .white.opacity(0.56) : (index == readPosition ? .black : .white.opacity(0.92)))
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(index == readPosition ? Color(hex: AgentID.cue.colorHex) : .clear,
-                                in: RoundedRectangle(cornerRadius: 5))
+                    .font(.system(size: textSize.points, weight: .regular, design: .rounded))
+                    .foregroundStyle(index < visiblePosition ? .white.opacity(0.62) :
+                                     index == visiblePosition ? Color(hex: AgentID.cue.colorHex) :
+                                     index <= visiblePosition + 8 ? .white.opacity(0.87) : .white.opacity(0.59))
+                    .lineSpacing(8)
                     .id(index)
                     .onTapGesture { jump(to: index) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 90, maxHeight: .infinity, alignment: .center)
     }
 
     private func begin() {
@@ -338,13 +560,13 @@ struct CueSurfaceView: View {
         errorMessage = nil
         guard !alignment.tokens.isEmpty else { errorMessage = "Add some words to the script first."; return }
         classicClock = CueClassicClock()
-        voicePosition = 0
         if mode == .classic { isActive = true; lastTick = .now; return }
         Task {
             do {
                 speech.onTranscript = { text, confidence, generation in
-                    guard isActive, mode == .wordTracking else { return }
-                    let value = alignment.consume(text, confidence: confidence, generation: generation)
+                    guard isActive, mode != .classic, !paused else { return }
+                    let policy: CueTrackingPolicy = mode == .wordTracking ? .accurate : .responsive
+                    let value = alignment.consume(text, confidence: confidence, generation: generation, policy: policy)
                     readPosition = min(max(0, value), max(0, alignment.tokens.count - 1))
                     if alignment.isFinished { complete = true; speech.stop() }
                 }
@@ -352,7 +574,7 @@ struct CueSurfaceView: View {
                     _ = voiceState.update(power: power)
                 }
                 try await speech.start(locale: activeLocale, hints: alignment.upcomingContextWords,
-                                       generation: alignment.generation, recognizeWords: mode == .wordTracking)
+                                       generation: alignment.generation, recognizeWords: mode != .classic)
                 isActive = true
                 lastTick = .now
             } catch { errorMessage = error.localizedDescription }
@@ -369,22 +591,11 @@ struct CueSurfaceView: View {
         if next != readPosition { readPosition = next; if next >= alignment.tokens.count { complete = true } }
     }
 
-    private func advanceVoicePaced() {
-        let now = Date.now
-        let delta = now.timeIntervalSince(lastTick)
-        lastTick = now
-        guard !paused, voiceState.isSpeaking else { return }
-        voicePosition = min(Double(alignment.tokens.count), voicePosition + delta * speed / 60)
-        let next = Int(voicePosition)
-        if next > readPosition { readPosition = next; if next >= alignment.tokens.count { complete = true; speech.stop() } }
-    }
-
     private func jump(to index: Int) {
         guard isActive else { return }
         _ = alignment.jump(to: index)
         readPosition = index
-        voicePosition = Double(index)
-        if mode == .wordTracking {
+        if mode != .classic {
             Task {
                 do {
                     try await speech.start(locale: activeLocale, hints: alignment.upcomingContextWords,
@@ -401,7 +612,6 @@ struct CueSurfaceView: View {
         complete = false
         paused = false
         classicClock = CueClassicClock()
-        voicePosition = 0
         if mode != .classic {
             isActive = false
             begin()
@@ -530,5 +740,28 @@ private struct CueFlowLayout: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+}
+
+private struct CueWaveform: View {
+    let levels: [Float]
+    let speaking: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            guard !levels.isEmpty else { return }
+            let gap: CGFloat = 2
+            let barWidth = max(1, (size.width - CGFloat(levels.count - 1) * gap) / CGFloat(levels.count))
+            let accent = Color(hex: AgentID.cue.colorHex)
+            for (index, value) in levels.enumerated() {
+                let normalized = value.isFinite ? min(1, max(0, value)) : 0
+                let height = max(2, CGFloat(normalized) * size.height)
+                let rect = CGRect(x: CGFloat(index) * (barWidth + gap), y: (size.height - height) / 2,
+                                  width: barWidth, height: height)
+                context.fill(Path(roundedRect: rect, cornerRadius: barWidth / 2),
+                             with: .color(speaking ? accent.opacity(0.92) : .white.opacity(0.27)))
+            }
+        }
+        .accessibilityLabel(speaking ? "Audio waveform, speaking" : "Audio waveform, quiet")
     }
 }

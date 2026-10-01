@@ -29,9 +29,7 @@ struct KioSettingsView: View {
     @State private var apiKeyEntry = ""
     @State private var intelligenceMessage: String?
     @State private var providerModels: [ProviderModel] = []
-    @State private var reelPreparing = false
-    @State private var reelMessage: String?
-    @State private var reelProgress = 0.0
+    @State private var showReelDiagnostics = false
     @ObservedObject private var intelligence = IntelligenceSettings.shared
     @ObservedObject private var model = LocalModelManager.shared
     @ObservedObject private var relay = LocalRelayManager.shared
@@ -49,6 +47,7 @@ struct KioSettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Kio Settings")
+        .sheet(isPresented: $showReelDiagnostics) { ReelRuntimeDiagnosticsView() }
         .task {
             launchAtLogin = SMAppService.mainApp.status == .enabled
         }
@@ -132,35 +131,13 @@ struct KioSettingsView: View {
 
     private var reelSection: some View {
         Section("Reel · online media") {
-            LabeledContent("Helper folder", value: ReelHelperManager.directory.path)
-                .textSelection(.enabled)
-            LabeledContent(ReelHelperManager.pythonRuntime.id,
-                           value: "\(ReelHelperManager.pythonRuntime.version) · \(ReelHelperManager.pythonRuntime.architecture)")
-            LabeledContent("Streamlink", value: "8.6.0 · isolated Python wheel")
-            ForEach(ReelHelperManager.helpers) { helper in
-                LabeledContent(helper.id, value: "\(helper.version) · \(helper.architecture)")
+            LabeledContent("Status", value: ReelRuntime.isReady() ? "Ready" : "Installation damaged")
+            LabeledContent("Media engine", value: "Bundled with Kio")
+            if !ReelRuntime.isReady() {
+                Text("Reinstall Kio to restore Reel’s bundled media runtime.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            Button(reelPreparing ? "Preparing Reel…" : "Prepare Reel") {
-                reelPreparing = true
-                reelProgress = 0
-                reelMessage = "Starting the pinned, checksum-verified helper setup…"
-                Task {
-                    do {
-                        try await ReelHelperManager.prepareAll { value, message in
-                            reelProgress = value
-                            reelMessage = message
-                        }
-                    } catch {
-                        reelMessage = error.localizedDescription
-                    }
-                    reelPreparing = false
-                }
-            }
-            .disabled(reelPreparing)
-            if reelPreparing { ProgressView(value: reelProgress).accessibilityLabel("Prepare Reel helpers") }
-            if let reelMessage { Text(reelMessage).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled) }
-            Text("Preparation runs only when you press this button. Helpers are installed in Kio’s Application Support folder; Kio does not use Homebrew or browser cookies.")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+            Button("Diagnostics…") { showReelDiagnostics = true }
         }
     }
 
@@ -369,6 +346,23 @@ struct KioSettingsView: View {
             launchAtLogin = SMAppService.mainApp.status == .enabled
             loginError = error.localizedDescription
         }
+    }
+}
+
+private struct ReelRuntimeDiagnosticsView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Reel Diagnostics").font(.headline)
+            ForEach(Array(ReelRuntime.diagnostics.enumerated()), id: \.offset) { entry in
+                let item = entry.element
+                LabeledContent(item.name, value: "\(item.version) · \(item.available ? "Ready" : "Missing")")
+            }
+            Text("The media runtime is loaded from Kio.app. Gallery download support is not included in this build.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack { Spacer(); Button("Done") { NSApp.keyWindow?.close() }.keyboardShortcut(.defaultAction) }
+        }
+        .padding(20)
+        .frame(minWidth: 360)
     }
 }
 

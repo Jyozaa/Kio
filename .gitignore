@@ -26,3 +26,6 @@ model-cache/
 .env.*
 !.env.example
 .dev-signing.env
+.cache/reel/
+apps/mac/KioMac/Reel/
+apps/mac/KioMac/ReelRuntime/

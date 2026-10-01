@@ -124,7 +124,8 @@ public enum ReelCommandBuilder {
     private static let videoFormats: Set<String> = ["mp4", "webm", "mkv", "mov"]
     private static let audioFormats: Set<String> = ["mp3", "m4a", "wav", "flac"]
 
-    public static func ytDlp(operation: ToolOperation, url: URL, outputTemplate: String, quality: String?, format: String?, ffmpegDirectory: URL) throws -> [String] {
+    public static func ytDlp(operation: ToolOperation, url: URL, outputTemplate: String, quality: String?, format: String?,
+                             ffmpegDirectory: URL, denoURL: URL = ReelRuntime.denoURL) throws -> [String] {
         guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http",
               outputTemplate.hasPrefix("/"), outputTemplate.count <= 2_000,
               quality.map(qualities.contains) ?? true else { throw KioFailure.invalidInput("Reel's media command contained an unsupported typed option.") }
@@ -133,8 +134,9 @@ public enum ReelCommandBuilder {
         } else if operation == .downloadRemoteVideo || operation == .downloadRemoteLive {
             guard format.map(videoFormats.contains) ?? true else { throw KioFailure.invalidInput("Choose MP4, WebM, MKV, or MOV for video output.") }
         }
-        var values = ["--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", "-o", outputTemplate,
-                      "--ffmpeg-location", ffmpegDirectory.path]
+        var values = ["--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", "--no-plugin-dirs",
+                      "--no-remote-components", "--js-runtimes", "deno:\(denoURL.path)",
+                      "-o", outputTemplate, "--ffmpeg-location", ffmpegDirectory.path]
         if operation == .downloadRemoteAudio {
             values += ["-x", "--audio-format", format ?? "m4a"]
         } else if operation == .downloadRemoteSubtitles {
@@ -171,348 +173,128 @@ public struct ReelHelperInfo: Sendable, Identifiable {
     public let installName: String
 }
 
-private struct ReelPythonWheelManifest: Decodable {
-    struct Wheel: Decodable {
-        let name: String
-        let version: String
-        let filename: String
-        let url: URL
-        let sha256: String
-        let license: String
-    }
-    let version: String
-    let python: String
-    let wheels: [Wheel]
+public struct ReelRuntimeComponent: Decodable, Sendable, Identifiable {
+    public let id: String
+    public let version: String
+    public let architecture: String
+    public let upstreamURL: URL
+    public let artifactURL: URL
+    public let sha256: String
+    public let license: String
+    public let relativePath: String
 }
 
-public enum ReelHelperManager {
-    public static var directory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Kio/Helpers", isDirectory: true)
+public struct ReelRuntimeWheel: Decodable, Sendable {
+    public let name: String
+    public let version: String
+    public let filename: String
+    public let url: URL
+    public let sha256: String
+    public let license: String
+}
+
+public struct ReelRuntimeManifest: Decodable, Sendable {
+    public let architecture: String
+    public let components: [ReelRuntimeComponent]
+    public let pythonVersion: String
+    public let wheels: [ReelRuntimeWheel]
+
+    public static let bundled: ReelRuntimeManifest? = {
+        guard let url = Bundle.module.url(forResource: "ReelRuntime", withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ReelRuntimeManifest.self, from: data)
+    }()
+
+    public func component(_ id: String) -> ReelRuntimeComponent? {
+        components.first { $0.id == id }
     }
-    fileprivate static var streamlinkPackagesDirectory: URL { directory.appendingPathComponent("streamlink/site-packages", isDirectory: true) }
-    private static var streamlinkVersionURL: URL { directory.appendingPathComponent("streamlink/version.txt") }
-    public static let pythonRuntimeVersion = "3.12.14"
-    private static let pythonRuntimeURL = URL(string: "https://github.com/astral-sh/python-build-standalone/releases/download/20260901/cpython-3.12.14%2B20260901-aarch64-apple-darwin-install_only_stripped.tar.gz")!
-    private static let pythonRuntimeSHA256 = "81a359f1cfadd4da11766534c5913791cea55f26e1bb902cacd2a531bb1e4b2b"
-    private static var pythonRuntimeDirectory: URL { directory.appendingPathComponent("python", isDirectory: true) }
+}
+
+public enum ReelRuntime {
+    public static var bundleURL: URL {
+        Bundle.main.resourceURL?.appendingPathComponent("Reel", isDirectory: true)
+            ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Reel", isDirectory: true)
+    }
+
+    public static func url(for componentID: String, in root: URL = bundleURL,
+                           manifest: ReelRuntimeManifest? = .bundled) -> URL? {
+        guard let component = manifest?.component(componentID) else { return nil }
+        return root.appending(path: component.relativePath)
+    }
+
+    public static var ytDlpURL: URL { url(for: "yt-dlp") ?? bundleURL.appendingPathComponent("yt-dlp") }
+    public static var denoURL: URL { url(for: "deno") ?? bundleURL.appendingPathComponent("deno") }
+    public static var ffmpegURL: URL { url(for: "ffmpeg") ?? bundleURL.appendingPathComponent("ffmpeg/bin/ffmpeg") }
+    public static var ffprobeURL: URL { url(for: "ffprobe") ?? bundleURL.appendingPathComponent("ffmpeg/bin/ffprobe") }
+    public static var pythonURL: URL { url(for: "python") ?? bundleURL.appendingPathComponent("streamlink/python/bin/python3.12") }
+    public static var streamlinkPackagesURL: URL { url(for: "streamlink") ?? bundleURL.appendingPathComponent("streamlink/site-packages") }
+
+    public static func isReady(in root: URL = bundleURL, manifest: ReelRuntimeManifest? = .bundled) -> Bool {
+        guard let manifest else { return false }
+        let required = ["yt-dlp", "deno", "ffmpeg", "ffprobe", "python", "streamlink"]
+        return required.allSatisfy { id in
+            guard let path = url(for: id, in: root, manifest: manifest) else { return false }
+            return FileManager.default.isExecutableFile(atPath: path.path)
+                || (id == "streamlink" && FileManager.default.fileExists(atPath: path.appendingPathComponent("streamlink_cli/main.py").path))
+        }
+    }
+
+    public static var diagnostics: [(name: String, version: String, available: Bool)] {
+        guard let manifest = ReelRuntimeManifest.bundled else { return [("Media runtime", "Manifest missing", false)] }
+        return manifest.components.map { component in
+            let path = bundleURL.appending(path: component.relativePath)
+            let available = component.id == "streamlink"
+                ? FileManager.default.fileExists(atPath: path.appendingPathComponent("streamlink_cli/main.py").path)
+                : component.id == "lame"
+                ? FileManager.default.fileExists(atPath: path.path)
+                : FileManager.default.isExecutableFile(atPath: path.path)
+            return (component.id, component.version, available)
+        }
+    }
+}
+
+/// Compatibility facade for older call sites; this only reads the app bundle and never installs helpers.
+public enum ReelHelperManager {
+    public static var directory: URL { ReelRuntime.bundleURL }
+    fileprivate static var streamlinkPackagesDirectory: URL { ReelRuntime.streamlinkPackagesURL }
     fileprivate static let streamlinkBootstrap = "import sys; sys.path.insert(0, sys.argv.pop(1)); from streamlink_cli.main import main; raise SystemExit(main())"
-    public static let helpers: [ReelHelperInfo] = [
-        ReelHelperInfo(id: "yt-dlp", version: "2026.08.19", license: "Unlicense",
-                       releaseURL: URL(string: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos")!,
-                       sha256: "0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202",
-                       architecture: "Universal macOS executable", installName: "yt-dlp"),
-        ReelHelperInfo(id: "gallery-dl", version: "1.32.14", license: "GPL-2.0-only",
-                       releaseURL: URL(string: "https://github.com/gdl-org/builds/releases/download/2026.10.01/gallery-dl_macos")!,
-                       sha256: "f5be48ba15215c3e31e3e7d1afc23d1c63e507210a3241bbbc74b38730e77fef",
-                       architecture: "macOS build", installName: "gallery-dl"),
-        ReelHelperInfo(id: "ffmpeg", version: "9.0.2", license: "GPL build (x264/x265 enabled)",
-                       releaseURL: URL(string: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip")!,
-                       sha256: "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924",
-                       architecture: "Apple Silicon arm64", installName: "ffmpeg"),
-        ReelHelperInfo(id: "ffprobe", version: "9.0.2", license: "GPL build (paired with FFmpeg)",
-                       releaseURL: URL(string: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip")!,
-                       sha256: "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6",
-                       architecture: "Apple Silicon arm64", installName: "ffprobe")
-    ]
-    public static let pythonRuntime = ReelHelperInfo(
-        id: "Python runtime", version: pythonRuntimeVersion, license: "PSF-2.0",
-        releaseURL: pythonRuntimeURL, sha256: pythonRuntimeSHA256,
-        architecture: "Apple Silicon arm64 · CPython", installName: "python3.12"
-    )
+    public static let pythonRuntimeVersion = ReelRuntimeManifest.bundled?.component("python")?.version ?? "3.12.14"
+    public static let pythonRuntime: ReelHelperInfo = info("python")
+    public static let helpers: [ReelHelperInfo] = ReelRuntimeManifest.bundled?.components.map(info) ?? []
+
+    private static func info(_ component: ReelRuntimeComponent) -> ReelHelperInfo {
+        ReelHelperInfo(id: component.id, version: component.version, license: component.license,
+                       releaseURL: component.artifactURL, sha256: component.sha256,
+                       architecture: component.architecture,
+                       installName: URL(fileURLWithPath: component.relativePath).lastPathComponent)
+    }
+
+    private static func info(_ id: String) -> ReelHelperInfo {
+        guard let component = ReelRuntimeManifest.bundled?.component(id) else {
+            return ReelHelperInfo(id: id, version: "unavailable", license: "not bundled", releaseURL: URL(fileURLWithPath: "/"),
+                                  sha256: "", architecture: "", installName: id)
+        }
+        return info(component)
+    }
 
     public static func isPrepared(_ name: String) -> Bool {
-        if name == "streamlink" {
-            return (try? String(contentsOf: streamlinkVersionURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)) == "8.6.0"
-                && FileManager.default.fileExists(atPath: streamlinkPackagesDirectory.appendingPathComponent("streamlink_cli/main.py").path)
-                && managedPython != nil
+        if name == "gallery-dl" { return false }
+        switch name {
+        case "yt-dlp": return FileManager.default.isExecutableFile(atPath: ReelRuntime.ytDlpURL.path)
+        case "deno": return FileManager.default.isExecutableFile(atPath: ReelRuntime.denoURL.path)
+        case "ffmpeg": return FileManager.default.isExecutableFile(atPath: ReelRuntime.ffmpegURL.path)
+        case "ffprobe": return FileManager.default.isExecutableFile(atPath: ReelRuntime.ffprobeURL.path)
+        case "streamlink": return FileManager.default.isExecutableFile(atPath: ReelRuntime.pythonURL.path)
+            && FileManager.default.fileExists(atPath: ReelRuntime.streamlinkPackagesURL.appendingPathComponent("streamlink_cli/main.py").path)
+        default: return false
         }
-        return ReelMediaRouter.isPreparedBinary(name, in: directory)
     }
+
+    public static var managedPython: URL? { isPrepared("streamlink") ? ReelRuntime.pythonURL : nil }
 
     public static func matchesSHA256(_ data: Data, expected: String) -> Bool {
         guard expected.count == 64, expected.allSatisfy({ $0.isHexDigit }) else { return false }
-        return sha256(data).caseInsensitiveCompare(expected) == .orderedSame
-    }
-
-    /// Called only from the explicit Prepare Reel action. Files are verified before any
-    /// executable bit is set or helper version is queried.
-    public static func prepareAll(progress: @MainActor @Sendable (Double, String) -> Void = { _, _ in }) async throws {
-        #if !arch(arm64)
-        throw KioFailure.unsupported("This pinned helper set currently targets Apple Silicon (arm64).")
-        #endif
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        await progress(0.02, "Preparing the pinned Reel helper set…")
-        try await installBinary(helpers[0])
-        await progress(0.18, "Verified yt-dlp 2026.08.19")
-        try await installBinary(helpers[1])
-        await progress(0.34, "Verified gallery-dl 1.32.14")
-        try await installFFmpeg(helpers[2])
-        await progress(0.54, "Verified FFmpeg 9.0.2")
-        try await installFFprobe(helpers[3])
-        await progress(0.68, "Verified FFprobe 9.0.2")
-        try await installPythonRuntime()
-        await progress(0.76, "Verified isolated Python \(pythonRuntimeVersion)")
-        try await installStreamlink(progress: progress)
-        try verifyVersion("yt-dlp", contains: "2026.08.19")
-        try verifyVersion("gallery-dl", contains: "1.32.14")
-        try verifyVersion("ffmpeg", contains: "9.0.2")
-        try verifyVersion("ffprobe", contains: "9.0.2")
-        try verifyStreamlink()
-        await progress(1, "All Reel helpers passed version checks.")
-    }
-
-    private static func installStreamlink(progress: @MainActor @Sendable (Double, String) -> Void) async throws {
-        guard let manifestURL = Bundle.module.url(forResource: "StreamlinkWheels", withExtension: "json"),
-              let manifest = try? JSONDecoder().decode(ReelPythonWheelManifest.self, from: Data(contentsOf: manifestURL)),
-              manifest.version == "8.6.0", manifest.python == "3.12", manifest.wheels.count == 20 else {
-            throw KioFailure.verification("Kio's pinned Streamlink wheel manifest is missing or malformed.")
-        }
-        let stage = directory.appendingPathComponent(".streamlink-\(UUID().uuidString)", isDirectory: true)
-        let sitePackages = stage.appendingPathComponent("site-packages", isDirectory: true)
-        try FileManager.default.createDirectory(at: sitePackages, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: stage) }
-        for (index, wheel) in manifest.wheels.enumerated() {
-            try Task.checkCancellation()
-            guard wheel.url.host == "files.pythonhosted.org", wheel.filename.hasSuffix(".whl"), wheel.sha256.count == 64 else {
-                throw KioFailure.verification("A Streamlink wheel entry failed its host or manifest check.")
-            }
-            let (temporary, response) = try await URLSession.shared.download(from: wheel.url)
-            guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
-                  let size = try? temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                  size > 0, size <= 16 * 1_024 * 1_024 else {
-                throw KioFailure.processing("Couldn't download the pinned Streamlink dependency \(wheel.name).")
-            }
-            let data = try Data(contentsOf: temporary)
-            guard matchesSHA256(data, expected: wheel.sha256) else {
-                throw KioFailure.verification("The \(wheel.name) wheel checksum did not match Kio's pinned SHA-256. It was not installed.")
-            }
-            let archiveURL = stage.appendingPathComponent(wheel.filename)
-            try data.write(to: archiveURL, options: .atomic)
-            try extractPinnedWheel(archiveURL, to: sitePackages)
-            try? FileManager.default.removeItem(at: archiveURL)
-            await progress(0.76 + 0.22 * Double(index + 1) / Double(manifest.wheels.count),
-                           "Verified Streamlink dependency \(index + 1) of \(manifest.wheels.count)…")
-        }
-        guard FileManager.default.fileExists(atPath: sitePackages.appendingPathComponent("streamlink_cli/main.py").path),
-              FileManager.default.fileExists(atPath: sitePackages.appendingPathComponent("streamlink/__init__.py").path) else {
-            throw KioFailure.verification("The verified Streamlink wheels did not create the expected module layout.")
-        }
-        let final = directory.appendingPathComponent("streamlink", isDirectory: true)
-        let backup = directory.appendingPathComponent(".streamlink-\(UUID().uuidString).old", isDirectory: true)
-        if FileManager.default.fileExists(atPath: final.path) { try FileManager.default.moveItem(at: final, to: backup) }
-        do {
-            try FileManager.default.moveItem(at: stage, to: final)
-            try Data("8.6.0\n".utf8).write(to: final.appendingPathComponent("version.txt"), options: .atomic)
-            try? FileManager.default.removeItem(at: backup)
-        } catch {
-            try? FileManager.default.removeItem(at: final)
-            if FileManager.default.fileExists(atPath: backup.path) { try? FileManager.default.moveItem(at: backup, to: final) }
-            throw error
-        }
-    }
-
-    private static func extractPinnedWheel(_ archiveURL: URL, to destination: URL) throws {
-        let archive: Archive
-        do {
-            archive = try Archive(url: archiveURL, accessMode: .read)
-        } catch {
-            throw KioFailure.verification("A pinned Streamlink wheel could not be opened as a ZIP archive.")
-        }
-        for entry in archive {
-            let components = entry.path.split(separator: "/", omittingEmptySubsequences: false)
-            guard !entry.path.hasPrefix("/"), !components.contains(".."), !entry.path.contains("\\"), entry.type != .symlink else {
-                throw KioFailure.verification("A pinned Streamlink wheel contains an unsafe archive path.")
-            }
-            let output = destination.appending(path: entry.path)
-            if entry.type == .directory {
-                try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-            } else {
-                try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-                _ = try archive.extract(entry, to: output, skipCRC32: false)
-            }
-        }
-    }
-
-    fileprivate static var managedPython: URL? {
-        ["install/bin/python3.12", "install/bin/python"]
-            .map(pythonRuntimeDirectory.appendingPathComponent)
-            .first(where: { FileManager.default.isExecutableFile(atPath: $0.path) })
-    }
-
-    private static func installPythonRuntime() async throws {
-        if let python = managedPython,
-           (try? await runVersionProbe(python).contains(pythonRuntimeVersion)) == true { return }
-        let stagingArchive = directory.appendingPathComponent(".python-\(UUID().uuidString).tar.gz")
-        let stagingRoot = directory.appendingPathComponent(".python-\(UUID().uuidString)", isDirectory: true)
-        defer {
-            try? FileManager.default.removeItem(at: stagingArchive)
-            try? FileManager.default.removeItem(at: stagingRoot)
-        }
-        let (download, response) = try await URLSession.shared.download(from: pythonRuntimeURL)
-        guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true,
-              let size = try? download.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size > 0, size <= 40 * 1_024 * 1_024 else {
-            throw KioFailure.processing("Couldn't download Kio's pinned Python runtime for Streamlink.")
-        }
-        let bytes = try Data(contentsOf: download)
-        guard Self.matchesSHA256(bytes, expected: pythonRuntimeSHA256) else {
-            throw KioFailure.verification("The Python runtime checksum did not match Kio's pinned SHA-256. It was not installed.")
-        }
-        try bytes.write(to: stagingArchive, options: .atomic)
-        try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
-        let extractor = Process()
-        extractor.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        extractor.arguments = ["-xzf", stagingArchive.path, "-C", stagingRoot.path]
-        try extractor.run()
-        extractor.waitUntilExit()
-        let candidate = stagingRoot.appendingPathComponent("python")
-        let extractedPython = candidate.appendingPathComponent("install/bin/python3.12")
-        guard extractor.terminationStatus == 0,
-              FileManager.default.isExecutableFile(atPath: extractedPython.path),
-              (try? await runVersionProbe(extractedPython).contains(pythonRuntimeVersion)) == true else {
-            throw KioFailure.verification("The checksum-verified Python archive didn't contain the expected runnable \(pythonRuntimeVersion) arm64 runtime.")
-        }
-        let backup = directory.appendingPathComponent(".python-\(UUID().uuidString).old", isDirectory: true)
-        if FileManager.default.fileExists(atPath: pythonRuntimeDirectory.path) {
-            try FileManager.default.moveItem(at: pythonRuntimeDirectory, to: backup)
-        }
-        do {
-            try FileManager.default.moveItem(at: candidate, to: pythonRuntimeDirectory)
-            try? FileManager.default.removeItem(at: backup)
-        } catch {
-            if FileManager.default.fileExists(atPath: backup.path) {
-                try? FileManager.default.moveItem(at: backup, to: pythonRuntimeDirectory)
-            }
-            throw error
-        }
-    }
-
-    private static func runVersionProbe(_ executable: URL) async throws -> String {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = executable
-        process.arguments = ["--version"]
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile().prefix(256), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0 else { throw KioFailure.verification("The pinned Python runtime failed its version check.") }
-        return output
-    }
-
-    private static func verifyStreamlink() throws {
-        guard isPrepared("streamlink"), let python = managedPython else {
-            throw KioFailure.unsupported("Kio's pinned Python 3.12 runtime is required to prepare Streamlink.")
-        }
-        let process = Process()
-        process.executableURL = python
-        process.arguments = ["-I", "-c", streamlinkBootstrap, streamlinkPackagesDirectory.path, "--version"]
-        let pipe = Pipe(); process.standardOutput = pipe; process.standardError = pipe
-        try process.run(); process.waitUntilExit()
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile().prefix(1_000), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0, output.contains("8.6.0") else {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent("streamlink", isDirectory: true))
-            throw KioFailure.verification("The pinned Streamlink package failed its bundled Python version check.")
-        }
-    }
-
-    private static func installBinary(_ helper: ReelHelperInfo) async throws {
-        let staging = directory.appendingPathComponent(".\(helper.installName)-\(UUID().uuidString).download")
-        defer { try? FileManager.default.removeItem(at: staging) }
-        let (temporary, response) = try await URLSession.shared.download(from: helper.releaseURL)
-        guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true else {
-            throw KioFailure.processing("Couldn't download the pinned \(helper.id) helper release.")
-        }
-        let bytes = try Data(contentsOf: temporary)
-        guard Self.matchesSHA256(bytes, expected: helper.sha256) else {
-            throw KioFailure.verification("The \(helper.id) helper checksum did not match its pinned SHA-256. It was not installed.")
-        }
-        try bytes.write(to: staging, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staging.path)
-        let final = directory.appendingPathComponent(helper.installName)
-        let backup = directory.appendingPathComponent(".\(helper.installName)-\(UUID().uuidString).old")
-        if FileManager.default.fileExists(atPath: final.path) { try FileManager.default.moveItem(at: final, to: backup) }
-        do { try FileManager.default.moveItem(at: staging, to: final); try? FileManager.default.removeItem(at: backup) }
-        catch { if FileManager.default.fileExists(atPath: backup.path) { try? FileManager.default.moveItem(at: backup, to: final) }; throw error }
-    }
-
-    private static func installFFmpeg(_ helper: ReelHelperInfo) async throws {
-        let staging = directory.appendingPathComponent(".ffmpeg-\(UUID().uuidString).zip")
-        defer { try? FileManager.default.removeItem(at: staging) }
-        let (temporary, response) = try await URLSession.shared.download(from: helper.releaseURL)
-        guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true else { throw KioFailure.processing("Couldn't download pinned FFmpeg.") }
-        let data = try Data(contentsOf: temporary)
-        guard Self.matchesSHA256(data, expected: helper.sha256) else {
-            throw KioFailure.verification("The FFmpeg checksum did not match its pinned SHA-256. It was not installed.")
-        }
-        try data.write(to: staging, options: .atomic)
-        let unpacked = directory.appendingPathComponent(".ffmpeg-unpack-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: unpacked) }
-        let unzip = Process()
-        unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
-        unzip.arguments = ["-q", staging.path, "-d", unpacked.path]
-        try unzip.run(); unzip.waitUntilExit()
-        let files = FileManager.default.enumerator(at: unpacked, includingPropertiesForKeys: [.isRegularFileKey])?.compactMap { $0 as? URL } ?? []
-        guard unzip.terminationStatus == 0,
-              let executable = files.first(where: { $0.lastPathComponent == "ffmpeg" && FileManager.default.isExecutableFile(atPath: $0.path) }) else {
-            throw KioFailure.verification("The pinned FFmpeg archive didn't contain a runnable binary.")
-        }
-        try installExtracted(executable, name: "ffmpeg")
-    }
-
-    private static func installFFprobe(_ helper: ReelHelperInfo) async throws {
-        let staging = directory.appendingPathComponent(".ffprobe-\(UUID().uuidString).zip")
-        defer { try? FileManager.default.removeItem(at: staging) }
-        let (temporary, response) = try await URLSession.shared.download(from: helper.releaseURL)
-        guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) == true else { throw KioFailure.processing("Couldn't download pinned FFprobe.") }
-        let data = try Data(contentsOf: temporary)
-        guard Self.matchesSHA256(data, expected: helper.sha256) else {
-            throw KioFailure.verification("The FFprobe checksum did not match its pinned SHA-256. It was not installed.")
-        }
-        try data.write(to: staging, options: .atomic)
-        let unpacked = directory.appendingPathComponent(".ffprobe-unpack-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: unpacked) }
-        let unzip = Process(); unzip.executableURL = URL(fileURLWithPath: "/usr/bin/unzip"); unzip.arguments = ["-q", staging.path, "-d", unpacked.path]
-        try unzip.run(); unzip.waitUntilExit()
-        let files = FileManager.default.enumerator(at: unpacked, includingPropertiesForKeys: [.isRegularFileKey])?.compactMap { $0 as? URL } ?? []
-        guard unzip.terminationStatus == 0,
-              let executable = files.first(where: { $0.lastPathComponent == "ffprobe" && FileManager.default.isExecutableFile(atPath: $0.path) }) else {
-            throw KioFailure.verification("The pinned FFprobe archive didn't contain a runnable binary.")
-        }
-        try installExtracted(executable, name: "ffprobe")
-    }
-
-    private static func installExtracted(_ source: URL, name: String) throws {
-        let destination = directory.appendingPathComponent(name)
-        let candidate = directory.appendingPathComponent(".\(name)-\(UUID().uuidString).new")
-        defer { try? FileManager.default.removeItem(at: candidate) }
-        try FileManager.default.copyItem(at: source, to: candidate)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: candidate.path)
-        let backup = directory.appendingPathComponent(".\(name)-\(UUID().uuidString).old")
-        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.moveItem(at: destination, to: backup) }
-        do { try FileManager.default.moveItem(at: candidate, to: destination); try? FileManager.default.removeItem(at: backup) }
-        catch { if FileManager.default.fileExists(atPath: backup.path) { try? FileManager.default.moveItem(at: backup, to: destination) }; throw error }
-    }
-
-    private static func sha256(_ data: Data) -> String {
-        SHA256.hash(data: data).map { byte in String(format: "%02x", Int(byte)) }.joined()
-    }
-
-    private static func verifyVersion(_ name: String, contains expected: String) throws {
-        let process = Process()
-        process.executableURL = directory.appendingPathComponent(name)
-        process.arguments = ["--version"]
-        let pipe = Pipe(); process.standardOutput = pipe; process.standardError = pipe
-        try process.run(); process.waitUntilExit()
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        guard process.terminationStatus == 0, output.contains(expected) else {
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
-            throw KioFailure.verification("The installed \(name) helper failed its version check.")
-        }
+        return SHA256.hash(data: data).map { String(format: "%02x", Int($0)) }.joined().caseInsensitiveCompare(expected) == .orderedSame
     }
 }
 
@@ -560,8 +342,8 @@ enum ReelWorkflow {
                                                          qualities: ["best"], videoFormats: [ext].filter { ["mp4", "webm", "mkv", "mov"].contains($0) },
                                                          audioAvailable: ["mp3", "m4a", "wav", "flac"].contains(ext)), input: input)
         }
-        guard ReelHelperManager.isPrepared("yt-dlp") else { throw KioFailure.unsupported("Reel needs its pinned media helper first. Open Settings → Reel and select Prepare Reel.") }
-        let data = try await runHelper(name: "yt-dlp", arguments: ["--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", url.absoluteString])
+        guard ReelHelperManager.isPrepared("yt-dlp") else { throw KioFailure.verification("Reel's bundled media runtime is missing or damaged. Reinstall Kio to restore it.") }
+        let data = try await runHelper(name: "yt-dlp", arguments: ["--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", "--no-plugin-dirs", "--no-remote-components", "--js-runtimes", "deno:\(ReelRuntime.denoURL.path)", url.absoluteString])
         let info = try ReelInspectionDecoder.decode(data, remoteURL: url)
         return try writeInspection(info, input: input)
     }
@@ -576,13 +358,14 @@ enum ReelWorkflow {
             return [try await downloadDirect(url, input: input, requestedFormat: format)]
         }
         let helper: String
-        if operation == .downloadRemoteGallery { helper = "gallery-dl" }
+        if operation == .downloadRemoteGallery {
+            throw KioFailure.unsupported("Gallery downloads are unavailable in this build. The optional gallery-dl component is GPL-2.0-only and the Kio repository does not currently declare a compatible redistribution license. Video and direct-media downloads remain bundled and ready.")
+        }
         else if operation == .downloadRemoteLive && ReelHelperManager.isPrepared("streamlink") { helper = "streamlink" }
         else if backend == .streamlink && ReelHelperManager.isPrepared("streamlink") { helper = "streamlink" }
         else { helper = "yt-dlp" }
         guard ReelHelperManager.isPrepared(helper) else {
-            let extra = helper == "streamlink" ? "Streamlink can be installed from its official source and placed in the Kio Helpers folder." : "Use Settings → Reel → Prepare Reel to install the pinned helper."
-            throw KioFailure.unsupported("Reel's \(helper) helper isn't prepared. \(extra)")
+            throw KioFailure.verification("Reel's bundled \(helper) runtime is missing or damaged. Reinstall Kio to restore it.")
         }
         let parent = try OutputLocation.makeDirectoryURL(for: [input], baseName: "Kio-Reel-Tmp-\(UUID().uuidString)")
         return try await ReelTemporaryWorkspace.withDirectory(at: parent) { parent in
@@ -595,7 +378,7 @@ enum ReelWorkflow {
             } else {
                 args = try ReelCommandBuilder.ytDlp(operation: operation, url: url, outputTemplate: outputTemplate,
                                                     quality: quality, format: format,
-                                                    ffmpegDirectory: ReelHelperManager.directory)
+                                                    ffmpegDirectory: ReelRuntime.ffmpegURL.deletingLastPathComponent())
             }
             _ = try await runHelper(name: helper, arguments: args)
             try Task.checkCancellation()
@@ -655,10 +438,16 @@ enum ReelWorkflow {
                 throw KioFailure.unsupported("Kio's pinned Python runtime or Streamlink helper isn't ready.")
             }
             executable = python
-            processArguments = ["-I", "-c", ReelHelperManager.streamlinkBootstrap,
+            processArguments = ["-B", "-I", "-c", ReelHelperManager.streamlinkBootstrap,
                                 ReelHelperManager.streamlinkPackagesDirectory.path] + arguments
         } else {
-            executable = ReelHelperManager.directory.appendingPathComponent(name)
+            switch name {
+            case "yt-dlp": executable = ReelRuntime.ytDlpURL
+            case "deno": executable = ReelRuntime.denoURL
+            case "ffmpeg": executable = ReelRuntime.ffmpegURL
+            case "ffprobe": executable = ReelRuntime.ffprobeURL
+            default: throw KioFailure.unsupported("Reel does not recognize this bundled helper.")
+            }
             processArguments = arguments
             guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw KioFailure.unsupported("The pinned \(name) helper isn't prepared yet.") }
         }

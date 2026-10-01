@@ -23,6 +23,10 @@ case "$SIGNING_MODE" in
     ;;
 esac
 
+# Downloads/builds pinned helper artifacts only during an explicit developer/package build.
+# Normal Kio.app execution never downloads or installs Reel components.
+"$ROOT/scripts/build-reel-runtime.sh"
+
 xcodebuild -quiet \
   -project "$ROOT/apps/mac/KioMac.xcodeproj" \
   -scheme KioMac \
@@ -36,14 +40,41 @@ xcodebuild -quiet \
 
 APP="$DERIVED_DATA/Build/Products/${CONFIGURATION:-Release}/Kio.app"
 xattr -cr "$APP"
+REEL="$APP/Contents/Resources/Reel"
+if [[ ! -x "$REEL/yt-dlp" || ! -x "$REEL/deno" || ! -x "$REEL/ffmpeg/bin/ffmpeg" || ! -x "$REEL/streamlink/python/bin/python3.12" ]]; then
+  echo "Built Kio.app is missing one or more bundled Reel runtime executables." >&2
+  exit 1
+fi
+/usr/bin/python3 - "$REEL" <<'PY'
+from pathlib import Path
+import shutil, sys
+root = Path(sys.argv[1])
+for cache in root.rglob("__pycache__"):
+    shutil.rmtree(cache)
+for bytecode in root.rglob("*.pyc"):
+    bytecode.unlink()
+PY
+SIGNING_ID="-"
 if [[ "$SIGNING_MODE" == "development" ]]; then
-  # Sign after clearing build attributes with Kio's stable local certificate.
-  codesign --force --deep --sign "$IDENTITY" --timestamp=none --identifier app.kio.mac "$APP"
-  codesign --verify --deep --strict "$APP"
+  SIGNING_ID="$IDENTITY"
+fi
+
+# Sign actual nested Mach-O files first. Python source files are data and are not signed.
+while IFS= read -r -d '' candidate; do
+  if file -b "$candidate" | grep -q 'Mach-O'; then
+    codesign --force --sign "$SIGNING_ID" --timestamp=none "$candidate"
+  fi
+done < <(find "$REEL" -type f -print0)
+codesign --force --sign "$SIGNING_ID" --timestamp=none --identifier app.kio.mac "$APP"
+codesign --verify --strict --verbose=2 "$APP"
+while IFS= read -r -d '' candidate; do
+  if file -b "$candidate" | grep -q 'Mach-O'; then
+    codesign --verify --strict --verbose=2 "$candidate"
+  fi
+done < <(find "$REEL" -type f -print0)
+if [[ "$SIGNING_MODE" == "development" ]]; then
   echo "Signing mode: development ($IDENTITY)"
 else
-  codesign --force --deep --sign - --identifier app.kio.mac "$APP"
-  codesign --verify --deep --strict "$APP"
   echo "Signing mode: public (ad hoc; no personal identity required)"
 fi
 printf 'Built app: %s\n' "$APP"

@@ -37,8 +37,19 @@ trap cleanup EXIT INT TERM
 
 ditto "$SOURCE_APP" "$STAGED_APP"
 xattr -cr "$STAGED_APP"
-codesign --force --deep --sign "$IDENTITY" --timestamp=none --identifier app.kio.mac "$STAGED_APP"
-codesign --verify --deep --strict "$STAGED_APP"
+REEL="$STAGED_APP/Contents/Resources/Reel"
+while IFS= read -r -d '' candidate; do
+  if file -b "$candidate" | grep -q 'Mach-O'; then
+    codesign --force --sign "$IDENTITY" --timestamp=none "$candidate"
+  fi
+done < <(find "$REEL" -type f -print0)
+codesign --force --sign "$IDENTITY" --timestamp=none --identifier app.kio.mac "$STAGED_APP"
+codesign --verify --strict --verbose=2 "$STAGED_APP"
+while IFS= read -r -d '' candidate; do
+  if file -b "$candidate" | grep -q 'Mach-O'; then
+    codesign --verify --strict --verbose=2 "$candidate"
+  fi
+done < <(find "$REEL" -type f -print0)
 codesign -dr - "$STAGED_APP" 2>&1
 
 SOURCE_APP_REAL="$(cd "$SOURCE_APP" && pwd -P)"

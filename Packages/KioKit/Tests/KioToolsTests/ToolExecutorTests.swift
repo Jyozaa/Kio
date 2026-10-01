@@ -1114,10 +1114,15 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
 
 @Test func reelCommandBuilderKeepsHelperArgumentsTypedAndShellFree() throws {
     let url = URL(string: "https://media.example/watch?id=42")!
+    let deno = URL(fileURLWithPath: "/Applications/Kio.app/Contents/Resources/Reel/deno")
     let video = try ReelCommandBuilder.ytDlp(operation: .downloadRemoteVideo, url: url,
                                              outputTemplate: "/tmp/kio/media.%(ext)s", quality: "720p", format: "mp4",
-                                             ffmpegDirectory: URL(fileURLWithPath: "/tmp/kio/helpers"))
+                                             ffmpegDirectory: URL(fileURLWithPath: "/tmp/kio/helpers"), denoURL: deno)
     #expect(video.contains("--ignore-config"))
+    #expect(video.contains("--no-plugin-dirs"))
+    #expect(video.contains("--no-remote-components"))
+    #expect(video.contains("deno:\(deno.path)"))
+    #expect(video.contains("--ffmpeg-location"))
     #expect(video.contains("--merge-output-format"))
     #expect(video.contains("bestvideo[height<=720]+bestaudio/best[height<=720]"))
     #expect(video.last == url.absoluteString)

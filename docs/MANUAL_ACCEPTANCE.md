@@ -4,6 +4,103 @@ This checklist is for the user to run after the code-only verification pass. The
 
 Use your own files and media you have permission to save. Do not put real provider keys in screenshots, screen recordings, or issue reports. Record the Kio version and build number for any failure.
 
+## Focused acceptance: Cue transcript tracking and bundled Reel
+
+This covers the 2026-10-01 implementation pass. Codex did not launch Kio, inspect the UI, request permissions, use a browser, or run a live media URL. Perform these checks manually after installing the Debug build.
+
+### A. Cue active appearance
+
+1. From `/Users/joe/Desktop/Kio`, run `bash scripts/dev-run.sh`, then launch the canonical Kio app.
+2. Expand the notch, open Cue, and paste:
+
+   > Welcome to Kio, the smart assistant that lives in your MacBook notch. Today I am testing the new Cue teleprompter. The words should follow my voice smoothly as I speak in real time. I should be able to look near the camera instead of constantly looking down. When I finish this paragraph, Cue should remain stable and easy to read.
+
+3. Choose **Word Tracking** and press **Start**.
+
+Expect roughly 3–5 readable lines, a bounded reading window, readable past words, an inline accent current word with no capsule, dimmer future text, a compact waveform/recent-phrase/listening/Done strip, and almost no persistent controls. No mascot or regular composer should appear. Fail if text is tiny, chip-like, reflows on every word, or shows a dense full-script wall.
+
+### B. Word Tracking
+
+Read naturally, pause for three seconds, and resume. Expect accurate monotonic movement, stable position during silence, and resumed tracking after the pause. Small recognition delay is acceptable; random reverse movement or an uncertain large jump is not.
+
+### C. Follow My Voice
+
+Exit/reopen Cue, choose **Follow My Voice**, and read the first sentence slowly. Pause mid-sentence. The highlight must follow recognized words, stop promptly in silence, and resume from the spoken position. It must not advance on a WPM timer.
+
+### D. Fast speech
+
+Restart Follow My Voice and read “Today I am testing the new Cue teleprompter” noticeably faster. Expect quick transcript-based catch-up rather than a fixed-rate lag.
+
+### E. Variable speed
+
+Read one sentence slowly, the next quickly, then a third at normal pace. The highlight should change pace with recognized words.
+
+### F. Filler words
+
+Read “Today I am, um, testing the new Cue teleprompter.” Cue should continue past “um.”
+
+### G. Omitted short word
+
+Use script “The words should follow my voice smoothly” and say “The words should follow voice smoothly.” Cue should continue past the omitted “my.”
+
+### H. Recognition revision
+
+Speak a phrase that is initially misrecognized, then naturally correct it. Expect recovery without moving backward through confirmed words.
+
+### I. Waveform
+
+Observe silence, loud speech, quiet speech, then silence. Expect dim/low bars while quiet, a compact level response while speaking, smaller activity for quiet speech, and quick decay after stopping. It must not lag by seconds.
+
+### J. Recent recognized phrase
+
+While speaking, check the bottom snippet. It should update with the last few words and never expand into the full transcript.
+
+### K. Control reveal and hide
+
+Move the pointer over Cue. Pause, Restart, text size, Done, and the Classic-only speed control should appear as an overlay. Stop moving for about three seconds; controls should fade without shifting the script. Move over a control and confirm it remains usable.
+
+### L. Classic
+
+Choose **Classic**. Expect fixed-speed scrolling, Pause/Resume, Restart, and a speed control. Classic must remain usable without microphone or Speech Recognition permission.
+
+### M. Permissions
+
+On first speech-tracking start, allow microphone and Speech Recognition if desired. Quit/reopen Kio and confirm no permission prompt appears at launch. If Speech Recognition is denied, Classic must remain usable.
+
+### N. Reel Settings
+
+Open **Kio Settings → Reel**. Expect **Status: Ready**, **Media engine: Bundled with Kio**, and **Diagnostics…**. There must be no Prepare Reel, Python setup, helper folder, or download progress.
+
+### O. Reel diagnostics
+
+Open Diagnostics and confirm yt-dlp, Deno, FFmpeg, ffprobe, Streamlink, and Python versions. Runtime files must resolve inside `Kio.app/Contents/Resources/Reel`, not `~/Library/Application Support/Kio/Helpers`.
+
+### P. Permitted YouTube video
+
+Use a video you own or may save. Submit its URL to Reel, inspect it, choose 720p MP4, and download. Expect no setup prompt and a valid local file.
+
+### Q. 1080p and Deno
+
+Request the permitted video in 1080p MP4. Expect direct execution for the explicit choice and no missing-JavaScript-runtime warning. This does not guarantee every remote source remains available.
+
+### R. Audio
+
+For a permitted VOD, request M4A, then MP3. Confirm each file plays and has the requested extension. Reel should not ask to prepare helpers.
+
+### S. Cancellation
+
+Start a moderately large permitted Reel download and press Stop. Expect process termination, temporary-output cleanup, no incomplete result, and Kio returning to a usable state.
+
+### T. Clean-install runtime source
+
+If `~/Library/Application Support/Kio/Helpers` exists, rename it temporarily. Launch the new app and try Reel; it should use the copy inside Kio.app. Restore the old directory afterward if needed.
+
+### U. CPU observation
+
+Use Follow My Voice for several minutes and observe Activity Monitor/fan behavior. There should be no unnecessary local Qwen inference. Reel downloads/transcoding may use CPU. Record unusual sustained usage as an observation.
+
+For Cue failures, include a screenshot plus exact script, words spoken, and highlight position. For Reel, include the URL domain only, requested format/quality, full error, and diagnostics versions. Never include API keys or private speech recordings.
+
 ## A. Launch the intended development build
 
 From Terminal, run the repository's existing stable-signing installer:
@@ -137,13 +234,9 @@ Choose a photo with a clear person or object against a distinguishable backgroun
 
 **Failure:** source overwritten, output is entirely transparent or black, wrong file count, or result is not a transparent PNG.
 
-## L. Reel preparation
+## L. Reel bundled runtime (previous pass)
 
-On the first Reel task that needs a helper, use the **Prepare Reel** action shown in the error state. The same control is in **Settings → Reel · online media**.
-
-**Expected:** Kio shows progress; helper files are fetched only after you press the button, checksum-checked before install, and installed under `~/Library/Application Support/Kio/Helpers/`. No Homebrew setup is required. The pinned yt-dlp, gallery-dl, FFmpeg/FFprobe, isolated Python runtime, and Streamlink wheel versions are shown in Settings.
-
-If a checksum is wrong or a helper version check fails, **expected:** Kio refuses to execute that file and displays an error. Do not edit or replace helper files to force the test.
+For current Reel behavior, use focused tests N–T below. The former on-demand helper setup flow is retired. The current app reads helpers from its bundled Resources/Reel directory and does not install them into Application Support. Gallery download is intentionally unavailable because gallery-dl is GPL-2.0-only and this repository does not declare Kio redistribution terms.
 
 ## M. Reel YouTube/VOD inspection and download
 
@@ -214,11 +307,9 @@ Exit Cue, reopen setup, select **Classic**, and press Start.
 
 **Expected:** no microphone or Speech Recognition permission is requested. Scrolling advances at the selected speed; Pause freezes it, Resume continues it, Restart returns to the beginning, and Done/Exit returns to the normal notch.
 
-## V. Cue Voice-Paced mode
+## V. Cue Follow My Voice mode (previous pass)
 
-Select **Voice-Paced** and press Start. Allow microphone access when macOS asks. Speak for several seconds, pause, then speak again.
-
-**Expected:** text scrolls while voice activity is present, pauses during quiet, and resumes with speech. This mode does not need semantic word highlighting. Pause/Resume and Exit remain available.
+Select **Follow My Voice** and press Start. Allow microphone and Speech Recognition access if desired. The highlight follows recognized script words; it does not scroll from microphone volume or configured WPM. Use focused tests C–H below.
 
 ## W. Cue completion
 

@@ -303,9 +303,6 @@ private struct NotchContents: View {
     @State private var cueIsActive = false
     @State private var selectedReelQuality = "best"
     @State private var selectedReelFormat = "mp4"
-    @State private var reelIsPreparing = false
-    @State private var reelPrepareProgress = 0.0
-    @State private var reelPreparationMessage: String?
     @State private var cueInitialText = ""
     @FocusState private var commandFocused: Bool
     @Environment(\.openWindow) private var openWindow
@@ -346,7 +343,7 @@ private struct NotchContents: View {
 
     private var presentationMode: NotchMode {
         NotchPresentationState.mode(cueActive: cueIsActive, cueSetup: cueSurface,
-                                   preparing: reelIsPreparing, taskStatus: workspace.executionState?.status)
+                                   preparing: false, taskStatus: workspace.executionState?.status)
     }
 
     private var presentation: NotchPresentationState {
@@ -533,64 +530,24 @@ private struct NotchContents: View {
         return pointerGaze
     }
 
-    private var reelHelperRequired: Bool {
-        guard displayAgent == .reel else { return false }
-        let message = workspace.latestError ?? workspace.executionState?.statusText ?? ""
-        let allPrepared = ReelHelperManager.helpers.allSatisfy { ReelHelperManager.isPrepared($0.id) }
-            && ReelHelperManager.isPrepared("streamlink")
-        return !allPrepared && (message.localizedCaseInsensitiveContains("helper") || message.localizedCaseInsensitiveContains("Prepare Reel"))
-    }
-
-    private func prepareReelHelpers() {
-        guard !reelIsPreparing else { return }
-        reelIsPreparing = true
-        reelPrepareProgress = 0
-        reelPreparationMessage = "Starting pinned Reel setup…"
-        Task { @MainActor in
-            defer { reelIsPreparing = false }
-            do {
-                try await ReelHelperManager.prepareAll { progress, message in
-                    reelPrepareProgress = progress
-                    reelPreparationMessage = message
-                }
-                reelPreparationMessage = "Reel is ready. Send the request again to continue."
-            } catch {
-                reelPreparationMessage = error.localizedDescription
-            }
-        }
-    }
-
     @ViewBuilder
     private var modeContent: some View {
         switch presentationMode {
         case .working, .preparing:
-            if reelIsPreparing {
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.small).tint(.white.opacity(0.78))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(reelPreparationMessage ?? "Preparing Reel helpers…")
-                            .font(.system(size: 9, weight: .medium)).lineLimit(1)
-                        ProgressView(value: reelPrepareProgress).tint(Color(hex: AgentID.reel.colorHex))
+            HStack(spacing: 7) {
+                ProgressView().controlSize(.small).tint(.white.opacity(0.78))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(displayAgent.name) · \(workspace.executionState?.statusText ?? "Preparing…")")
+                        .font(.system(size: 10, weight: .medium)).lineLimit(1)
+                    if let state = workspace.executionState, state.totalStepCount > 1 {
+                        ProgressView(value: Double(state.completedStepCount), total: Double(state.totalStepCount)).tint(Color(hex: displayAgent.colorHex))
                     }
-                    Spacer(minLength: 2)
                 }
-                .foregroundStyle(.white.opacity(0.82)).frame(height: 47)
-            } else {
-                HStack(spacing: 7) {
-                    ProgressView().controlSize(.small).tint(.white.opacity(0.78))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(displayAgent.name) · \(workspace.executionState?.statusText ?? "Preparing…")")
-                            .font(.system(size: 10, weight: .medium)).lineLimit(1)
-                        if let state = workspace.executionState, state.totalStepCount > 1 {
-                            ProgressView(value: Double(state.completedStepCount), total: Double(state.totalStepCount)).tint(Color(hex: displayAgent.colorHex))
-                        }
-                    }
-                    Spacer(minLength: 2)
-                    Button { workspace.cancelCurrentTask() } label: { Image(systemName: "stop.fill").font(.system(size: 9, weight: .bold)) }
-                        .buttonStyle(.plain).accessibilityLabel("Stop task")
-                }
-                .foregroundStyle(.white.opacity(0.82)).frame(height: 47)
+                Spacer(minLength: 2)
+                Button { workspace.cancelCurrentTask() } label: { Image(systemName: "stop.fill").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(.plain).accessibilityLabel("Stop task")
             }
+            .foregroundStyle(.white.opacity(0.82)).frame(height: 47)
         case .result:
             if let output = workspace.activeOutput, output.fileURL.pathExtension.lowercased() == "kio-reel-info" {
                 reelPicker(output).frame(height: 46)
@@ -600,17 +557,8 @@ private struct NotchContents: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(workspace.executionState?.statusText ?? workspace.latestError ?? "What would you like me to do?")
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.78)).lineLimit(2)
-                if reelHelperRequired {
-                    HStack(spacing: 6) {
-                        Button("Prepare Reel") { prepareReelHelpers() }
-                            .buttonStyle(.borderedProminent).tint(Color(hex: AgentID.reel.colorHex)).controlSize(.mini)
-                        Button("Settings…") { openSettings() }
-                            .buttonStyle(.plain).font(.system(size: 8, weight: .medium))
-                        if let reelPreparationMessage { Text(reelPreparationMessage).font(.system(size: 8)).lineLimit(1) }
-                    }
-                }
             }
-            .frame(height: reelHelperRequired ? 48 : 42, alignment: .leading)
+            .frame(height: 42, alignment: .leading)
         case .cueSetup:
             EmptyView()
         case .cueActive:
