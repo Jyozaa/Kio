@@ -43,7 +43,7 @@ public struct WorkflowTemplateStore {
         .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages,
         .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .searchPDFText,
         .imagesToPDF, .resizeImage, .batchResizeImages, .convertImage, .batchConvertImages,
-        .compareImages, .findSimilarImages, .removeImageBackground, .rotateImage, .inspectImage, .cropImage,
+        .compareImages, .findSimilarImages, .removeImageBackground, .batchRemoveImageBackground, .rotateImage, .inspectImage, .cropImage,
         .compressImage, .removeImageMetadata, .imageContactSheet, .createArchive, .inspectArchive,
         .extractZip, .compressPDF, .extractAudio, .transcribeAudio, .generateSubtitles, .extractMediaClip, .convertAudio, .inspectMedia, .thumbnailVideo, .trimVideo,
         .resizeVideo, .transcodeVideo, .compressVideo, .findRecent, .findByName, .summarizeText, .rewriteText,
@@ -53,7 +53,9 @@ public struct WorkflowTemplateStore {
         .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads,
         .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX, .fetchURL, .extractWebLinks,
         .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
-        .explainCode, .proposePatch, .formatJSON
+        .explainCode, .proposePatch, .formatJSON,
+        .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+        .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail
     ]
 
     public init(key: String = "kio.workflowTemplates.v1", defaults: UserDefaults = .standard) {

@@ -23,7 +23,7 @@ import {
   type PhoneIdentity,
 } from "./crypto";
 
-type AgentName = "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier" | "scribe" | "table" | "lens" | "scout" | "patch";
+type AgentName = "kio" | "pip" | "pixel" | "zip" | "echo" | "clerk" | "courier" | "scribe" | "table" | "lens" | "scout" | "patch" | "reel" | "cue";
 interface HistoryAttachment { name: string; size: number; mime: string; blob: Blob }
 interface HistoryItem { id: string; taskID?: string; role: "user" | "kio" | "agent" | "status"; text: string; speaker?: string; agent?: AgentName; name?: string; size?: number; mime?: string; attachmentBlob?: Blob; attachments?: HistoryAttachment[]; createdAt: string }
 interface RelayEnvelope { id: string; senderID: string; nonce: string; ciphertext: string; createdAt: string }
@@ -179,7 +179,7 @@ export default function App() {
                 resultFiles.push({ name: file.name, size: file.size, mime: file.mime, blob: new Blob([bytes], { type: file.mime }) });
                 await acknowledgeTransfer(identity, file.transferID);
               }
-              const knownAgents: AgentName[] = ["kio", "pip", "pixel", "zip", "echo", "clerk", "courier", "scribe", "table", "lens", "scout", "patch"];
+              const knownAgents: AgentName[] = ["kio", "pip", "pixel", "zip", "echo", "clerk", "courier", "scribe", "table", "lens", "scout", "patch", "reel", "cue"];
               const agent = knownAgents.includes(payload.agent as AgentName) ? payload.agent as AgentName : undefined;
               const item: HistoryItem = {
                 id: envelope.id,
@@ -335,7 +335,6 @@ export default function App() {
         </div>}
       </div>
     </header>
-    <div className="crew"><span>YOUR CREW</span><div className="crew-row">{(["scribe", "table", "lens", "scout", "patch", "pip", "pixel", "zip", "echo", "clerk", "courier"] as AgentName[]).map((agent) => <AgentFace key={agent} agent={agent} size={23} />)}<small>Scribe · Table · Lens · Scout · Patch · Pip · Pixel · Zip · Echo · Clerk · Courier</small></div></div>
     <section className="conversation" ref={listRef} aria-live="polite">
       {messages.length === 0 && <div className="welcome"><AgentFace agent="kio" size={52} /><h2>What can I help with?</h2><p>Send a request and your Mac will take it from here.</p></div>}
       {messages.map((message) => <article key={message.id} className={`message ${message.role} agent-${message.agent ?? "kio"}`}>

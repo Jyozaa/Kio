@@ -26,6 +26,13 @@ struct KioMacApp: App {
         }
         .defaultSize(width: 780, height: 650)
         .windowResizability(.contentSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Show Kio Notch") {
+                    NotchPanelController.shared.activateForInput(pinned: true)
+                }
+            }
+        }
 
         Settings {
             KioSettingsView()

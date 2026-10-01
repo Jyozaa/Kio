@@ -1,0 +1,251 @@
+# Kio manual acceptance guide
+
+This checklist is for the user to run after the code-only verification pass. The app, browser, and microphone were not opened for this pass, so every visual, permission, and live-service item below remains unverified until you perform it.
+
+Use your own files and media you have permission to save. Do not put real provider keys in screenshots, screen recordings, or issue reports. Record the Kio version and build number for any failure.
+
+## A. Launch the intended development build
+
+From Terminal, run the repository's existing stable-signing installer:
+
+```sh
+cd /Users/joe/Desktop/Kio
+bash scripts/dev-run.sh
+```
+
+This builds the Debug app, signs it with the already-configured local Kio identity, installs it to `/Users/joe/Applications/Kio.app`, and launches that canonical copy. It does not create an Apple Development certificate. If Kio is already installed and you only want to relaunch it, use:
+
+```sh
+open -na "/Users/joe/Applications/Kio.app"
+```
+
+Confirm the installed app's version and build in Terminal:
+
+```sh
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "/Users/joe/Applications/Kio.app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "/Users/joe/Applications/Kio.app/Contents/Info.plist"
+```
+
+The current project settings report version `0.1.0`, build `1`. If the output differs, check that `/Users/joe/Applications/Kio.app` is the build you intended to test.
+
+## B. Collapsed notch
+
+1. Launch Kio and move the pointer well away from the notch.
+2. Wait at least five seconds.
+3. Inspect the MacBook notch and the display directly below it.
+
+**Expected:** the collapsed silhouette is black and blends into the hardware. No cream Kio, eyes, specialist, text, icon, indicator, animation, or colored flicker is visible.
+
+**Failure:** any mascot or decoration remains while collapsed, a character flashes before the black surface opens, or the black shape is visibly detached from the hardware notch. Capture a still image showing the whole top edge of the screen.
+
+## C. Expansion and collapse synchronization
+
+1. Hover over the notch and watch it open.
+2. Move the pointer away and watch it close.
+3. Repeat five times slowly, then five times quickly.
+4. Include a run where you click the composer, type briefly, then move the pointer away.
+
+**Expected:** the black shell and its contents move as one shape. Text, mascot, controls, chips, result card, and hit area stay inside the black silhouette. Contents retract into the notch; nothing floats after the shell closes. Expansion shows the shell before or as content appears. Reduce Motion still preserves a single contained transition.
+
+**Failure:** a one-frame ghost, a control or character outside the shell, a jagged rectangle, content disappearing before the shell, or the shell closing while a focused interaction is still in progress. If it fails, make a short screen recording that includes the pointer and the full notch during both slow and quick repetitions.
+
+## D. Mascot body outline
+
+Inspect Kio, then trigger tasks owned by Pixel, Echo, Scribe, Reel, and Cue so each character appears. Use a small avatar and the larger notch mascot where available.
+
+**Expected:** every body has a subtle darker edge visible against black; the two eyes remain unoutlined. The body still reads as a soft pastel blob and does not gain a bright white stroke or neon glow. On small avatars, the border must not overwhelm the body.
+
+**Failure:** a missing or bright outline, outlined eyes, an unreadable body, or visibly lumpy/asymmetric shape. Capture one larger and one small example.
+
+## E. Blinking and idle movement
+
+1. Leave Kio expanded and idle for 30–45 seconds.
+2. Observe without moving the pointer for several seconds at a time.
+
+**Expected:** multiple natural single blinks; an occasional double blink is acceptable. Eyes briefly become nearly flat and reopen smoothly. Breathing, glances, and lean are subtle; Kio does not bounce continuously. If there has been no blink after about 15 seconds, record that as a failure.
+
+## F. Cursor awareness
+
+Move the pointer, in order, to the expanded notch's left edge, right edge, composer, and a point above the mascot. Pause at each position, then stop moving.
+
+**Expected:** the eyes notice the pointer first. The body follows about a fraction of a second later with a small lean, then relaxes after the pointer stops. While typing, the gaze favors the composer. Reduce Motion removes exaggerated body travel but keeps the face legible.
+
+**Failure:** eyes do not react, the body moves before the eyes, movement twitches or tracks every tiny cursor change, or typing makes the character stare away from the composer.
+
+## G. Full chat cleanup
+
+Open History from the notch.
+
+**Expected:** the chat is black to match the notch, the header is compact, and it does not show a permanent row of all agents. Kio is the default speaker; the active specialist appears only when relevant. Crew is a compact menu, search is opened only on demand, artifact actions are compact, and the composer remains usable.
+
+Compare its density with the prior build. Capture the whole chat window if an agent wall, oversized artifact card, or crowded control row remains.
+
+## H. Provider and BYOK checks
+
+For each provider for which you already have a key—OpenAI, Anthropic, Gemini, OpenRouter, and Groq—repeat these steps:
+
+1. Open **Kio → Settings → Intelligence**.
+2. Select the provider and enter its API key in the secure field.
+3. Select **Save key**. Confirm the field clears and Kio reports that the key is saved in Keychain.
+4. Select **Test connection** and wait for the model-list result.
+5. Select **Fetch models**; choose an available model, or enter the model identifier manually.
+6. Run a short semantic request such as “Summarize this paragraph in one sentence.”
+7. Quit and reopen Kio; check the provider still reports a saved key without revealing the key.
+8. Select **Remove key** and confirm the provider becomes disconnected.
+
+Do not paste secrets into normal chat. Keep screenshots clear of the key field while typing and never include raw keys in logs.
+
+With **Content privacy → Ask before sending contents**, run a semantic task on a local text file. **Expected:** Kio asks before sending document text to the selected provider; canceling sends nothing. A request that needs only file metadata should not show that content prompt. Repeat with **Metadata only** and confirm the cloud content task is blocked. Use **Allow contents** only if you intend to opt in.
+
+**Expected for all providers:** requests go directly to the chosen provider; the key stays masked and survives restart; a failure does not silently switch providers; a cloud task does not start Local Qwen. If a provider fails, record its name, model identifier, error text, and time—but never the key.
+
+## I. Local-Qwen fan check
+
+Select a configured cloud provider, then attach suitable local fixtures and try:
+
+- “Merge these PDFs.”
+- “Resize this image to 1200 px.”
+- “Rename this file to final.”
+
+**Expected:** deterministic native operations complete without preparing or loading Local Qwen. Observe Activity Monitor or Kio's local-model status if available. Then ask for a semantic summary and confirm the selected cloud provider handles it. Fan level is subjective; record it as an observation, not a pass/fail by itself.
+
+## J. Pixel format conversion
+
+Prepare one HEIC/HEIF photo, one JPEG, one PNG with transparency, and optionally one TIFF. Attach one file at a time unless a test says batch.
+
+1. For HEIC, ask “Convert this to JPEG.” Verify a `.jpg` or `.jpeg` result opens in Preview and looks correct.
+2. Convert the same HEIC to PNG.
+3. Convert the JPEG to PNG.
+4. Convert the transparent PNG to JPEG. Verify the formerly transparent area is white rather than black.
+5. If TIFF is available, convert it to PNG.
+6. Select three HEIC images and ask “Convert these to JPEG.”
+7. If ImageIO supports WebP or HEIC output on this Mac, verify the output extension agrees with the actual file type. Unsupported encoders should not be offered as successful outputs.
+
+**Expected:** batch conversion creates three outputs, sources remain unchanged, each extension agrees with its encoded bytes, JPEG uses white to flatten alpha, and animation loss is explicitly identified if an animated first frame is converted.
+
+**Failure:** wrong extension/encoding, missing batch output, overwritten source, black alpha background, or silent animation loss. Keep the input files and note their formats and macOS version.
+
+## K. Pixel background removal
+
+Choose a photo with a clear person or object against a distinguishable background.
+
+1. Attach one image and ask “Remove the background.”
+2. Open the result in Preview or an editor that displays transparency.
+3. Attach two or three different images and ask “Remove the backgrounds.”
+
+**Expected:** one transparent PNG per input; each output keeps its original source unchanged and has a usable alpha channel. A photo without a usable subject mask should fail with a clear explanation.
+
+**Failure:** source overwritten, output is entirely transparent or black, wrong file count, or result is not a transparent PNG.
+
+## L. Reel preparation
+
+On the first Reel task that needs a helper, use the **Prepare Reel** action shown in the error state. The same control is in **Settings → Reel · online media**.
+
+**Expected:** Kio shows progress; helper files are fetched only after you press the button, checksum-checked before install, and installed under `~/Library/Application Support/Kio/Helpers/`. No Homebrew setup is required. The pinned yt-dlp, gallery-dl, FFmpeg/FFprobe, isolated Python runtime, and Streamlink wheel versions are shown in Settings.
+
+If a checksum is wrong or a helper version check fails, **expected:** Kio refuses to execute that file and displays an error. Do not edit or replace helper files to force the test.
+
+## M. Reel YouTube/VOD inspection and download
+
+Use a public video you own or are explicitly allowed to save.
+
+1. Paste its URL into the notch.
+2. Type “Download this.”
+3. Review the Reel inspection and compact picker.
+4. Select `720p` and `MP4`, then Download.
+5. Verify the result opens and the source page has not changed.
+6. Repeat with “Download this in 1080p MP4.”
+
+**Expected:** inspection shows a safe title, duration/source where available, and only normalized qualities and containers reported by the source—not raw extractor format IDs. Explicit quality and format skip the picker when understood. Unsupported or unavailable options produce a clear error.
+
+## N. Reel audio
+
+Using a permitted VOD URL, ask “Download the audio as MP3.” Verify the output is `.mp3`, plays in a local player, and contains no video track. Repeat with “Get this as M4A.” WAV/FLAC are optional if offered for that source.
+
+**Expected:** Reel acquires the online source and uses Echo/local FFmpeg for conversion when needed. It must not silently produce a video file or claim a format the output does not have.
+
+## O. Direct video URL
+
+Use a permitted direct public `.mp4` URL, not an account-only or local-network URL. Ask Kio to download it.
+
+**Expected:** Reel uses native direct HTTP when the requested format matches the source, verifies a non-empty result, and keeps it under the task size limit. Redirects to private/local addresses must be rejected.
+
+## P. Live stream
+
+Use a brief public stream you are permitted to save. Ask “Save this livestream.” Confirm the working state identifies Reel, then use **Stop** after a short sample.
+
+**Expected:** the stream is identified as live where source metadata allows; Stop ends the helper promptly and leaves no partial result exposed. Do not test DRM-protected or account-gated streams.
+
+## Q. Download cancellation
+
+If you have a permitted large direct download, start it and press **Stop** while it is running.
+
+**Expected:** the task cancels promptly, no incomplete destination appears as a completed artifact, temporary files are removed, and Kio returns to an idle usable composer.
+
+**Failure:** Stop does nothing, a corrupted result is exposed, or temporary output remains after the task has settled. Note how long cancellation took and the helper in use.
+
+## R. Cue setup
+
+Open the notch, select **Cue**, and confirm setup appears inside the expanded notch rather than a separate giant window. Select **Word Tracking** and paste this exact test script:
+
+> Welcome to Kio. Today I am testing the Cue teleprompter. The words should highlight as I speak. The prompt should follow my voice without jumping around. When I finish this sentence, Cue should reach the end.
+
+**Expected:** script editor, mode selector, language choice, readable text-size control, and **Start** are visible. The standard conversation/composer remains out of the way once Cue is active.
+
+## S. Cue Word Tracking and permissions
+
+1. Press **Start** in Word Tracking.
+2. On first use, macOS may ask for Microphone and Speech Recognition access. Allow them only if you want to test speech tracking. The request should occur now, not at Kio launch.
+3. Read the test script naturally. Pause for two seconds, repeat a word, skip a short word, then continue.
+
+**Expected:** the read words become lower emphasis, the current word has clear contrast, and upcoming text stays readable. Progress follows the spoken script, does not move backward on transcript revisions, does not advance during silence, and does not jump across many words on one uncertain recognition update. The active line stays near a comfortable reading position.
+
+If permission is denied, Classic remains usable and Cue offers a button to open the relevant System Settings privacy pane. Kio must not ask for Accessibility or Screen Recording permission for Cue.
+
+## T. Cue manual jump
+
+While Word Tracking is active, click a later visible word and continue reading from there.
+
+**Expected:** the reading position jumps to the selected word. A transcript from before the jump must not pull the highlight backward. If the recognizer needs to restart, it should resume at the selected position.
+
+## U. Cue Classic mode
+
+Exit Cue, reopen setup, select **Classic**, and press Start.
+
+**Expected:** no microphone or Speech Recognition permission is requested. Scrolling advances at the selected speed; Pause freezes it, Resume continues it, Restart returns to the beginning, and Done/Exit returns to the normal notch.
+
+## V. Cue Voice-Paced mode
+
+Select **Voice-Paced** and press Start. Allow microphone access when macOS asks. Speak for several seconds, pause, then speak again.
+
+**Expected:** text scrolls while voice activity is present, pauses during quiet, and resumes with speech. This mode does not need semantic word highlighting. Pause/Resume and Exit remain available.
+
+## W. Cue completion
+
+Finish a short script in each mode that supports completion.
+
+**Expected:** a stable “Script complete” state appears with **Restart** and **Done**. It does not vanish immediately. Restart returns to the beginning; Done closes Cue and restores the regular Kio composer.
+
+## X. Scribe to Cue
+
+Paste some notes and ask: “Turn this into a short speaking script.” When the text result appears, choose **Cue** / **Open in Cue** on the result.
+
+**Expected:** Cue setup opens with the result text loaded into its editor. It does not submit that text to speech recognition until you press Start.
+
+## Y. Reduce Motion
+
+Enable **Kio → Settings → General → Reduce Kio character motion**. Repeat notch open/close, blinking, and Cue tests.
+
+**Expected:** exaggerated body travel is reduced; the black shell still moves in sync with its contents; the character remains legible; no content floats; Cue remains functional. Blinking may remain because it is a small expression rather than body travel.
+
+## Z. Permission and credential regression
+
+After you have used Cue once, quit and reopen the canonical app. Do not open Cue immediately.
+
+**Expected:** Kio does not repeatedly request microphone or Speech Recognition at launch. Any previously saved BYOK key remains connected and masked. Permissions are requested only when the matching Cue feature starts; macOS may remember the choice or let you change it in System Settings.
+
+If a prompt repeats unexpectedly, record the exact prompt text, macOS version, Kio version/build, and whether the bundle path is `/Users/joe/Applications/Kio.app`. Do not include keys, transcripts, or private audio in a report.
+
+## Optional phone roster check
+
+If you use the already-paired PWA, reload it manually and confirm Reel and Cue appear in the shared roster and their status messages decode. Do not re-pair or deploy as part of this code acceptance pass.

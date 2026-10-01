@@ -1,17 +1,21 @@
 # Kio
 
-Kio is a local-first macOS file assistant built around the MacBook notch. Add files, describe a supported task, and Kio plans it locally and runs a registered native workflow. Transformations preserve their sources; moving files requires explicit confirmation. Completed outputs are checked before Kio reports success.
+Kio is a local-first macOS assistant built around the MacBook notch. Deterministic requests use registered native workflows; semantic planning and writing use the provider selected in Settings, with Local Qwen remaining optional. Transformations preserve their sources; moving files requires explicit confirmation. Completed outputs are checked before Kio reports success.
 
 ## What works
 
-Kio accepts dropped files and folders, pasted text/URLs/images/files, screenshots copied to the clipboard, and explicit region captures. Finder's **Send to Kio** service can attach selected files. Fast paths handle obvious requests locally; the optional on-device Qwen planner selects only registered operations.
+Kio accepts dropped files and folders, pasted text/URLs/images/files, screenshots copied to the clipboard, and explicit region captures. Finder's **Send to Kio** service can attach selected files. Fast paths handle obvious requests without starting an AI model. Optional BYOK providers and on-device Qwen can select only registered operations.
 
 - **PDFs:** merge, combine PDFs and images in selection order, inspect, search selectable text with page snippets, extract text, OCR, split, reorder, rotate, remove pages, remove blank pages, extract pages, and compress.
 - **Images and visual understanding:** single and batch resize/convert, rotate, manual and Vision smart crop, compress, metadata removal, contact sheets, approximate image comparison/similarity, Vision background removal, OCR, table extraction, structured text, and receipt fields.
+- **Pixel formats:** HEIC/HEIF, JPEG, PNG, TIFF, and BMP input where ImageIO supports decoding; output is selected from runtime-supported JPEG, PNG, HEIC, TIFF, and WebP encoders. Transparent-to-JPEG conversion uses a white background; first-frame-only animated conversion is identified.
 - **Tables:** quoted CSV/TSV and JSON table parsing; inspect/statistics, merge, deduplicate, sort, filter, select/rename/reorder columns, normalize, compare, and CSV/JSON conversion. XLSX import is read-only, bounded, and exports values to CSV; it does not calculate formulas or preserve workbook formatting/macros.
 - **Text and code:** local-model summarize, rewrite, proofread, translate, key points, action items, Markdown conversion, comparison, and explanation. Patch proposes a separate copy and diff; it never runs generated code or replaces the source automatically.
 - **Web and URLs:** Scout fetches public HTTP(S) pages for readable text or links, searches free Crossref and Europe PMC research metadata, and treats page content as untrusted data.
-- **Media:** inspect, thumbnail, trim or extract a clip, resize, transcode, compress, extract/convert audio to M4A, and optional on-device transcription/subtitles.
+- **Online media:** Reel inspects public media URLs, offers normalized quality/format choices, and downloads permitted video, audio, live streams, galleries, captions, and thumbnails through pinned, checksum-verified helpers prepared only on request. Reel does not read browser cookies or bypass DRM.
+- **Local media:** inspect, thumbnail, trim or extract a clip, resize, transcode, compress, extract/convert audio to M4A, and optional on-device transcription/subtitles.
+- **Cue:** an in-notch teleprompter with speech word tracking, classic timed scrolling, and voice-paced scrolling. Microphone and Speech Recognition permissions are requested only when a microphone mode starts.
+- **Intelligence:** Deterministic / No AI, OpenAI, Anthropic, Gemini, OpenRouter, Groq, and Local Qwen. Provider keys stay in macOS Keychain and cloud requests go directly to the selected provider; document-content transfer asks first by default.
 - **Files:** conflict-safe rename copies, duplicate reports, date/type organization into verified copies, ZIP creation/inspection/safe extraction, and confirmed file moves.
 - **Workflows and history:** typed reusable workflow templates, shared contextual action chips in the notch and full chat, local artifact references, and searchable on-device conversations.
 - **Mobile:** optional encrypted PWA pairing, multi-file transfer in both directions, camera/photo/file and URL sharing, retryable offline queue, task progress, output downloads, and notifications where supported.

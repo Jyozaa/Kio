@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import KioCore
 import KioModel
+import KioTools
 import KioUI
 import os
 import SwiftUI
@@ -295,33 +296,34 @@ private struct NotchContents: View {
     @State private var command = ""
     @State private var pastedClipboardTexts: [String] = []
     @State private var pasteKeyMonitor: Any?
-    @State private var stageMascotAgent: AgentID = .kio
-    @State private var coordinatorHasDeparted = false
-    @State private var agentHasArrived = false
-    @State private var launchSmokeVisible = false
+    @State private var mascotHandoff = MascotHandoffState()
     @State private var pointerGaze = CGSize.zero
+    @State private var expansionProgress: CGFloat = 0
+    @State private var cueSurface = false
+    @State private var cueIsActive = false
+    @State private var selectedReelQuality = "best"
+    @State private var selectedReelFormat = "mp4"
+    @State private var reelIsPreparing = false
+    @State private var reelPrepareProgress = 0.0
+    @State private var reelPreparationMessage: String?
+    @State private var cueInitialText = ""
     @FocusState private var commandFocused: Bool
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("kio.hoverExpansion") private var hoverExpansion = true
     @AppStorage("kio.hoverDwellMilliseconds") private var hoverDwellMilliseconds = 150
 
     private var inputPrompt: String {
-        if workspace.attachments.isEmpty {
-            return workspace.activeOutput == nil ? "Ask Kio or drop files" : "Ask a follow-up…"
-        }
-        return "Add a note for these files"
+        workspace.attachments.isEmpty ? "Ask Kio or drop files" : "Add a note for these files"
     }
 
     private var displayAgent: AgentID {
-        guard let state = workspace.executionState else { return .kio }
-        if (state.status == .planning || (state.status == .running && state.currentStepIndex == nil)),
-           let owner = state.plan?.steps.first?.owner { return owner }
-        return state.activeAgent
+        NotchPresentationState.activeAgent(for: workspace.executionState)
     }
 
     private var targetMascotAgent: AgentID {
-        guard workspace.executionState != nil, workspace.isWorking || hasTerminalResult else { return .kio }
+        guard workspace.executionState != nil, workspace.isWorking else { return .kio }
         return displayAgent
     }
 
@@ -342,34 +344,41 @@ private struct NotchContents: View {
         }
     }
 
+    private var presentationMode: NotchMode {
+        NotchPresentationState.mode(cueActive: cueIsActive, cueSetup: cueSurface,
+                                   preparing: reelIsPreparing, taskStatus: workspace.executionState?.status)
+    }
+
+    private var presentation: NotchPresentationState {
+        NotchPresentationState(expanded: controller.isExpanded, mode: presentationMode,
+                               activeAgent: displayAgent, progress: expansionProgress)
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: controller.layout)
+            NotchSilhouette(progress: expansionProgress, layout: controller.layout)
                 .fill(Color.black)
                 .overlay {
-                    NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: controller.layout)
+                    NotchSilhouette(progress: expansionProgress, layout: controller.layout)
                         .stroke(isTargeted ? Color(hex: AgentID.pixel.colorHex) : .clear, lineWidth: 1.5)
-                }
-            if controller.isExpanded {
+            }
+            if presentation.exposesContent {
                 expandedContents
-                    .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
-            } else {
-                AgentBlob(agentHasArrived ? stageMascotAgent : .kio, size: 24)
-                    .frame(width: controller.layout.notchWidth + 16, height: controller.layout.notchHeight + 12)
-                    .contentShape(Rectangle())
-                    .onTapGesture { controller.activateForInput() }
+                    .mask { NotchSilhouette(progress: expansionProgress, layout: controller.layout).fill(.white) }
+                    .opacity(presentation.contentOpacity)
+                    .allowsHitTesting(presentation.allowsContentHitTesting)
             }
         }
         .frame(width: controller.layout.hostWidth, height: controller.layout.hostHeight, alignment: .top)
         .preferredColorScheme(.dark)
         .onAppear(perform: installPasteKeyMonitor)
         .onDisappear(perform: removePasteKeyMonitor)
-        .contentShape(NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: controller.layout))
+        .contentShape(NotchSilhouette(progress: expansionProgress, layout: controller.layout))
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {
             case .active(let location):
                 let layout = controller.layout
-                let silhouette = NotchSilhouette(progress: controller.isExpanded ? 1 : 0, layout: layout)
+                let silhouette = NotchSilhouette(progress: expansionProgress, layout: layout)
                 let bounds = CGRect(origin: .zero, size: CGSize(width: layout.hostWidth, height: layout.hostHeight))
                 let inside = silhouette.path(in: bounds).contains(location)
                 controller.pointerChanged(inside, hoverExpansion: hoverExpansion,
@@ -397,45 +406,42 @@ private struct NotchContents: View {
         .onChange(of: command) { _, value in controller.composingChanged(!value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
         .onChange(of: workspace.attachments.count) { _, value in controller.attachmentsChanged(value > 0) }
         .onChange(of: workspace.isWorking) { _, value in controller.workingChanged(value) }
+        .onChange(of: controller.isExpanded) { _, expanded in
+            withAnimation(.easeInOut(duration: reduceMotion ? 0.14 : 0.205)) {
+                expansionProgress = expanded ? 1 : 0
+            }
+        }
         .task(id: targetMascotAgent) {
             let target = targetMascotAgent
-            guard target != stageMascotAgent else { return }
+            guard target != mascotHandoff.activeAgent else { return }
 
             guard controller.isExpanded else {
-                stageMascotAgent = target
-                coordinatorHasDeparted = target != .kio
-                agentHasArrived = target != .kio
-                launchSmokeVisible = false
+                mascotHandoff.assignImmediately(target)
                 return
             }
 
             if target == .kio {
-                launchSmokeVisible = false
-                withAnimation(.spring(response: 0.78, dampingFraction: 0.76)) {
-                    stageMascotAgent = .kio
-                    coordinatorHasDeparted = false
-                    agentHasArrived = false
+                withAnimation(.spring(response: MascotHandoffMotionPolicy.coordinatorReturnResponse, dampingFraction: 0.76)) {
+                    mascotHandoff.resetToCoordinator()
                 }
                 return
             }
 
-            if stageMascotAgent == .kio {
-                launchSmokeVisible = true
-                withAnimation(.easeInOut(duration: 1.35)) { coordinatorHasDeparted = true }
-                try? await Task.sleep(for: .milliseconds(430))
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.72, dampingFraction: 0.76)) {
-                    stageMascotAgent = target
-                    agentHasArrived = true
+            if mascotHandoff.activeAgent == .kio {
+                withAnimation(.easeInOut(duration: MascotHandoffMotionPolicy.coordinatorDepartureDuration)) {
+                    mascotHandoff.beginDeparture(to: target)
                 }
-                try? await Task.sleep(for: .milliseconds(1400))
+                try? await Task.sleep(for: MascotHandoffMotionPolicy.landingDelay)
                 guard !Task.isCancelled else { return }
-                launchSmokeVisible = false
+                withAnimation(.spring(response: MascotHandoffMotionPolicy.landingSpringResponse, dampingFraction: 0.76)) {
+                    mascotHandoff.landTarget()
+                }
+                try? await Task.sleep(for: MascotHandoffMotionPolicy.smokeHold)
+                guard !Task.isCancelled else { return }
+                mascotHandoff.settle()
             } else {
-                launchSmokeVisible = false
                 withAnimation(.spring(response: 0.72, dampingFraction: 0.76)) {
-                    stageMascotAgent = target
-                    agentHasArrived = true
+                    mascotHandoff.assignImmediately(target)
                 }
             }
         }
@@ -443,7 +449,7 @@ private struct NotchContents: View {
             commandFocused = true
         }
         .onExitCommand { controller.collapse() }
-        .animation(reduceMotion ? .easeInOut(duration: 0.14) : .spring(response: 0.42, dampingFraction: 0.9), value: controller.isExpanded)
+        .onAppear { expansionProgress = controller.isExpanded ? 1 : 0 }
         .accessibilityElement(children: .contain)
     }
 
@@ -451,9 +457,26 @@ private struct NotchContents: View {
         let topInset = max(34, controller.layout.screenTopInset + 8)
         let mascotWidth = controller.layout.expandedWidth * 0.31
         let contentHeight = max(90, controller.layout.expandedHeight - topInset - 8)
-        return HStack(spacing: 10) {
-            mascotStage
-                .frame(width: mascotWidth, height: contentHeight)
+        return Group {
+          if cueSurface || cueIsActive {
+            HStack(spacing: cueIsActive ? 0 : 10) {
+              if !cueIsActive {
+                mascotStage
+                    .frame(width: mascotWidth, height: contentHeight)
+              }
+              CueSurfaceView(onActiveChange: { cueIsActive = $0 },
+                             onDone: { cueIsActive = false; cueSurface = false },
+                             initialText: $cueInitialText)
+                  .frame(width: controller.layout.expandedWidth - 28, height: contentHeight)
+            }
+          } else {
+            HStack(spacing: 10) {
+            if presentation.exposesMascot && presentationMode != .cueActive {
+                mascotStage
+                    .frame(width: mascotWidth, height: contentHeight)
+            } else {
+                Color.clear.frame(width: mascotWidth, height: contentHeight)
+            }
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
                     Text(panelTitle)
@@ -461,7 +484,7 @@ private struct NotchContents: View {
                         .foregroundStyle(.white.opacity(0.72))
                         .lineLimit(1)
                     Spacer(minLength: 2)
-                    if workspace.activeOutput != nil {
+                    if workspace.activeOutput != nil && presentationMode != .working {
                         Button { beginNewRequest() } label: {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 10, weight: .medium))
@@ -472,6 +495,7 @@ private struct NotchContents: View {
                         .accessibilityLabel("Start a new request")
                     }
                     historyButton
+                    cueButton
                     Button { controller.collapse() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 10, weight: .semibold))
@@ -481,17 +505,20 @@ private struct NotchContents: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Collapse Kio")
                 }
-                conversationFeed
-                    .frame(height: workspace.attachments.isEmpty ? 58 : 34)
-                if !quickActions.isEmpty {
+                modeContent
+                if presentationMode == .idleComposer && !quickActions.isEmpty {
                     quickActionStrip
                 }
-                if !workspace.attachments.isEmpty {
+                if presentationMode != .working && presentationMode != .cueActive && !workspace.attachments.isEmpty {
                     attachmentStrip
                 }
-                composer
+                if presentationMode != .cueActive && presentationMode != .working {
+                    composer
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+          }
+        }
         }
         .padding(.horizontal, 16)
         .padding(.top, topInset)
@@ -512,41 +539,135 @@ private struct NotchContents: View {
         return pointerGaze
     }
 
-    private var conversationFeed: some View {
-        let recent = Array(workspace.conversation.suffix(3))
-        return ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(recent) { item in
-                        compactMessage(item)
-                            .id(item.id)
-                    }
-                    if workspace.isWorking,
-                       let status = workspace.executionState?.statusText,
-                       recent.last?.message != status {
-                        HStack(spacing: 5) {
-                            ProgressView().controlSize(.mini).tint(.white.opacity(0.7))
-                            Text("\(displayAgent.name) · \(status)")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.72))
-                                .lineLimit(1)
-                        }
-                        .id("working-status")
-                    }
+    private var reelHelperRequired: Bool {
+        guard displayAgent == .reel else { return false }
+        let message = workspace.latestError ?? workspace.executionState?.statusText ?? ""
+        let allPrepared = ReelHelperManager.helpers.allSatisfy { ReelHelperManager.isPrepared($0.id) }
+            && ReelHelperManager.isPrepared("streamlink")
+        return !allPrepared && (message.localizedCaseInsensitiveContains("helper") || message.localizedCaseInsensitiveContains("Prepare Reel"))
+    }
+
+    private func prepareReelHelpers() {
+        guard !reelIsPreparing else { return }
+        reelIsPreparing = true
+        reelPrepareProgress = 0
+        reelPreparationMessage = "Starting pinned Reel setup…"
+        Task { @MainActor in
+            defer { reelIsPreparing = false }
+            do {
+                try await ReelHelperManager.prepareAll { progress, message in
+                    reelPrepareProgress = progress
+                    reelPreparationMessage = message
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(.hidden)
-            .onAppear {
-                if let last = recent.last { proxy.scrollTo(last.id, anchor: .bottom) }
-            }
-            .onChange(of: workspace.conversation.count) { _, _ in
-                if let last = recent.last { withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo(last.id, anchor: .bottom) } }
-            }
-            .onChange(of: workspace.executionState?.statusText) { _, _ in
-                if workspace.isWorking { withAnimation(.easeOut(duration: 0.16)) { proxy.scrollTo("working-status", anchor: .bottom) } }
+                reelPreparationMessage = "Reel is ready. Send the request again to continue."
+            } catch {
+                reelPreparationMessage = error.localizedDescription
             }
         }
+    }
+
+    @ViewBuilder
+    private var modeContent: some View {
+        switch presentationMode {
+        case .working, .preparing:
+            if reelIsPreparing {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small).tint(.white.opacity(0.78))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(reelPreparationMessage ?? "Preparing Reel helpers…")
+                            .font(.system(size: 9, weight: .medium)).lineLimit(1)
+                        ProgressView(value: reelPrepareProgress).tint(Color(hex: AgentID.reel.colorHex))
+                    }
+                    Spacer(minLength: 2)
+                }
+                .foregroundStyle(.white.opacity(0.82)).frame(height: 47)
+            } else {
+                HStack(spacing: 7) {
+                    ProgressView().controlSize(.small).tint(.white.opacity(0.78))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(displayAgent.name) · \(workspace.executionState?.statusText ?? "Preparing…")")
+                            .font(.system(size: 10, weight: .medium)).lineLimit(1)
+                        if let state = workspace.executionState, state.totalStepCount > 1 {
+                            ProgressView(value: Double(state.completedStepCount), total: Double(state.totalStepCount)).tint(Color(hex: displayAgent.colorHex))
+                        }
+                    }
+                    Spacer(minLength: 2)
+                    Button { workspace.cancelCurrentTask() } label: { Image(systemName: "stop.fill").font(.system(size: 9, weight: .bold)) }
+                        .buttonStyle(.plain).accessibilityLabel("Stop task")
+                }
+                .foregroundStyle(.white.opacity(0.82)).frame(height: 47)
+            }
+        case .result:
+            if let output = workspace.activeOutput, output.fileURL.pathExtension.lowercased() == "kio-reel-info" {
+                reelPicker(output).frame(height: 46)
+            } else if let output = workspace.activeOutput { resultCard(output).frame(height: 46) }
+            else { compactLatestMessage }
+        case .clarificationError:
+            VStack(alignment: .leading, spacing: 3) {
+                Text(workspace.executionState?.statusText ?? workspace.latestError ?? "What would you like me to do?")
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.78)).lineLimit(2)
+                if reelHelperRequired {
+                    HStack(spacing: 6) {
+                        Button("Prepare Reel") { prepareReelHelpers() }
+                            .buttonStyle(.borderedProminent).tint(Color(hex: AgentID.reel.colorHex)).controlSize(.mini)
+                        Button("Settings…") { openSettings() }
+                            .buttonStyle(.plain).font(.system(size: 8, weight: .medium))
+                        if let reelPreparationMessage { Text(reelPreparationMessage).font(.system(size: 8)).lineLimit(1) }
+                    }
+                }
+            }
+            .frame(height: reelHelperRequired ? 48 : 42, alignment: .leading)
+        case .cueSetup:
+            EmptyView()
+        case .cueActive:
+            EmptyView()
+        case .idleComposer:
+            compactLatestMessage
+        }
+    }
+
+    @ViewBuilder
+    private func reelPicker(_ artifact: ArtifactRef) -> some View {
+        if let info = try? ReelInspectionStore.readInfo(from: artifact) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.title).font(.system(size: 9, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 4) {
+                    Menu {
+                        ForEach(info.qualities, id: \.self) { quality in Button(quality) { selectedReelQuality = quality } }
+                    } label: { Label(selectedReelQuality, systemImage: "arrow.up.arrow.down") }
+                    Menu {
+                        ForEach(info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats, id: \.self) { format in Button(format.uppercased()) { selectedReelFormat = format } }
+                    } label: { Label(selectedReelFormat.uppercased(), systemImage: "film") }
+                    Button("Download") {
+                        command = selectedReelQuality == "best" ? "download this as \(selectedReelFormat)" : "download this in \(selectedReelQuality) \(selectedReelFormat)"
+                        sendCommand()
+                    }
+                    .buttonStyle(.borderedProminent).tint(Color(hex: AgentID.reel.colorHex)).controlSize(.mini)
+                    if info.audioAvailable {
+                        Button("MP3") { command = "download this as MP3"; sendCommand() }
+                            .buttonStyle(.plain).font(.system(size: 8, weight: .semibold))
+                    }
+                }
+                .font(.system(size: 8, weight: .medium))
+                .buttonStyle(.plain)
+            }
+            .foregroundStyle(.white.opacity(0.82))
+            .onAppear {
+                selectedReelQuality = info.qualities.contains("1080p") ? "1080p" : (info.qualities.first ?? "best")
+                selectedReelFormat = info.videoFormats.contains("mp4") ? "mp4" : (info.videoFormats.first ?? "mp4")
+            }
+        } else {
+            Text("Reel inspection is unavailable. Add the URL again.").font(.system(size: 9)).foregroundStyle(.orange)
+        }
+    }
+
+    private var compactLatestMessage: some View {
+        Group {
+            if let item = workspace.conversation.last {
+                Text(item.message).font(.system(size: 10)).foregroundStyle(.white.opacity(0.78)).lineLimit(2)
+            } else { Text("Ready when you are").font(.system(size: 10)).foregroundStyle(.white.opacity(0.68)) }
+        }
+        .frame(maxWidth: .infinity, minHeight: 35, maxHeight: 42, alignment: .leading)
     }
 
     @ViewBuilder
@@ -588,6 +709,15 @@ private struct NotchContents: View {
                 Button("Open") { NSWorkspace.shared.open(artifact.fileURL) }
                 Button("Reveal") { NSWorkspace.shared.activateFileViewerSelecting([artifact.fileURL]) }
                 Button("Copy") { copyFileURL(artifact.fileURL) }
+                if artifact.kind == .text && artifact.fileURL.pathExtension.lowercased() != "kio-reel-info" {
+                    Button("Cue") {
+                        if let script = try? String(contentsOf: artifact.fileURL, encoding: .utf8), script.utf8.count <= 500_000 {
+                            cueInitialText = script
+                            cueSurface = true
+                        }
+                    }
+                    .help("Open this text result in Cue")
+                }
             }
             .buttonStyle(.plain)
             .font(.system(size: 7, weight: .semibold))
@@ -654,20 +784,20 @@ private struct NotchContents: View {
     private var mascotStage: some View {
         ZStack {
             AgentBlob(.kio, mood: baseMascotMood, size: 66, gazeTarget: mascotGaze)
-                .offset(y: coordinatorHasDeparted ? -250 : 0)
-                .zIndex(coordinatorHasDeparted ? 0 : 1)
-            if launchSmokeVisible {
+                .offset(y: mascotHandoff.coordinatorHasDeparted ? -250 : 0)
+                .zIndex(mascotHandoff.coordinatorHasDeparted ? 0 : 1)
+            if mascotHandoff.launchSmokeVisible {
                 LaunchSmoke()
                     .offset(y: 28)
                     .zIndex(1)
             }
-            if agentHasArrived {
-                AgentBlob(stageMascotAgent, mood: characterMood, size: 58, gazeTarget: mascotGaze)
-                    .id(stageMascotAgent)
+            if mascotHandoff.agentHasArrived {
+                AgentBlob(mascotHandoff.displayedAgent, mood: characterMood, size: 58, gazeTarget: mascotGaze)
+                    .id(mascotHandoff.displayedAgent)
                     .zIndex(2)
                     .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .move(edge: .top).combined(with: .opacity)))
                 LandingBurst()
-                    .id(stageMascotAgent)
+                    .id(mascotHandoff.displayedAgent)
                     .offset(y: 34)
                     .zIndex(3)
             }
@@ -692,6 +822,18 @@ private struct NotchContents: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Open chat history")
         .help("History")
+    }
+
+    private var cueButton: some View {
+        Button { cueSurface.toggle() } label: {
+            Image(systemName: "text.alignleft")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.82))
+                .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(cueSurface ? "Close Cue setup" : "Open Cue teleprompter")
+        .help("Cue")
     }
 
     private var composer: some View {

@@ -12,6 +12,7 @@
 		A10000000000000000000004 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* ChatView.swift */; };
 		A10000000000000000000005 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* SettingsView.swift */; };
 		A10000000000000000000006 /* ConversationPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ConversationPersistence.swift */; };
+		A10000000000000000000007 /* CueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* CueView.swift */; };
 		A10000000000000000000011 /* KioCore in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000001 /* KioCore */; };
 		A10000000000000000000012 /* KioModel in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000002 /* KioModel */; };
 		A10000000000000000000013 /* KioTools in Frameworks */ = {isa = PBXBuildFile; productRef = A40000000000000000000003 /* KioTools */; };
@@ -27,6 +28,7 @@
 		A20000000000000000000004 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* ConversationPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationPersistence.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* CueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CueView.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* KioVersion.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = KioMac.xcodeproj/KioVersion.xcconfig; sourceTree = "<group>"; };
 		A30000000000000000000001 /* Kio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Kio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -66,6 +68,7 @@
 				A20000000000000000000004 /* ChatView.swift */,
 				A20000000000000000000005 /* SettingsView.swift */,
 				A20000000000000000000006 /* ConversationPersistence.swift */,
+				A20000000000000000000008 /* CueView.swift */,
 			);
 			path = KioMac;
 			sourceTree = "<group>";
@@ -115,6 +118,7 @@
 				A10000000000000000000004 /* ChatView.swift in Sources */,
 				A10000000000000000000005 /* SettingsView.swift in Sources */,
 				A10000000000000000000006 /* ConversationPersistence.swift in Sources */,
+				A10000000000000000000007 /* CueView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

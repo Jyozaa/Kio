@@ -34,6 +34,9 @@ public struct FastPathPlanner: Sendable {
             return TaskPlan(request: request, steps: [search])
         }
 
+        let mediaInputs = inputs.filter { $0.kind == .url && $0.fileURL.pathExtension.lowercased() != "kio-query" || $0.fileURL.pathExtension.lowercased() == "kio-reel-info" }
+        if let mediaPlan = ReelRequestRouter.plan(request: request, artifacts: mediaInputs) { return mediaPlan }
+
         if let json = inputs.first(where: { $0.kind == .table && $0.fileURL.pathExtension.lowercased() == "json" }),
            words.contains("format") || words.contains("pretty") || words.contains("indent") {
             return TaskPlan(request: request, steps: [TaskStep(operation: .formatJSON, source: .artifacts([json.id]))])
@@ -310,8 +313,10 @@ public struct FastPathPlanner: Sendable {
             guard (2...36).contains(visualInputs.count) else { return TaskPlan(request: request, steps: [], clarification: "Choose 2 to 36 images to look for approximate visual matches.") }
             return TaskPlan(request: request, steps: [TaskStep(operation: .findSimilarImages, source: .artifacts(visualInputs.map(\.id)))])
         }
-        if words.contains("background"), words.contains("remove"), visualInputs.count == 1 {
-            return TaskPlan(request: request, steps: [TaskStep(operation: .removeImageBackground, source: .artifacts([visualInputs[0].id]))])
+        if words.contains("background"), words.contains("remove"), !visualInputs.isEmpty {
+            guard (1...12).contains(visualInputs.count) else { return TaskPlan(request: request, steps: [], clarification: "Pixel can remove backgrounds from 1 to 12 images per batch.") }
+            let operation: ToolOperation = visualInputs.count == 1 ? .removeImageBackground : .batchRemoveImageBackground
+            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(visualInputs.map(\.id)))])
         }
         if !visualInputs.isEmpty {
             if words.contains("receipt") || words.contains("invoice") {
@@ -348,10 +353,11 @@ public struct FastPathPlanner: Sendable {
         if let image = inputs.first(where: { $0.kind == .image }), sizeTarget != nil || words.contains("compress") || words.contains("smaller") {
             return TaskPlan(request: request, steps: [TaskStep(operation: .compressImage, source: .artifacts([image.id]), arguments: .imageCompression(maxBytes: sizeTarget))])
         }
-        if words.contains("convert"), !selectedImages.isEmpty,
-           let format = ["png", "jpeg", "jpg"].first(where: words.contains) {
+        if !selectedImages.isEmpty,
+           (words.contains("convert") || words.contains("make") || words.contains("save") || words.contains("turn")),
+           let format = Self.requestedImageFormat(in: words) {
             let operation: ToolOperation = selectedImages.count > 1 ? .batchConvertImages : .convertImage
-            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(selectedImages.map(\.id)), arguments: .imageConvert(format: format == "jpg" ? "jpeg" : format))])
+            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(selectedImages.map(\.id)), arguments: .imageConvert(format: format))])
         }
         if words.contains("rename"), inputs.count == 1, let name = Self.exactRenameName(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .renameFile, source: .artifacts([inputs[0].id]), arguments: .exactRename(name: name))])
@@ -488,6 +494,14 @@ public struct FastPathPlanner: Sendable {
         return TaskPlan(request: request, steps: [], clarification: clarification)
     }
 
+    private static func requestedImageFormat(in words: Set<String>) -> String? {
+        if words.contains("jpg") || words.contains("jpeg") { return "jpeg" }
+        for value in ["png", "heic", "heif", "tiff", "tif", "webp"] where words.contains(value) {
+            return value == "heif" ? "heic" : (value == "tif" ? "tiff" : value)
+        }
+        return nil
+    }
+
     private static func words(in request: String) -> Set<String> {
         Set(request.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
     }
@@ -543,6 +557,7 @@ public struct FastPathPlanner: Sendable {
         case .extractPDFText, .ocrPDFText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf }
         case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
         case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground: kinds.count == 1 && kinds[0] == .image
+        case .batchRemoveImageBackground: (1...12).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .batchResizeImages, .batchConvertImages: (1...32).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .compareImages: kinds.count == 2 && kinds.allSatisfy { $0 == .image }
         case .findSimilarImages: (2...36).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
@@ -573,6 +588,10 @@ public struct FastPathPlanner: Sendable {
         case .compareData: kinds.count == 2 && kinds.allSatisfy(isTable)
         case .fetchURL: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .url }
         case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
+        case .inspectRemoteMedia: kinds.count == 1 && kinds[0] == .url
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            kinds.count == 1 && (kinds[0] == .url || kinds[0] == .text)
         case .ocrImage: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
         case .extractStructuredText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
@@ -639,7 +658,7 @@ public struct FastPathPlanner: Sendable {
 
     private static func validArguments(_ arguments: ToolArguments, for operation: ToolOperation) -> Bool {
         switch operation {
-        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo,
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
              .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText, .convertAudio,
              .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
             arguments == .none
@@ -660,7 +679,7 @@ public struct FastPathPlanner: Sendable {
         case .resizeImage, .batchResizeImages:
             if case .imageResize(let width) = arguments { (1...20_000).contains(width) } else { false }
         case .convertImage, .batchConvertImages:
-            if case .imageConvert(let format) = arguments { ["png", "jpeg"].contains(format) } else { false }
+            if case .imageConvert(let format) = arguments { ["png", "jpeg", "heic", "tiff", "webp"].contains(format) } else { false }
         case .rotateImage:
             if case .imageRotation(let degrees) = arguments { [90, 180, 270].contains(degrees) } else { false }
         case .cropImage:
@@ -693,6 +712,12 @@ public struct FastPathPlanner: Sendable {
             arguments == .none
         case .fetchURL, .extractWebLinks, .researchOpenSources:
             arguments == .none
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive, .downloadRemoteGallery,
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            if case .remoteMedia(let quality, let format) = arguments {
+                (quality.map { ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains($0) } ?? true)
+                    && (format.map { ["mp4", "webm", "mkv", "mov", "mp3", "m4a", "wav", "flac"].contains($0) } ?? true)
+            } else { false }
         case .explainCode, .proposePatch:
             if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
         case .searchPDFText:
@@ -722,6 +747,7 @@ public struct FastPathPlanner: Sendable {
         case .proposePatch: [.patch, .text]
         case .formatJSON: [.table]
         case .resizeImage, .convertImage, .rotateImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground, .imageContactSheet: [.image]
+        case .batchRemoveImageBackground: Array(repeating: .image, count: inputKinds.count)
         case .batchResizeImages, .batchConvertImages: Array(repeating: .image, count: inputKinds.count)
         case .compareImages, .findSimilarImages: [.text]
         case .renameFile, .batchRename: inputKinds
@@ -742,6 +768,12 @@ public struct FastPathPlanner: Sendable {
         case .jsonToCSV: [.csv]
         case .fetchURL: Array(repeating: .text, count: inputKinds.count)
         case .extractWebLinks, .researchOpenSources: [.text]
+        case .inspectRemoteMedia: [.text]
+        case .downloadRemoteVideo, .downloadRemoteLive: [.video]
+        case .downloadRemoteAudio: [.audio]
+        case .downloadRemoteGallery: [.image]
+        case .downloadRemoteSubtitles: [.text]
+        case .downloadRemoteThumbnail: [.image]
         case .thumbnailVideo: [.image]
         case .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: [.video]
         case .convertAudio: [.audio]

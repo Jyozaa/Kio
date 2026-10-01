@@ -84,14 +84,14 @@ public struct ToolExecutor: Sendable {
             return try inputs.map { try resizeImage($0, width: width) }
         case .convertImage:
             guard let input = inputs.first, input.kind == .image,
-                  case .imageConvert(let format) = step.arguments, ["png", "jpeg"].contains(format) else {
-                throw KioFailure.invalidInput("Choose an image and PNG or JPEG as the output format.")
+                  case .imageConvert(let format) = step.arguments else {
+                throw KioFailure.invalidInput("Choose an image and a supported output format.")
             }
             return [try convertImage(input, format: format)]
         case .batchConvertImages:
             guard (1...32).contains(inputs.count), inputs.allSatisfy({ $0.kind == .image }),
-                  case .imageConvert(let format) = step.arguments, ["png", "jpeg"].contains(format) else {
-                throw KioFailure.invalidInput("Choose 1 to 32 images and PNG or JPEG as the output format.")
+                  case .imageConvert(let format) = step.arguments else {
+                throw KioFailure.invalidInput("Choose 1 to 32 images and a supported output format.")
             }
             return try inputs.map { try convertImage($0, format: format) }
         case .compareImages:
@@ -103,6 +103,16 @@ public struct ToolExecutor: Sendable {
         case .removeImageBackground:
             guard inputs.count == 1, let input = inputs.first, input.kind == .image else { throw KioFailure.invalidInput("Choose one image to remove its background.") }
             return [try removeImageBackground(input)]
+        case .batchRemoveImageBackground:
+            guard (1...12).contains(inputs.count), inputs.allSatisfy({ $0.kind == .image }) else {
+                throw KioFailure.invalidInput("Choose 1 to 12 images for batch background removal.")
+            }
+            var outputs: [ArtifactRef] = []
+            for input in inputs { try Task.checkCancellation(); outputs.append(try removeImageBackground(input)) }
+            return outputs
+        case .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            return try await ReelWorkflow.execute(step.operation, inputs: inputs, arguments: step.arguments)
         case .rotateImage:
             guard inputs.count == 1, let input = inputs.first, input.kind == .image,
                   case .imageRotation(let degrees) = step.arguments, [90, 180, 270].contains(degrees) else {
@@ -921,6 +931,9 @@ public struct ToolExecutor: Sendable {
         let maskBuffer: CVPixelBuffer
         do { maskBuffer = try observation.generateScaledMaskForImage(forInstances: observation.allInstances, from: handler) }
         catch { throw KioFailure.processing("Vision couldn't create a foreground mask: \(error.localizedDescription)") }
+        guard Self.hasUsableForegroundMask(maskBuffer) else {
+            throw KioFailure.verification("Vision returned an empty or unusable subject mask. The original image was preserved.")
+        }
         let foreground = CIImage(cgImage: sourceImage)
         let extent = foreground.extent
         let rawMask = CIImage(cvPixelBuffer: maskBuffer)
@@ -936,26 +949,81 @@ public struct ToolExecutor: Sendable {
             throw KioFailure.processing("Core Image couldn't save the transparent result.")
         }
         let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName) + "-No-Background", fileExtension: "png")
-        return try writePNG(outputImage, output: output, parentID: input.id,
-                            note: "Vision created a transparent PNG around the detected foreground. The source image remains unchanged.")
+        let result = try writePNG(outputImage, output: output, parentID: input.id,
+                                  note: "Vision created a transparent PNG around the detected foreground. The source image remains unchanged.")
+        guard let saved = CGImageSourceCreateWithURL(result.fileURL as CFURL, nil),
+              CGImageSourceGetType(saved) as String? == UTType.png.identifier,
+              let alpha = CGImageSourceCreateImageAtIndex(saved, 0, nil),
+              alpha.alphaInfo != .none && alpha.alphaInfo != .noneSkipFirst && alpha.alphaInfo != .noneSkipLast else {
+            try? FileManager.default.removeItem(at: output)
+            throw KioFailure.verification("The saved PNG did not retain a transparent alpha channel.")
+        }
+        return result
     }
 
     private func convertImage(_ input: ArtifactRef, format: String) throws -> ArtifactRef {
         guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KioFailure.invalidInput("This image could not be opened.") }
-        let ext = format == "jpeg" ? "jpg" : "png"
+        let normalized = format.lowercased() == "jpg" ? "jpeg" : format.lowercased()
+        let (uti, ext): (String, String) = switch normalized {
+        case "png": (UTType.png.identifier, "png")
+        case "jpeg": (UTType.jpeg.identifier, "jpg")
+        case "heic", "heif": (UTType.heic.identifier, "heic")
+        case "tiff", "tif": (UTType.tiff.identifier, "tiff")
+        case "webp": ("org.webmproject.webp", "webp")
+        default: throw KioFailure.unsupported("Pixel supports PNG, JPEG, HEIC, TIFF, and WebP only when this macOS runtime can encode them.")
+        }
+        let encoderTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        guard encoderTypes.contains(uti) else { throw KioFailure.unsupported("This macOS ImageIO runtime cannot encode \(normalized.uppercased()) images.") }
         let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName), fileExtension: ext)
         let temporary = OutputLocation.temporaryURL(beside: output)
         defer { try? FileManager.default.removeItem(at: temporary) }
-        guard let destination = CGImageDestinationCreateWithURL(temporary as CFURL, Self.imageUTI(for: ext), 1, nil) else {
+        guard let destination = CGImageDestinationCreateWithURL(temporary as CFURL, uti as CFString, 1, nil) else {
             throw KioFailure.processing("Kio could not create the converted image.")
         }
-        CGImageDestinationAddImage(destination, image, nil)
+        let outputImage = normalized == "jpeg" ? try Self.flattenForJPEG(image) : image
+        let properties: [CFString: Any] = normalized == "jpeg" ? [kCGImageDestinationLossyCompressionQuality: 0.92] : [:]
+        CGImageDestinationAddImage(destination, outputImage, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination),
               let check = CGImageSourceCreateWithURL(temporary as CFURL, nil),
-              CGImageSourceGetCount(check) == 1 else { throw KioFailure.verification("The converted image could not be verified.") }
+              CGImageSourceGetCount(check) == 1,
+              CGImageSourceGetType(check) as String? == uti else { throw KioFailure.verification("The converted image's encoded format did not match its file extension.") }
         try OutputLocation.commit(temporary, to: output)
-        return try ArtifactRef.inspect(output, parentID: input.id)
+        let animatedInput = CGImageSourceGetCount(source) > 1
+        let note = animatedInput ? "Converted the first frame only; this operation does not preserve animation. The original remains unchanged." : nil
+        return try ArtifactRef.inspect(output, parentID: input.id).withVerificationNote(note)
+    }
+
+    private static func flattenForJPEG(_ image: CGImage) throws -> CGImage {
+        guard let context = CGContext(data: nil, width: image.width, height: image.height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else {
+            throw KioFailure.processing("Pixel couldn't prepare a white background for JPEG transparency flattening.")
+        }
+        context.setFillColor(CGColor.white)
+        context.fill(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let flattened = context.makeImage() else { throw KioFailure.processing("Pixel couldn't flatten the transparent image for JPEG.") }
+        return flattened
+    }
+
+    private static func hasUsableForegroundMask(_ buffer: CVPixelBuffer) -> Bool {
+        guard CVPixelBufferLockBaseAddress(buffer, .readOnly) == kCVReturnSuccess else { return false }
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(buffer)?.assumingMemoryBound(to: UInt8.self) else { return false }
+        let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+        guard width > 1, height > 1 else { return false }
+        var minValue: UInt8 = 255, maxValue: UInt8 = 0
+        let xStep = max(1, width / 64), yStep = max(1, height / 64)
+        for y in stride(from: 0, to: height, by: yStep) {
+            for x in stride(from: 0, to: width, by: xStep) {
+                let value = base[y * rowBytes + x]
+                minValue = min(minValue, value); maxValue = max(maxValue, value)
+            }
+        }
+        return Int(maxValue) - Int(minValue) >= 12
     }
 
     private func rotateImage(_ input: ArtifactRef, degrees: Int) throws -> ArtifactRef {
@@ -1917,7 +1985,16 @@ public struct ToolExecutor: Sendable {
     }
 
     private static func base(_ name: String) -> String { URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent }
-    private static func imageUTI(for ext: String) -> CFString { (ext == "jpg" || ext == "jpeg" ? UTType.jpeg : UTType.png).identifier as CFString }
+    private static func imageUTI(for ext: String) -> CFString {
+        let uti: UTType = switch ext.lowercased() {
+        case "jpg", "jpeg": .jpeg
+        case "heic", "heif": .heic
+        case "tif", "tiff": .tiff
+        case "webp": UTType("org.webmproject.webp") ?? .png
+        default: .png
+        }
+        return uti.identifier as CFString
+    }
 }
 
 private extension Data {

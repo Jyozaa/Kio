@@ -18,6 +18,7 @@ public struct AgentBlob: View {
     @State private var idleBob = false
     @State private var idleSway = false
     @State private var roleBeat = false
+    @State private var cursorLean: CGFloat = 0
 
     private let agent: AgentID
     private let mood: CharacterMood
@@ -34,9 +35,14 @@ public struct AgentBlob: View {
     public var body: some View {
         ZStack {
             UnevenRoundedRectangle(topLeadingRadius: size * 0.43, bottomLeadingRadius: size * 0.34,
-                                   bottomTrailingRadius: size * 0.40, topTrailingRadius: size * 0.35)
+                                   bottomTrailingRadius: size * 0.405, topTrailingRadius: size * 0.335)
                 .fill(Color(hex: agent.colorHex))
                 .frame(width: size, height: size * 0.83)
+                .overlay {
+                    UnevenRoundedRectangle(topLeadingRadius: size * 0.43, bottomLeadingRadius: size * 0.34,
+                                           bottomTrailingRadius: size * 0.405, topTrailingRadius: size * 0.335)
+                        .stroke(Color(hex: Self.edgeColor(for: agent.colorHex)), lineWidth: max(0.7, size * 0.032))
+                }
             Group {
                 if mood == .success {
                     HStack(spacing: size * 0.075) {
@@ -59,7 +65,7 @@ public struct AgentBlob: View {
                     y: size * 0.005 + eyeOffset + pointerOffset.height + idleGaze.height)
         }
         .offset(x: roleOffset.width, y: shapeOffset + idleBobOffset + roleOffset.height)
-        .rotationEffect(idleRotation + roleRotation)
+        .rotationEffect(idleRotation + roleRotation + .degrees(Double(cursorLean)))
         .scaleEffect(x: shouldReduceMotion ? 1 : (breathing ? 1.018 : 0.99) * roleStretch.width,
                      y: shouldReduceMotion ? 1 : (mood == .failure ? 0.985 : breathing ? 0.99 : 1.015) * roleStretch.height)
         .frame(width: size, height: size)
@@ -81,13 +87,27 @@ public struct AgentBlob: View {
                 .allowsHitTesting(false)
             }
         }
-        .task(id: shouldReduceMotion) {
-            guard !shouldReduceMotion else { return }
+        .task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(Double.random(in: 3.7...6.1)))
-                withAnimation(.easeInOut(duration: 0.11)) { blinking = true }
-                try? await Task.sleep(for: .milliseconds(130))
-                withAnimation(.easeOut(duration: 0.14)) { blinking = false }
+                try? await Task.sleep(for: .seconds(CharacterMotionPolicy.blinkDelay(sample: Double.random(in: 0...1))))
+                guard !Task.isCancelled else { return }
+                await blinkOnce()
+                if CharacterMotionPolicy.choosesDoubleBlink(sample: Double.random(in: 0...1)) {
+                    try? await Task.sleep(for: .milliseconds(Int.random(in: 90...150)))
+                    guard !Task.isCancelled else { return }
+                    await blinkOnce()
+                }
+            }
+        }
+        .task(id: gazeTarget) {
+            guard !shouldReduceMotion, let gazeTarget else {
+                withAnimation(.easeOut(duration: 0.2)) { cursorLean = 0 }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.24)) {
+                cursorLean = min(1, max(-1, gazeTarget.width)) * 1.15
             }
         }
         .task(id: mood) {
@@ -182,44 +202,20 @@ public struct AgentBlob: View {
     /// Each specialist gets one quiet movement that hints at its job while it idles.
     /// The shared blob and face stay intact; these are short, reversible poses.
     private var roleStretch: CGSize {
-        guard !shouldReduceMotion else { return CGSize(width: 1, height: 1) }
-        return switch agent {
-        case .pixel:
-            roleBeat ? CGSize(width: 1.045, height: 0.965) : CGSize(width: 0.985, height: 1.02)
-        case .zip:
-            roleBeat ? CGSize(width: 0.94, height: 1.045) : CGSize(width: 1.025, height: 0.985)
-        case .echo:
-            roleBeat ? CGSize(width: 1.025, height: 1.025) : CGSize(width: 0.99, height: 0.99)
-        case .table:
-            roleBeat ? CGSize(width: 1.035, height: 0.975) : CGSize(width: 0.98, height: 1.025)
-        case .lens:
-            roleBeat ? CGSize(width: 1.025, height: 1.035) : CGSize(width: 0.99, height: 0.985)
-        default:
-            CGSize(width: 1, height: 1)
-        }
+        CGSize(width: rolePose.scaleX, height: rolePose.scaleY)
     }
 
     private var roleOffset: CGSize {
         guard !shouldReduceMotion, mood == .idle || mood == .curious || mood == .working else { return .zero }
-        return switch agent {
-        case .pip: CGSize(width: 0, height: roleBeat ? -size * 0.045 : 0)
-        case .clerk: CGSize(width: roleBeat ? size * 0.025 : -size * 0.025, height: 0)
-        case .courier: CGSize(width: roleBeat ? size * 0.035 : -size * 0.02, height: roleBeat ? -size * 0.035 : 0)
-        case .patch: CGSize(width: roleBeat ? size * 0.035 : -size * 0.035, height: 0)
-        default: .zero
-        }
+        return CGSize(width: rolePose.offsetX * size, height: rolePose.offsetY * size)
     }
 
     private var roleRotation: Angle {
-        guard !shouldReduceMotion else { return .zero }
-        return switch agent {
-        case .scribe: .degrees(roleBeat ? -1.8 : 1.2)
-        case .table: .degrees(roleBeat ? 1.4 : -1.4)
-        case .scout: .degrees(roleBeat ? -2.2 : 2.2)
-        case .pip: .degrees(roleBeat ? -1 : 0.6)
-        case .courier: .degrees(roleBeat ? 2.2 : -0.8)
-        default: .zero
-        }
+        .degrees(rolePose.rotationDegrees)
+    }
+
+    private var rolePose: CharacterRolePose {
+        CharacterMotionPolicy.rolePose(for: agent, beat: roleBeat, reduceMotion: shouldReduceMotion)
     }
 
     private var idleBobOffset: CGFloat {
@@ -242,7 +238,25 @@ public struct AgentBlob: View {
         return 0
     }
 
-    private var shouldReduceMotion: Bool { reduceMotion || reduceCharacterMotion }
+    private var shouldReduceMotion: Bool {
+        !CharacterMotionPolicy.motionEnabled(systemReduceMotion: reduceMotion, userReduceMotion: reduceCharacterMotion)
+    }
+
+    private static func edgeColor(for value: UInt) -> UInt {
+        let red = ((value >> 16) & 0xff) * 68 / 100
+        let green = ((value >> 8) & 0xff) * 68 / 100
+        let blue = (value & 0xff) * 68 / 100
+        return (red << 16) | (green << 8) | blue
+    }
+
+    private func blinkOnce() async {
+        let close = CharacterMotionPolicy.blinkCloseDuration(sample: Double.random(in: 0...1))
+        withAnimation(.easeInOut(duration: close)) { blinking = true }
+        try? await Task.sleep(for: .seconds(close))
+        guard !Task.isCancelled else { return }
+        let open = CharacterMotionPolicy.blinkOpenDuration(sample: Double.random(in: 0...1))
+        withAnimation(.easeOut(duration: open)) { blinking = false }
+    }
 }
 
 private struct SmileEye: Shape {

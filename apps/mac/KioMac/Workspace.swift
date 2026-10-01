@@ -55,11 +55,32 @@ final class KioWorkspace: ObservableObject {
     private let artifactContextResolver = ArtifactContextResolver()
     private let fastResponseResolver = FastPathResponseResolver()
     private let executor = ToolExecutor(localTextTransform: { systemInstruction, userPrompt, maxTokens in
-        try await LocalModelManager.shared.generateText(
-            systemInstruction: systemInstruction,
-            userPrompt: userPrompt,
-            maxTokens: maxTokens
-        )
+        let (provider, privacy) = await MainActor.run { (IntelligenceSettings.shared.provider, IntelligenceSettings.shared.privacyMode) }
+        if provider == .localQwen {
+            return try await LocalModelManager.shared.generateText(systemInstruction: systemInstruction,
+                                                                   userPrompt: userPrompt, maxTokens: maxTokens)
+        }
+        guard provider != .none else {
+            throw KioFailure.unsupported("Choose a provider in Settings → Intelligence for this semantic task. Kio will not start Qwen unless Local Qwen is selected.")
+        }
+        switch privacy.decisionForContentTransfer(needsContents: true) {
+        case .deny:
+            throw KioFailure.unsupported("Metadata only is enabled. This task needs document text; choose Local Qwen or change Content privacy in Settings → Intelligence.")
+        case .requiresConfirmation:
+            let approved = await MainActor.run {
+                let alert = NSAlert()
+                alert.alertStyle = .informational
+                alert.messageText = "Send selected text to \(provider.title)?"
+                alert.informativeText = "The requested text operation needs the document contents. Kio will send them directly to the selected provider over HTTPS."
+                alert.addButton(withTitle: "Send contents")
+                alert.addButton(withTitle: "Cancel")
+                return alert.runModal() == .alertFirstButtonReturn
+            }
+            guard approved else { throw CancellationError() }
+        case .allow: break
+        }
+        return try await IntelligenceProviderClient.shared.generate(systemInstruction: systemInstruction,
+                                                                      userPrompt: userPrompt, maxTokens: maxTokens)
     })
 
     private init() {
@@ -465,17 +486,30 @@ final class KioWorkspace: ObservableObject {
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: contextClarification, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 }
-                guard LocalModelManager.shared.isInstalled else {
+                let selectedProvider = IntelligenceSettings.shared.provider
+                if selectedProvider == .none {
                     let message = plan.clarification ?? "I need a clearer instruction for that."
                     publishExecution(for: plan, status: .waitingForUser, text: message)
-                    append("Kio", "\(message) A local model can plan other registered workflows after you prepare it in Settings.")
+                    append("Kio", "\(message) Choose an intelligence provider in Settings → Intelligence for requests that need semantic planning.")
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 }
-                append("Kio", "Planning with the local model…")
+                if selectedProvider == .localQwen && !LocalModelManager.shared.isInstalled {
+                    let message = "Local Qwen is selected but isn't prepared. Prepare it in Settings or choose another configured provider."
+                    publishExecution(for: plan, status: .waitingForUser, text: message)
+                    append("Kio", message)
+                    return
+                }
+                append("Kio", selectedProvider == .localQwen ? "Planning with Local Qwen…" : "Planning with \(selectedProvider.title)…")
                 if let remote { await LocalRelayManager.shared.sendReply(type: "progress", text: "Kio is checking the request against its registered tools.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: "Kio", agent: AgentID.kio.rawValue) }
                 do {
-                    guard let modelPlan = try await LocalModelManager.shared.plan(request: request, artifacts: planningArtifacts) else {
+                    let modelPlan: TaskPlan?
+                    if selectedProvider == .localQwen {
+                        modelPlan = try await LocalModelManager.shared.plan(request: request, artifacts: planningArtifacts)
+                    } else {
+                        modelPlan = try await IntelligenceProviderClient.shared.plan(request: request, artifacts: planningArtifacts)
+                    }
+                    guard let modelPlan else {
                         let message = "I couldn't verify a safe tool plan for that request. Try adding a little more detail."
                         publishExecution(for: plan, status: .waitingForUser, text: message)
                         append("Kio", message)
@@ -491,8 +525,8 @@ final class KioWorkspace: ObservableObject {
                 } catch {
                     latestError = error.localizedDescription
                     publishExecution(for: plan, status: .failed, text: error.localizedDescription, failure: error.localizedDescription)
-                    append("Kio", "The local model couldn't plan this safely: \(error.localizedDescription)")
-                    if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "The local model couldn't plan this safely: \(error.localizedDescription)", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
+                    append("Kio", "\(selectedProvider.title) couldn't plan this safely: \(error.localizedDescription)")
+                    if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "\(selectedProvider.title) couldn't plan this safely: \(error.localizedDescription)", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 }
             }
@@ -647,6 +681,7 @@ final class KioWorkspace: ObservableObject {
         case .compareImages: "Pixel is comparing the two images using a small-image luminance signature."
         case .findSimilarImages: "Pixel is looking for approximate visual matches among these images."
         case .removeImageBackground: "Pixel is asking Vision to separate the foreground and create a transparent PNG."
+        case .batchRemoveImageBackground: "Pixel is removing backgrounds from the selected images and checking each transparent PNG."
         case .rotateImage: "Rotating the image."
         case .inspectImage: "Inspecting the image."
         case .cropImage: "Cropping the selected image area."
@@ -654,6 +689,13 @@ final class KioWorkspace: ObservableObject {
         case .compressImage: "Creating and checking a smaller image copy."
         case .removeImageMetadata: "Removing embedded image metadata."
         case .imageContactSheet: "Arranging the selected images into a contact sheet."
+        case .inspectRemoteMedia: "Reel is checking the public media URL and available formats."
+        case .downloadRemoteVideo: "Reel is downloading the selected public video format."
+        case .downloadRemoteAudio: "Reel is preparing the requested audio from the public media URL."
+        case .downloadRemoteLive: "Reel is connecting to the selected live stream."
+        case .downloadRemoteGallery: "Reel is saving the available public gallery images."
+        case .downloadRemoteSubtitles: "Reel is retrieving available captions."
+        case .downloadRemoteThumbnail: "Reel is saving the available thumbnail."
         case .renameFile: "Making a conflict-safe copy with the requested name."
         case .batchRename: "Making conflict-safe renamed copies."
         case .copyFiles: "Copying files into the selected folder and checking each copy."

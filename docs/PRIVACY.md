@@ -1,12 +1,22 @@
 # Privacy
 
+## Intelligence providers
+
+Deterministic / No AI, OpenAI, Anthropic, Gemini, OpenRouter, Groq, and Local Qwen are selectable in Settings → Intelligence. Opening Kio and deterministic fast paths do not load Qwen. BYOK credentials are stored only in the macOS Keychain; provider selection, model identifiers, and the content-privacy choice are saved in preferences. Cloud provider requests travel directly from the Mac to the selected provider over HTTPS. The phone relay never receives provider credentials or provider requests. Kio does not silently fall back to a different provider.
+
+The default content mode is **Ask before sending contents**. Ordinary planning sends the request and bounded file metadata, not file bytes. A semantic operation that needs document contents asks before sending them. **Metadata only** blocks that cloud content operation; **Allow contents** removes the per-operation confirmation. Choosing Local Qwen keeps inference on the Mac. The provider receives any text Kio sends under its own service terms and privacy practices.
+
 ## Mac use without mobile relay
 
-The app does not require an account or network service for local file workflows. File bytes stay on the Mac. The optional model is downloaded from Hugging Face after the user chooses **Download model**; once prepared, inference runs on the Mac. The planner receives the request and file names, types, sizes, and indexes, not file contents or local paths. When the user asks Scribe to work on a selected text file, the bounded text contents are passed to the same local model on the Mac. Lens uses Apple Vision locally. No hosted AI API is called.
+The app does not require an account or network service for local file workflows. File bytes stay on the Mac unless the user explicitly chooses a cloud provider/content mode or requests a network workflow. Local Qwen is downloaded from Hugging Face only after the user chooses **Download model**; once prepared and selected, inference runs on the Mac. Planning sends the request and file names, types, sizes, and indexes, not file contents or local paths. When Local Qwen is selected, Scribe reads bounded text from the selected source locally. Lens uses Apple Vision locally. Cloud-provider behavior is described above.
 
 Conversation text and artifact metadata are stored in the user's local SwiftData store. Searchable history, the last verified workflow, and a bounded list of processed remote task IDs stay in local preferences/storage for references, follow-ups, and duplicate suppression. Clearing history removes conversation and last-workflow context; the small task-ID ledger remains to prevent a relayed request from being run again. The Mac's P-256 private key and relay bearer token are stored in Keychain.
 
 Clipboard content is read only when the user explicitly pastes into Kio. Screenshot capture is user-initiated and can require Screen Recording permission. Finder Services receive only the files the user selected. Scout fetches public web pages only when requested; those requests go to the selected websites and expose the normal network metadata to them.
+
+Reel contacts a public media URL only when the user requests inspection or download. Its pinned helper binaries, Python runtime, and Streamlink wheels are downloaded only after the user presses **Prepare Reel**. They are checked against pinned SHA-256 digests before installation in `~/Library/Application Support/Kio/Helpers/`. Media downloads then connect directly to their public source. Reel does not read browser cookies, accept login credentials, or bypass DRM. Use only media you are allowed to save.
+
+Cue keeps its script on the Mac. Classic mode needs no microphone. Voice-Paced asks for microphone permission when started; Word Tracking asks for microphone and Speech Recognition permission when started. Kio does not request either permission at launch. The operating system's Speech framework processes Word Tracking audio; on-device versus Apple service processing depends on the OS, locale, and system configuration.
 
 ## Optional phone relay
 

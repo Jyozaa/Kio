@@ -25,7 +25,9 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Echo transcribes an audio file you selected using Apple's on-device speech recognizer.</string>
+	<string>Kio Cue uses Speech Recognition to highlight your speaking script while you read aloud.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kio Cue uses the microphone for voice-paced scrolling and word tracking while you present.</string>
 	<key>NSServices</key>
 	<array>
 		<dict>

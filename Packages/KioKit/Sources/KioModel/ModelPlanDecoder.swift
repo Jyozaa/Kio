@@ -64,6 +64,7 @@ public enum ModelPlanDecoder {
         case .extractPDFText, .ocrPDFText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .pdf }
         case .imagesToPDF: !kinds.isEmpty && kinds.allSatisfy { $0 == .image }
         case .resizeImage, .convertImage, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground: kinds.count == 1 && kinds[0] == .image
+        case .batchRemoveImageBackground: (1...12).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .batchResizeImages, .batchConvertImages: (1...32).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .compareImages: kinds.count == 2 && kinds.allSatisfy { $0 == .image }
         case .findSimilarImages: (2...36).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
@@ -96,6 +97,10 @@ public enum ModelPlanDecoder {
         case .compareData: kinds.count == 2 && kinds.allSatisfy(isTable)
         case .fetchURL: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .url }
         case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
+        case .inspectRemoteMedia: kinds.count == 1 && kinds[0] == .url
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            kinds.count == 1 && (kinds[0] == .url || kinds[0] == .text)
         case .ocrImage, .extractStructuredText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
         case .explainCode, .proposePatch: kinds.count == 1 && (kinds[0] == .text || kinds[0] == .patch)
@@ -107,7 +112,7 @@ public enum ModelPlanDecoder {
 
     private static func typedArguments(_ wire: WireArguments?, for operation: ToolOperation, request: String) -> ToolArguments? {
         switch operation {
-        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo,
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
              .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
              .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads, .convertAudio:
             return ToolArguments.none
@@ -161,8 +166,15 @@ public enum ModelPlanDecoder {
             guard let width = wire?.width, (1...20_000).contains(width) else { return nil }
             return .imageResize(width: width)
         case .convertImage, .batchConvertImages:
-            guard let format = wire?.format?.lowercased(), ["png", "jpg", "jpeg"].contains(format) else { return nil }
+            guard let format = wire?.format?.lowercased(), ["png", "jpg", "jpeg", "heic", "heif", "tiff", "tif", "webp"].contains(format) else { return nil }
             return .imageConvert(format: format == "jpg" ? "jpeg" : format)
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive, .downloadRemoteGallery,
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            let quality = wire?.quality?.lowercased()
+            let format = wire?.format?.lowercased()
+            guard quality.map({ ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains($0) }) ?? true,
+                  format.map({ ["mp4", "webm", "mkv", "mov", "mp3", "m4a", "wav", "flac"].contains($0) }) ?? true else { return nil }
+            return .remoteMedia(quality: quality, format: format)
         case .rotateImage:
             guard let degrees = wire?.degrees, [90, 180, 270].contains(degrees) else { return nil }
             return .imageRotation(degrees: degrees)
@@ -208,6 +220,7 @@ public enum ModelPlanDecoder {
         case .extractPDFText, .ocrPDFText: Array(repeating: .text, count: inputKinds.count)
         case .inspectPDF, .searchPDFText, .inspectImage, .inspectArchive: [.text]
         case .resizeImage, .convertImage, .rotateImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .removeImageBackground, .imageContactSheet: [.image]
+        case .batchRemoveImageBackground: Array(repeating: .image, count: inputKinds.count)
         case .batchResizeImages, .batchConvertImages: Array(repeating: .image, count: inputKinds.count)
         case .compareImages, .findSimilarImages: [.text]
         case .renameFile, .batchRename: inputKinds
@@ -228,6 +241,12 @@ public enum ModelPlanDecoder {
         case .jsonToCSV: [.csv]
         case .fetchURL: Array(repeating: .text, count: inputKinds.count)
         case .extractWebLinks, .researchOpenSources: [.text]
+        case .inspectRemoteMedia: [.text]
+        case .downloadRemoteVideo, .downloadRemoteLive: [.video]
+        case .downloadRemoteAudio: [.audio]
+        case .downloadRemoteGallery: Array(repeating: .image, count: max(1, inputKinds.count))
+        case .downloadRemoteSubtitles: [.text]
+        case .downloadRemoteThumbnail: [.image]
         case .ocrImage, .extractStructuredText: Array(repeating: .text, count: inputKinds.count)
         case .extractImageTable: [.csv, .text]
         case .extractReceipt: [.table]
@@ -267,6 +286,7 @@ public enum ModelPlanDecoder {
         let y: Int?
         let height: Int?
         let format: String?
+        let quality: String?
         let name: String?
         let prefix: String?
         let pages: [Int]?

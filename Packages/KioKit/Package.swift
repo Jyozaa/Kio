@@ -31,7 +31,7 @@ let package = Package(
             .product(name: "Tokenizers", package: "swift-transformers")
         ]),
         .systemLibrary(name: "CZlib", path: "Sources/CZlib"),
-        .target(name: "KioTools", dependencies: ["KioCore", "CZlib", .product(name: "SwiftSoup", package: "SwiftSoup"), .product(name: "CoreXLSX", package: "CoreXLSX"), .product(name: "ZIPFoundation", package: "ZIPFoundation")]),
+        .target(name: "KioTools", dependencies: ["KioCore", "KioModel", "CZlib", .product(name: "SwiftSoup", package: "SwiftSoup"), .product(name: "CoreXLSX", package: "CoreXLSX"), .product(name: "ZIPFoundation", package: "ZIPFoundation")], resources: [.process("Resources")]),
         .target(name: "KioSync", dependencies: ["KioCore"]),
         .target(name: "KioUI", dependencies: ["KioCore"]),
         .testTarget(name: "KioCoreTests", dependencies: ["KioCore", "KioModel"]),

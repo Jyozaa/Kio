@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import KioCore
-import KioModel
+@testable import KioModel
 
 @Test func mergeRequestSelectsRegisteredPDFOperation() throws {
     let a = try makeArtifact(name: "report.pdf", kind: .pdf)
@@ -801,6 +801,116 @@ import KioModel
     }
 
     #expect(!state.shouldRemainExpanded)
+}
+
+@Test func collapsedNotchPresentationHasNoMascotOrContentPayload() {
+    let collapsed = NotchPresentationState(expanded: false, mode: .result, activeAgent: .reel, progress: 1)
+    #expect(!collapsed.exposesMascot)
+    #expect(!collapsed.exposesContent)
+    #expect(collapsed.clipsContentToShell)
+
+    let opening = NotchPresentationState(expanded: true, mode: .idleComposer, activeAgent: .kio, progress: 0.12)
+    #expect(!opening.exposesMascot)
+    #expect(opening.exposesContent)
+    let ready = NotchPresentationState(expanded: true, mode: .cueActive, activeAgent: .cue, progress: 1)
+    #expect(!ready.exposesMascot)
+    #expect(ready.exposesContent)
+}
+
+@Test func characterMotionPolicyKeepsSubtleBlinkTimingAndNewAgentsRegistered() {
+    #expect(CharacterMotionPolicy.blinkDelay(sample: 0) == 2.5)
+    #expect(CharacterMotionPolicy.blinkDelay(sample: 1) == 5.5)
+    #expect(CharacterMotionPolicy.blinkCloseDuration(sample: 0) == 0.09)
+    #expect(CharacterMotionPolicy.blinkCloseDuration(sample: 1) == 0.13)
+    #expect(CharacterMotionPolicy.blinkOpenDuration(sample: 0) == 0.1)
+    #expect(CharacterMotionPolicy.blinkOpenDuration(sample: 1) == 0.15)
+    #expect(CharacterMotionPolicy.choosesDoubleBlink(sample: 0.179))
+    #expect(!CharacterMotionPolicy.choosesDoubleBlink(sample: 0.18))
+    #expect(AgentID.reel.colorHex == 0xD58B7C)
+    #expect(AgentID.cue.colorHex == 0xA8C98D)
+    #expect(AgentID.reel.roleDescription.contains("media"))
+    #expect(AgentID.cue.roleDescription.contains("Teleprompter"))
+}
+
+@Test func reelRoutesExplicitAndUnderspecifiedRequestsWithoutModelPlanning() throws {
+    let url = try makeArtifact(name: "public-video.kio-url", kind: .url)
+    let inspect = FastPathPlanner().plan(request: "download this", artifacts: [url])
+    #expect(inspect.steps.map(\.operation) == [.inspectRemoteMedia])
+    #expect(inspect.steps.first?.owner == .reel)
+
+    let video = FastPathPlanner().plan(request: "download this in 1080p mp4", artifacts: [url])
+    #expect(video.steps.map(\.operation) == [.downloadRemoteVideo])
+    #expect(video.steps.first?.arguments == .remoteMedia(quality: "1080p", format: "mp4"))
+
+    let audio = FastPathPlanner().plan(request: "get this as mp3", artifacts: [url])
+    #expect(audio.steps.map(\.operation) == [.downloadRemoteAudio])
+    #expect(audio.steps.first?.arguments == .remoteMedia(quality: nil, format: "mp3"))
+}
+
+@Test func cueAlignmentHandlesPartialsRevisionsPunctuationFillersAndMonotonicProgress() {
+    var cue = CueTextAlignment(script: "Welcome everyone to the Kio presentation today.")
+    #expect(cue.consume("Welcome", confidence: 0.9) == 1)
+    #expect(cue.consume("Welcome everyone to the", confidence: 0.9) == 4)
+    #expect(cue.consume("Welcome everyone", confidence: 0.9) == 4)
+    #expect(cue.consume("welcome everyone um to the Kio", confidence: 0.9) == 5)
+    #expect(cue.consume("welcome everyone to the Kio presentation today", confidence: 0.9) == 7)
+    #expect(cue.isFinished)
+
+    var punctuation = CueTextAlignment(script: "Hello, everyone! Today we’re testing Kio.")
+    #expect(punctuation.consume("hello everyone today we're testing kio", confidence: 0.95) == 6)
+    #expect(punctuation.isFinished)
+}
+
+@Test func cueAlignmentRequiresAgreementForFarJumpAndRejectsStaleGeneration() {
+    let script = (0..<30).map { "word\($0)" }.joined(separator: " ")
+    var cue = CueTextAlignment(script: script)
+    #expect(cue.consume("word0 word1", confidence: 0.9) == 2)
+    #expect(cue.consume((2..<18).map { "word\($0)" }.joined(separator: " "), confidence: 0.9) == 2)
+    #expect(cue.consume((2..<19).map { "word\($0)" }.joined(separator: " "), confidence: 0.9) == 19)
+    let oldGeneration = cue.generation
+    #expect(cue.jump(to: 25) == 25)
+    #expect(cue.consume("word19 word20", confidence: 0.99, generation: oldGeneration) == 25)
+    #expect(cue.consume("word25 word26", confidence: 0.1) == 25)
+    #expect(cue.consume("word25 word26", confidence: 0.9, generation: cue.generation) == 27)
+}
+
+@Test func cueContextClassicClockAndVoiceActivityStayBounded() {
+    let cue = CueTextAlignment(script: "An uncommon phrase with an uncommon ending.")
+    #expect(cue.upcomingContextWords == ["uncommon", "phrase", "ending"])
+    #expect(CueTextAlignment.words("Um, uh, we're ready!") == ["we're", "ready"])
+    var clock = CueClassicClock()
+    #expect(clock.advance(elapsed: 30, wordsPerMinute: 120, totalWords: 10, paused: false) == 10)
+    #expect(clock.advance(elapsed: 10, wordsPerMinute: 120, totalWords: 10, paused: true) == 10)
+    var voice = CueVoiceActivityState()
+    let quiet = voice.update(power: 0.01)
+    #expect(!quiet)
+    let speaking = voice.update(power: 0.05)
+    #expect(speaking)
+    let invalid = voice.update(power: .infinity)
+    #expect(!invalid)
+}
+
+@Test func providerRequestConstructionUsesDirectProviderEndpointsAndNeverSerializesKeys() throws {
+    let client = IntelligenceProviderClient()
+    let providers: [(IntelligenceProviderID, String, String)] = [
+        (.openAI, "https://api.openai.com/v1/chat/completions", "Bearer test-secret"),
+        (.openRouter, "https://openrouter.ai/api/v1/chat/completions", "Bearer test-secret"),
+        (.groq, "https://api.groq.com/openai/v1/chat/completions", "Bearer test-secret"),
+        (.anthropic, "https://api.anthropic.com/v1/messages", "test-secret"),
+        (.gemini, "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", "test-secret")
+    ]
+    for (provider, endpoint, keyHeader) in providers {
+        let (request, _) = try client.makeRequest(provider: provider, model: "gemini-2.5-flash", key: "test-secret",
+                                                  system: "bounded system", prompt: "metadata-only planner request", maxTokens: 200)
+        #expect(request.url?.absoluteString == endpoint)
+        let serializedBody = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+        #expect(!serializedBody.contains("test-secret"))
+        #expect(request.value(forHTTPHeaderField: provider == .anthropic ? "x-api-key" : provider == .gemini ? "x-goog-api-key" : "Authorization") == keyHeader)
+        #expect(request.url?.scheme == "https")
+    }
+    let services = IntelligenceProviderID.allCases.compactMap(\.keychainService)
+    #expect(Set(services).count == services.count)
+    #expect(services.allSatisfy { $0.hasPrefix("app.kio.mac.ai.") })
 }
 
 @Test func remoteTaskLedgerRejectsRedeliveryAndStaysBounded() {

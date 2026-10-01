@@ -74,6 +74,7 @@ button { cursor: pointer; }
 .agent-face.kio { --agent-color: #f4ebdd; }.agent-face.pip { --agent-color: #93afc8; }.agent-face.pixel { --agent-color: #a9cdbd; }
 .agent-face.zip { --agent-color: #e5a06c; }.agent-face.echo { --agent-color: #b9a4d5; }.agent-face.clerk { --agent-color: #d9a0a8; }.agent-face.courier { --agent-color: #e88979; }
 .agent-face.scribe { --agent-color: #c3b4de; }.agent-face.table { --agent-color: #d7c477; }.agent-face.lens { --agent-color: #77c4d2; }.agent-face.scout { --agent-color: #6fb5aa; }.agent-face.patch { --agent-color: #8793a6; }
+.agent-face.reel { --agent-color: #d58b7c; }.agent-face.cue { --agent-color: #a8c98d; }
 .welcome > .agent-face { display: flex; margin: 0 auto 15px; box-shadow: 0 7px 16px #28272d16; }
 .crew-row .agent-face { border-radius: 40%; }
 .message-speaker { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
@@ -82,6 +83,7 @@ button { cursor: pointer; }
 .agent-pip { --agent-color: #93afc8; }.agent-pixel { --agent-color: #a9cdbd; }.agent-zip { --agent-color: #e5a06c; }
 .agent-echo { --agent-color: #b9a4d5; }.agent-clerk { --agent-color: #d9a0a8; }.agent-courier { --agent-color: #e88979; }.agent-kio { --agent-color: #f4ebdd; }
 .agent-scribe { --agent-color: #c3b4de; }.agent-table { --agent-color: #d7c477; }.agent-lens { --agent-color: #77c4d2; }.agent-scout { --agent-color: #6fb5aa; }.agent-patch { --agent-color: #8793a6; }
+.agent-reel { --agent-color: #d58b7c; }.agent-cue { --agent-color: #a8c98d; }
 .device-menu-wrap { position: relative; }
 .device-menu { position: absolute; z-index: 5; top: calc(100% + 7px); right: 0; min-width: 205px; padding: 5px; border: 1px solid #e9e6e2; border-radius: 13px; background: #fff; box-shadow: 0 10px 30px #28272d18; }
 .device-menu button { width: 100%; border: 0; border-radius: 9px; padding: 10px 11px; background: transparent; text-align: left; color: #49464f; font-size: 12px; }
@@ -99,6 +101,8 @@ button { cursor: pointer; }
 .agent-face.lens { animation-name: kio-lens-focus; animation-duration: 3.4s; }
 .agent-face.scout { animation-name: kio-scout-peek; animation-duration: 4.3s; }
 .agent-face.patch { animation-name: kio-patch-compare; animation-duration: 3.5s; }
+.agent-face.reel { animation-name: kio-reel-spin; animation-duration: 3.7s; }
+.agent-face.cue { animation-name: kio-cue-read; animation-duration: 4s; }
 @keyframes kio-pet-breathe { 0%, 100% { transform: translateY(0) scale(1); } 48% { transform: translateY(-1.5px) scale(1.025, .99); } }
 @keyframes kio-pip-catch { 0%, 70%, 100% { transform: translateY(0) rotate(0); } 78% { transform: translateY(-2px) rotate(-3deg); } 86% { transform: translateY(0) rotate(2deg); } }
 @keyframes kio-pixel-squash { 0%, 100% { transform: scale(1); } 48% { transform: scale(1.05, .95); } 57% { transform: scale(.98, 1.03); } }
@@ -110,4 +114,6 @@ button { cursor: pointer; }
 @keyframes kio-lens-focus { 0%, 100% { transform: scale(1); } 48% { transform: scale(1.035); } 60% { transform: scale(.99, 1.02); } }
 @keyframes kio-scout-peek { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-2deg); } 68% { transform: rotate(2deg); } }
 @keyframes kio-patch-compare { 0%, 100% { transform: translateX(0) scaleX(1); } 40% { transform: translateX(-1px) scaleX(.97); } 70% { transform: translateX(1px) scaleX(1.03); } }
+@keyframes kio-reel-spin { 0%, 100% { transform: scale(1); } 35% { transform: rotate(-3deg) scale(.97, 1.03); } 68% { transform: rotate(3deg) scale(1.02, .98); } }
+@keyframes kio-cue-read { 0%, 100% { transform: translateX(0); } 38% { transform: translateX(-1px); } 72% { transform: translateX(1px); } }
 @media (prefers-reduced-motion: reduce) { .agent-face { animation: none !important; will-change: auto; } }

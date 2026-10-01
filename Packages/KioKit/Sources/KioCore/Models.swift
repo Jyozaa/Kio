@@ -6,7 +6,7 @@ public enum ArtifactKind: String, Codable, CaseIterable, Sendable {
 }
 
 public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
-    case kio, pip, pixel, zip, echo, clerk, courier, scribe, table, lens, scout, patch
+    case kio, pip, pixel, zip, echo, clerk, courier, scribe, table, lens, scout, patch, reel, cue
 
     public var id: String { rawValue }
     public var name: String { rawValue.capitalized }
@@ -24,6 +24,8 @@ public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
         case .lens: 0x77C4D2
         case .scout: 0x6FB5AA
         case .patch: 0x8793A6
+        case .reel: 0xD58B7C
+        case .cue: 0xA8C98D
         }
     }
 
@@ -41,6 +43,8 @@ public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
         case .lens: "OCR and visual interpretation specialist"
         case .scout: "Web and public research specialist"
         case .patch: "Bounded text transformation specialist"
+        case .reel: "Public online media acquisition specialist"
+        case .cue: "Teleprompter and presentation specialist"
         }
     }
 }
@@ -79,7 +83,7 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
         else if ["patch", "srt", "vtt"].contains(url.pathExtension.lowercased()) { kind = url.pathExtension.lowercased() == "patch" ? .patch : .text }
         else if ["csv", "tsv"].contains(url.pathExtension.lowercased()) { kind = .csv }
         else if ["json", "xlsx"].contains(url.pathExtension.lowercased()) { kind = .table }
-        else if ["txt", "md", "markdown", "swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"].contains(url.pathExtension.lowercased()) { kind = .text }
+        else if ["txt", "md", "markdown", "kio-reel-info", "swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"].contains(url.pathExtension.lowercased()) { kind = .text }
         else if type?.conforms(to: .text) == true { kind = .text }
         else { kind = .other }
         return ArtifactRef(displayName: url.lastPathComponent, kind: kind, fileURL: url, sizeBytes: Int64(values.fileSize ?? 0), parentID: parentID)
@@ -116,6 +120,29 @@ public struct PlannerArtifact: Codable, Identifiable, Sendable, Hashable {
     public let sizeBytes: Int64
 }
 
+public struct ReelInspectionInfo: Codable, Sendable, Equatable {
+    public let remoteURL: String
+    public let title: String
+    public let durationSeconds: Double?
+    public let source: String
+    public let isLive: Bool
+    public let qualities: [String]
+    public let videoFormats: [String]
+    public let audioAvailable: Bool
+
+    public init(remoteURL: String, title: String, durationSeconds: Double?, source: String,
+                isLive: Bool, qualities: [String], videoFormats: [String], audioAvailable: Bool) {
+        self.remoteURL = remoteURL
+        self.title = title
+        self.durationSeconds = durationSeconds
+        self.source = source
+        self.isLive = isLive
+        self.qualities = qualities
+        self.videoFormats = videoFormats
+        self.audioAvailable = audioAvailable
+    }
+}
+
 public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case mergePDFs = "pdf.merge"
     case removePDFPages = "pdf.removePages"
@@ -144,6 +171,14 @@ public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case compressImage = "image.compress"
     case removeImageMetadata = "image.removeMetadata"
     case imageContactSheet = "image.contactSheet"
+    case batchRemoveImageBackground = "image.batchRemoveBackground"
+    case inspectRemoteMedia = "remoteMedia.inspect"
+    case downloadRemoteVideo = "remoteMedia.downloadVideo"
+    case downloadRemoteAudio = "remoteMedia.downloadAudio"
+    case downloadRemoteLive = "remoteMedia.downloadLive"
+    case downloadRemoteGallery = "remoteMedia.downloadGallery"
+    case downloadRemoteSubtitles = "remoteMedia.downloadSubtitles"
+    case downloadRemoteThumbnail = "remoteMedia.downloadThumbnail"
     case renameFile = "file.rename"
     case batchRename = "file.batchRename"
     case copyFiles = "file.copy"
@@ -215,6 +250,7 @@ public enum ToolArguments: Codable, Sendable, Hashable {
     case none
     case imageResize(width: Int)
     case imageConvert(format: String)
+    case remoteMedia(quality: String?, format: String?)
     case imageRotation(degrees: Int)
     case imageCrop(x: Int, y: Int, width: Int, height: Int)
     case imageCompression(maxBytes: Int64?)
@@ -258,7 +294,7 @@ public extension ToolOperation {
         case .mergePDFs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .extractPDFText, .ocrPDFText, .inspectPDF, .searchPDFText, .combineMixedPDFInputs, .imagesToPDF: .pip
         case .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText: .lens
         case .explainCode, .proposePatch, .formatJSON: .patch
-        case .resizeImage, .batchResizeImages, .convertImage, .batchConvertImages, .compareImages, .findSimilarImages, .removeImageBackground, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .imageContactSheet: .pixel
+        case .resizeImage, .batchResizeImages, .convertImage, .batchConvertImages, .compareImages, .findSimilarImages, .removeImageBackground, .batchRemoveImageBackground, .rotateImage, .inspectImage, .cropImage, .smartCropImage, .compressImage, .removeImageMetadata, .imageContactSheet: .pixel
         case .renameFile, .batchRename, .copyFiles, .moveFiles, .createFolder, .findDuplicates, .findRecent, .findByName,
              .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads: .clerk
         case .createArchive, .inspectArchive, .extractZip, .compressPDF: .zip
@@ -267,6 +303,8 @@ public extension ToolOperation {
         case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText: .scribe
         case .inspectData, .mergeData, .deduplicateData, .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns,
              .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX: .table
+        case .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail: .reel
         }
     }
 }
@@ -372,6 +410,205 @@ public struct TaskExecutionState: Sendable, Equatable {
 
 public enum NotchInteractionReason: Hashable, Sendable {
     case pointer, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover
+}
+
+public enum NotchMode: String, Sendable, Equatable {
+    case idleComposer, preparing, working, result, clarificationError, cueSetup, cueActive
+}
+
+/// Pure presentation policy: collapsed surfaces never include character/content payloads.
+public struct NotchPresentationState: Sendable, Equatable {
+    public let expanded: Bool
+    public let mode: NotchMode
+    public let activeAgent: AgentID
+    public let progress: Double
+
+    public init(expanded: Bool, mode: NotchMode, activeAgent: AgentID, progress: Double) {
+        self.expanded = expanded
+        self.mode = mode
+        self.activeAgent = activeAgent
+        self.progress = min(1, max(0, progress))
+    }
+
+    public var exposesMascot: Bool { expanded && mode != .cueActive && progress > 0.22 }
+    public var exposesContent: Bool { expanded && progress > 0.08 }
+    public var clipsContentToShell: Bool { true }
+    public var contentOpacity: Double { min(1, progress * 1.25) }
+    public var allowsContentHitTesting: Bool { expanded && progress > 0.82 }
+
+    public static func mode(cueActive: Bool, cueSetup: Bool, preparing: Bool,
+                            taskStatus: TaskExecutionStatus?) -> NotchMode {
+        if cueActive { return .cueActive }
+        if cueSetup { return .cueSetup }
+        if preparing { return .preparing }
+        return switch taskStatus {
+        case .planning: .preparing
+        case .running: .working
+        case .waitingForUser, .failed, .cancelled: .clarificationError
+        case .completed: .result
+        case .none: .idleComposer
+        }
+    }
+
+    public static func activeAgent(for execution: TaskExecutionState?) -> AgentID {
+        guard let execution else { return .kio }
+        if (execution.status == .planning || (execution.status == .running && execution.currentStepIndex == nil)),
+           let owner = execution.plan?.steps.first?.owner { return owner }
+        return execution.activeAgent
+    }
+}
+
+public enum MascotHandoffPhase: Sendable, Equatable {
+    case coordinator
+    case departing
+    case landing
+    case assigned
+}
+
+/// State sequence used by the notch to animate Kio's handoff without losing the active specialist.
+public struct MascotHandoffState: Sendable, Equatable {
+    public private(set) var activeAgent: AgentID = .kio
+    public private(set) var targetAgent: AgentID = .kio
+    public private(set) var phase: MascotHandoffPhase = .coordinator
+
+    public init() {}
+
+    public var displayedAgent: AgentID { phase == .departing ? .kio : activeAgent }
+    public var coordinatorHasDeparted: Bool { phase == .departing || phase == .landing || phase == .assigned && activeAgent != .kio }
+    public var agentHasArrived: Bool { phase == .landing || phase == .assigned && activeAgent != .kio }
+    public var launchSmokeVisible: Bool { phase == .departing || phase == .landing }
+
+    public mutating func beginDeparture(to agent: AgentID) {
+        guard agent != .kio else { resetToCoordinator(); return }
+        targetAgent = agent
+        phase = .departing
+    }
+
+    public mutating func landTarget() {
+        guard targetAgent != .kio else { return }
+        activeAgent = targetAgent
+        phase = .landing
+    }
+
+    public mutating func settle() {
+        guard activeAgent != .kio else { return }
+        phase = .assigned
+    }
+
+    public mutating func assignImmediately(_ agent: AgentID) {
+        activeAgent = agent
+        targetAgent = agent
+        phase = agent == .kio ? .coordinator : .assigned
+    }
+
+    public mutating func resetToCoordinator() {
+        activeAgent = .kio
+        targetAgent = .kio
+        phase = .coordinator
+    }
+}
+
+public struct CharacterRolePose: Sendable, Equatable {
+    public let scaleX: Double
+    public let scaleY: Double
+    public let offsetX: Double
+    public let offsetY: Double
+    public let rotationDegrees: Double
+
+    public init(scaleX: Double = 1, scaleY: Double = 1, offsetX: Double = 0,
+                offsetY: Double = 0, rotationDegrees: Double = 0) {
+        self.scaleX = scaleX
+        self.scaleY = scaleY
+        self.offsetX = offsetX
+        self.offsetY = offsetY
+        self.rotationDegrees = rotationDegrees
+    }
+}
+
+public enum MascotHandoffMotionPolicy {
+    public static let coordinatorDepartureDuration: TimeInterval = 1.35
+    public static let landingDelay: Duration = .milliseconds(430)
+    public static let landingSpringResponse: TimeInterval = 0.72
+    public static let smokeHold: Duration = .milliseconds(1_400)
+    public static let coordinatorReturnResponse: TimeInterval = 0.78
+}
+
+public enum CharacterMotionPolicy {
+    public static let blinkDelaySeconds = 2.5...5.5
+    public static let blinkCloseMilliseconds = 90...130
+    public static let blinkOpenMilliseconds = 100...150
+    public static let doubleBlinkProbability = 0.18
+    public static let motionScale = 0.04
+
+    public static func motionEnabled(systemReduceMotion: Bool, userReduceMotion: Bool) -> Bool {
+        !systemReduceMotion && !userReduceMotion
+    }
+
+    public static func rolePose(for agent: AgentID, beat: Bool, reduceMotion: Bool) -> CharacterRolePose {
+        guard !reduceMotion else { return CharacterRolePose() }
+        let scales: (Double, Double)
+        let offsets: (Double, Double)
+        let rotations: (Double, Double)
+        switch agent {
+        case .pixel:
+            scales = beat ? (1.045, 0.965) : (0.985, 1.02); offsets = (0, 0); rotations = (0, 0)
+        case .zip:
+            scales = beat ? (0.94, 1.045) : (1.025, 0.985); offsets = (0, 0); rotations = (0, 0)
+        case .echo:
+            scales = beat ? (1.025, 1.025) : (0.99, 0.99); offsets = (0, 0); rotations = (0, 0)
+        case .table:
+            scales = beat ? (1.035, 0.975) : (0.98, 1.025); offsets = (0, 0); rotations = (0, 0)
+        case .lens:
+            scales = beat ? (1.025, 1.035) : (0.99, 0.985); offsets = (0, 0); rotations = (0, 0)
+        case .reel:
+            scales = beat ? (1.035, 0.97) : (0.98, 1.025)
+            offsets = beat ? (0.018, -0.02) : (-0.018, 0)
+            rotations = beat ? (-2.2, 0) : (2.2, 0)
+        case .cue:
+            scales = beat ? (1.012, 0.995) : (0.995, 1.012)
+            offsets = beat ? (0.012, 0) : (-0.012, 0)
+            rotations = beat ? (-0.5, 0) : (0.5, 0)
+        case .pip:
+            scales = (1, 1); offsets = beat ? (0, -0.045) : (0, 0); rotations = beat ? (-1, 0) : (0.6, 0)
+        case .clerk:
+            scales = (1, 1); offsets = beat ? (0.025, 0) : (-0.025, 0); rotations = (0, 0)
+        case .courier:
+            scales = (1, 1); offsets = beat ? (0.035, -0.035) : (-0.02, 0); rotations = beat ? (2.2, 0) : (-0.8, 0)
+        case .patch:
+            scales = (1, 1); offsets = beat ? (0.035, 0) : (-0.035, 0); rotations = (0, 0)
+        case .scribe:
+            scales = (1, 1); offsets = (0, 0); rotations = beat ? (-1.8, 0) : (1.2, 0)
+        case .scout:
+            scales = (1, 1); offsets = (0, 0); rotations = beat ? (-2.2, 0) : (2.2, 0)
+        case .kio:
+            scales = (1, 1); offsets = (0, 0); rotations = (0, 0)
+        }
+        return CharacterRolePose(scaleX: scales.0, scaleY: scales.1, offsetX: offsets.0,
+                                 offsetY: offsets.1, rotationDegrees: rotations.0)
+    }
+
+    public static func blinkDelay(sample: Double) -> TimeInterval {
+        let value = min(1, max(0, sample.isFinite ? sample : 0))
+        return blinkDelaySeconds.lowerBound + value * (blinkDelaySeconds.upperBound - blinkDelaySeconds.lowerBound)
+    }
+
+    public static func blinkCloseDuration(sample: Double) -> TimeInterval {
+        let value = min(1, max(0, sample.isFinite ? sample : 0))
+        let milliseconds = Double(blinkCloseMilliseconds.lowerBound)
+            + value * Double(blinkCloseMilliseconds.upperBound - blinkCloseMilliseconds.lowerBound)
+        return milliseconds / 1_000
+    }
+
+    public static func blinkOpenDuration(sample: Double) -> TimeInterval {
+        let value = min(1, max(0, sample.isFinite ? sample : 0))
+        let milliseconds = Double(blinkOpenMilliseconds.lowerBound)
+            + value * Double(blinkOpenMilliseconds.upperBound - blinkOpenMilliseconds.lowerBound)
+        return milliseconds / 1_000
+    }
+
+    public static func choosesDoubleBlink(sample: Double) -> Bool {
+        sample.isFinite && sample >= 0 && sample < doubleBlinkProbability
+    }
 }
 
 /// Centralizes the reasons the expanded notch must remain available for interaction.

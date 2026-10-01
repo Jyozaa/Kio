@@ -2,6 +2,7 @@ import AppKit
 import CoreImage.CIFilterBuiltins
 import KioCore
 import KioInference
+import KioModel
 import KioSync
 import KioTools
 import KioUI
@@ -25,12 +26,21 @@ struct KioSettingsView: View {
     @State private var pairingLinkCopied = false
     @State private var outputLocationDescription = OutputLocation.preferenceDescription
     @State private var outputLocationError: String?
+    @State private var apiKeyEntry = ""
+    @State private var intelligenceMessage: String?
+    @State private var providerModels: [ProviderModel] = []
+    @State private var reelPreparing = false
+    @State private var reelMessage: String?
+    @State private var reelProgress = 0.0
+    @ObservedObject private var intelligence = IntelligenceSettings.shared
     @ObservedObject private var model = LocalModelManager.shared
     @ObservedObject private var relay = LocalRelayManager.shared
 
     var body: some View {
         Form {
             generalSection
+            intelligenceSection
+            reelSection
             modelSection
             filesSection
             mobileSection
@@ -62,6 +72,95 @@ struct KioSettingsView: View {
             Button("Cancel", role: .cancel) { revokeDeviceID = nil }
         } message: {
             Text("This phone will no longer be able to send requests or receive messages from this Mac.")
+        }
+    }
+
+    private var intelligenceSection: some View {
+        Section("Intelligence") {
+            Picker("Provider", selection: Binding(get: { intelligence.provider }, set: { intelligence.select($0) })) {
+                ForEach(IntelligenceProviderID.allCases) { provider in Text(provider.title).tag(provider) }
+            }
+            if intelligence.provider.keychainService != nil {
+                SecureField(intelligence.hasKey ? "Saved key · enter to replace" : "API key", text: $apiKeyEntry)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+                HStack {
+                    Button("Save key") {
+                        do { try intelligence.saveKey(apiKeyEntry); apiKeyEntry = ""; intelligenceMessage = "Key saved in Keychain." }
+                        catch { intelligenceMessage = error.localizedDescription }
+                    }.disabled(apiKeyEntry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button("Test connection") {
+                        Task {
+                            do { intelligenceMessage = try await IntelligenceProviderClient.shared.testConnection() }
+                            catch { intelligenceMessage = error.localizedDescription }
+                        }
+                    }.disabled(!intelligence.hasKey)
+                    if intelligence.hasKey {
+                        Button("Remove key", role: .destructive) {
+                            do { try intelligence.removeKey(); intelligenceMessage = "Provider key removed." }
+                            catch { intelligenceMessage = error.localizedDescription }
+                        }
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("Provider model identifier", text: $intelligence.modelIdentifier)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Fetch models") {
+                        Task {
+                            do { providerModels = try await IntelligenceProviderClient.shared.listModels(); intelligenceMessage = "Loaded \(providerModels.count) model identifiers." }
+                            catch { intelligenceMessage = error.localizedDescription }
+                        }
+                    }.disabled(!intelligence.hasKey)
+                }
+                if !providerModels.isEmpty {
+                    Menu("Choose available model") {
+                        ForEach(providerModels.prefix(100)) { model in Button(model.id) { intelligence.modelIdentifier = model.id } }
+                    }
+                }
+                Text(intelligence.hasKey ? "Key saved in macOS Keychain for this provider." : "API key is not connected.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Picker("Content privacy", selection: $intelligence.privacyMode) {
+                ForEach(ContentPrivacyMode.allCases) { mode in Text(mode.title).tag(mode) }
+            }
+            Text("Provider requests go directly from this Mac to the selected HTTPS provider. Keys stay in Keychain. There is no automatic provider fallback.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            if let intelligenceMessage { Text(intelligenceMessage).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled) }
+        }
+    }
+
+    private var reelSection: some View {
+        Section("Reel · online media") {
+            LabeledContent("Helper folder", value: ReelHelperManager.directory.path)
+                .textSelection(.enabled)
+            LabeledContent(ReelHelperManager.pythonRuntime.id,
+                           value: "\(ReelHelperManager.pythonRuntime.version) · \(ReelHelperManager.pythonRuntime.architecture)")
+            LabeledContent("Streamlink", value: "8.6.0 · isolated Python wheel")
+            ForEach(ReelHelperManager.helpers) { helper in
+                LabeledContent(helper.id, value: "\(helper.version) · \(helper.architecture)")
+            }
+            Button(reelPreparing ? "Preparing Reel…" : "Prepare Reel") {
+                reelPreparing = true
+                reelProgress = 0
+                reelMessage = "Starting the pinned, checksum-verified helper setup…"
+                Task {
+                    do {
+                        try await ReelHelperManager.prepareAll { value, message in
+                            reelProgress = value
+                            reelMessage = message
+                        }
+                    } catch {
+                        reelMessage = error.localizedDescription
+                    }
+                    reelPreparing = false
+                }
+            }
+            .disabled(reelPreparing)
+            if reelPreparing { ProgressView(value: reelProgress).accessibilityLabel("Prepare Reel helpers") }
+            if let reelMessage { Text(reelMessage).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled) }
+            Text("Preparation runs only when you press this button. Helpers are installed in Kio’s Application Support folder; Kio does not use Homebrew or browser cookies.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
 

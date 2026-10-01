@@ -10,6 +10,7 @@ struct KioChatView: View {
     @State private var message = ""
     @State private var pastedClipboardTexts: [String] = []
     @State private var historySearch = ""
+    @State private var showingSearch = false
     @State private var workflowName = ""
     @State private var renameTemplateID: UUID?
     @State private var showSaveWorkflow = false
@@ -32,7 +33,7 @@ struct KioChatView: View {
             Divider().overlay(Color.white.opacity(0.075))
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 20) {
+                    LazyVStack(alignment: .leading, spacing: 14) {
                         ForEach(filteredConversation) { item in
                             ConversationRow(item: item)
                                 .id(item.id)
@@ -51,8 +52,10 @@ struct KioChatView: View {
                             .padding(.leading, 4)
                         }
                     }
-                    .padding(.horizontal, 30)
-                    .padding(.vertical, 26)
+                    .frame(maxWidth: 820)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
                 }
                 .onChange(of: workspace.conversation.count) { _, _ in
                     guard let id = workspace.conversation.last?.id else { return }
@@ -126,29 +129,42 @@ struct KioChatView: View {
                     .foregroundStyle(Color(hex: 0x627B6F))
             }
             Spacer()
-            HStack(spacing: 5) {
-                ForEach([AgentID.scribe, .table, .lens, .scout, .patch, .pip, .pixel, .zip, .echo, .clerk, .courier], id: \.self) { agent in
-                    AgentAvatar(agent, size: 23)
-                        .padding(2)
-                        .background(targetedAgent == agent ? Color(hex: agent.colorHex).opacity(0.28) : .clear, in: Circle())
-                        .overlay(Circle().stroke(targetedAgent == agent ? Color(hex: agent.colorHex) : .clear, lineWidth: 1.5))
-                        .onDrop(of: [UTType.fileURL], isTargeted: Binding(
-                            get: { targetedAgent == agent },
-                            set: { active in targetedAgent = active ? agent : (targetedAgent == agent ? nil : targetedAgent) }
-                        )) { providers in
-                            acceptSpecialistDrop(providers, agent: agent)
-                        }
-                        .help("\(agent.name) · \(agent.roleDescription)")
+            Menu {
+                ForEach(AgentID.allCases.filter { $0 != .kio }, id: \.self) { agent in
+                    Label(agent.name + " · " + agent.roleDescription, systemImage: "circle.fill")
+                        .foregroundStyle(Color(hex: agent.colorHex))
                 }
+            } label: {
+                Image(systemName: "person.3")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(0.72))
+                    .frame(width: 32, height: 32)
+                    .background(Color(hex: 0x1B1B1B), in: Circle())
             }
-            TextField("Search history", text: $historySearch)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .padding(.horizontal, 10)
-                .frame(width: 170, height: 30)
-                .background(Color(hex: 0x151515), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.white.opacity(0.07), lineWidth: 1))
-                .accessibilityLabel("Search local conversation and artifact history")
+            .menuStyle(.borderlessButton)
+            .help("Crew")
+            Button { showingSearch.toggle() } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(0.72))
+                    .frame(width: 32, height: 32)
+                    .background(Color(hex: 0x1B1B1B), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingSearch, arrowEdge: .bottom) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search conversation", text: $historySearch)
+                        .textFieldStyle(.plain)
+                        .accessibilityLabel("Search local conversation and artifact history")
+                    if !historySearch.isEmpty {
+                        Button { historySearch = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain)
+                    }
+                }
+                .padding(12).frame(width: 300)
+            }
+            .onExitCommand { showingSearch = false }
+            .help("Search history")
             workflowMenu
             Menu {
                 Button("Add Files", systemImage: "paperclip") { isPickingFiles = true }
@@ -476,6 +492,11 @@ struct KioChatView: View {
         case .patch:
             guard artifacts.contains(where: { $0.kind == .text && ["swift", "py", "js", "ts", "tsx", "rs", "go", "java", "c", "cpp"].contains($0.fileURL.pathExtension.lowercased()) }) else { return [] }
             return [.init(title: "Explain code", prompt: "Explain this code"), .init(title: "Propose patch", prompt: "Propose a patch for this code")]
+        case .reel:
+            guard kinds.contains(.url) else { return [] }
+            return [.init(title: "Inspect media", prompt: "Inspect this online media"), .init(title: "Download media", prompt: "Download this")]
+        case .cue:
+            return []
         case .kio, .courier:
             return []
         }

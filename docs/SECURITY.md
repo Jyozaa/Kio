@@ -5,7 +5,8 @@
 - No arbitrary shell, AppleScript, generic GUI automation, or model-generated code execution is registered.
 - The model proposes a plan through a synthetic `submit_plan` tool schema; Kio never dispatches it. The decoder validates operation names, actual artifact indexes, argument types/ranges, and input kinds before execution. A single repair attempt is allowed; invalid plans are rejected.
 - Deterministic Mac tools validate inputs and verify outputs. Transformations create conflict-safe copies; the explicit file-move operation requires a preview and user confirmation.
-- The local planner receives the request and file metadata. Scribe is a separate local-model operation that reads bounded text content from the selected source; neither path calls a hosted AI API.
+- Deterministic fast paths run before any model. The selected cloud provider may plan from the request and file metadata; strict native decoding still validates its output against registered operations and artifact indexes. No provider response can directly execute a command or choose an arbitrary path.
+- BYOK keys exist only in macOS Keychain under provider-specific service names. Cloud API calls use HTTPS directly to the selected provider; they never pass through Kio's relay. There is no automatic provider fallback. Semantic cloud operations use the selected content-privacy mode, which defaults to asking before document text is sent. Local Qwen remains an explicit local provider choice.
 - Patch accepts only supported text/code files, writes a separate proposal plus a reviewable diff, preserves the source, and never executes proposed code.
 - Scout permits public HTTP(S) content only, blocks local/private destinations and unsafe schemes, and treats fetched page content as untrusted data rather than instructions.
 
@@ -18,6 +19,12 @@
 - D1 stores device/message/file routing metadata needed to deliver and revoke. The Worker cannot read plaintext task messages or files and has no code execution or model capability.
 - Revoking a phone disables its credential and removes queued envelopes and file transfers. Uncollected envelopes and files expire within 24 hours.
 - Tokens/private keys remain in Keychain on Mac and browser IndexedDB on phone. The Worker stores only credential hashes.
+
+## Reel downloads and Cue audio
+
+- Reel downloads fixed helper versions only from pinned URLs after the explicit **Prepare Reel** action. SHA-256 is checked before install/version probes; helper state is stored in Kio's Application Support directory. The Streamlink Python runtime and every wheel are pinned and checksum-verified as well.
+- Reel uses Foundation `Process` with a Kio-controlled executable and typed argument builders. It does not invoke a shell, read browser cookies, send login credentials, or bypass DRM. Public URL validation is performed before media work; incomplete task outputs are kept in temporary directories and removed on cancellation.
+- Cue asks for microphone and Speech Recognition access only when a mode that needs them starts. Classic mode uses no microphone. Cue does not request Accessibility or Screen Recording access.
 
 ## Local app identity and user-controlled inputs
 

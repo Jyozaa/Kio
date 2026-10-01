@@ -5,8 +5,19 @@ import Foundation
 import ImageIO
 import PDFKit
 import Testing
+import UniformTypeIdentifiers
 import KioCore
 @testable import KioTools
+
+@Test func reelBackendChoiceAndNormalizedQualityAreBounded() throws {
+    let hls = URL(string: "https://media.example/live.m3u8")!
+    #expect(ReelMediaRouter.backend(for: hls, availableHelpers: []).rawValue == "ytDlp")
+    #expect(ReelMediaRouter.backend(for: hls, availableHelpers: ["streamlink"]).rawValue == "streamlink")
+    let gallery = URL(string: "https://imgur.com/gallery/demo")!
+    #expect(ReelMediaRouter.backend(for: gallery, availableHelpers: ["gallery-dl"]).rawValue == "galleryDL")
+    #expect(ReelMediaRouter.normalizedQualities([nil, 2160, 1080, 1080, 721, 480]) == ["best", "2160p", "1080p", "480p"])
+    #expect(ReelMediaRouter.safeTitle("../A: unsafe/title?.mp4") == "A- unsafe-title-.mp4")
+}
 
 private struct ScribePromptRecord: Sendable {
     let promptCharacters: Int
@@ -1099,6 +1110,154 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
     let document = PDFDocument()
     document.insert(PDFPage(image: image)!, at: 0)
     return document
+}
+
+@Test func reelCommandBuilderKeepsHelperArgumentsTypedAndShellFree() throws {
+    let url = URL(string: "https://media.example/watch?id=42")!
+    let video = try ReelCommandBuilder.ytDlp(operation: .downloadRemoteVideo, url: url,
+                                             outputTemplate: "/tmp/kio/media.%(ext)s", quality: "720p", format: "mp4",
+                                             ffmpegDirectory: URL(fileURLWithPath: "/tmp/kio/helpers"))
+    #expect(video.contains("--ignore-config"))
+    #expect(video.contains("--merge-output-format"))
+    #expect(video.contains("bestvideo[height<=720]+bestaudio/best[height<=720]"))
+    #expect(video.last == url.absoluteString)
+    #expect(!video.contains("/bin/sh"))
+    #expect(!video.contains("-c"))
+
+    let live = try ReelCommandBuilder.streamlink(url: url, outputPath: "/tmp/kio/live.ts", quality: "1080p")
+    #expect(live == ["--force", "--output", "/tmp/kio/live.ts", url.absoluteString, "1080p"])
+    do {
+        _ = try ReelCommandBuilder.ytDlp(operation: .downloadRemoteVideo, url: url,
+                                          outputTemplate: "/tmp/kio/out", quality: "9999p", format: "mp4",
+                                          ffmpegDirectory: URL(fileURLWithPath: "/tmp/kio/helpers"))
+        Issue.record("An unsupported media quality must not become a helper argument.")
+    } catch { #expect(error.localizedDescription.contains("unsupported typed option")) }
+}
+
+@Test func pixelImageConversionsKeepExtensionsAndEncodedTypesInAgreement() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("KioImageFormatTests-\(UUID().uuidString)", isDirectory: true)
+    let inputsFolder = root.appendingPathComponent("inputs", isDirectory: true)
+    try FileManager.default.createDirectory(at: inputsFolder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let pngURL = inputsFolder.appendingPathComponent("sample.png")
+    try makePNG(width: 36, height: 24).write(to: pngURL)
+    let png = try ArtifactRef.inspect(pngURL)
+    let executor = ToolExecutor()
+    let jpg = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
+                                                               arguments: .imageConvert(format: "jpeg")), inputs: [png]).first)
+    #expect(jpg.fileURL.pathExtension == "jpg")
+    let jpgSource = try #require(CGImageSourceCreateWithURL(jpg.fileURL as CFURL, nil))
+    #expect(CGImageSourceGetType(jpgSource) as String? == UTType.jpeg.identifier)
+
+    let restoredPNG = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([jpg.id]),
+                                                                        arguments: .imageConvert(format: "png")), inputs: [jpg]).first)
+    #expect(restoredPNG.fileURL.pathExtension == "png")
+    let restoredSource = try #require(CGImageSourceCreateWithURL(restoredPNG.fileURL as CFURL, nil))
+    #expect(CGImageSourceGetType(restoredSource) as String? == UTType.png.identifier)
+
+    let tiff = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
+                                                                arguments: .imageConvert(format: "tiff")), inputs: [png]).first)
+    #expect(tiff.fileURL.pathExtension == "tiff")
+    #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(tiff.fileURL as CFURL, nil))) as String? == UTType.tiff.identifier)
+    let jpegFromTIFF = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([tiff.id]),
+                                                                        arguments: .imageConvert(format: "jpeg")), inputs: [tiff]).first)
+    #expect(jpegFromTIFF.fileURL.pathExtension == "jpg")
+    #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(jpegFromTIFF.fileURL as CFURL, nil))) as String? == UTType.jpeg.identifier)
+
+    let imageDestinations = Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
+    if imageDestinations.contains(UTType.heic.identifier) {
+        let heic = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
+                                                                    arguments: .imageConvert(format: "heic")), inputs: [png]).first)
+        #expect(heic.fileURL.pathExtension == "heic")
+        #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(heic.fileURL as CFURL, nil))) as String? == UTType.heic.identifier)
+        let fromHeic = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([heic.id]),
+                                                                        arguments: .imageConvert(format: "png")), inputs: [heic]).first)
+        #expect(fromHeic.fileURL.pathExtension == "png")
+        let heicJPEG = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([heic.id]),
+                                                                        arguments: .imageConvert(format: "jpeg")), inputs: [heic]).first)
+        #expect(heicJPEG.fileURL.pathExtension == "jpg")
+        #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(heicJPEG.fileURL as CFURL, nil))) as String? == UTType.jpeg.identifier)
+    } else {
+        #expect(!imageDestinations.contains(UTType.heic.identifier), "HEIC encoder-specific conversion skipped: this ImageIO runtime has no HEIC encoder.")
+    }
+
+    let batchInputs = try (0..<3).map { index -> ArtifactRef in
+        let url = inputsFolder.appendingPathComponent("batch-\(index).png")
+        try makePNG(width: 20 + index, height: 18).write(to: url)
+        return try ArtifactRef.inspect(url)
+    }
+    let batch = try await executor.execute(TaskStep(operation: .batchConvertImages,
+                                                     source: .artifacts(batchInputs.map(\.id)),
+                                                     arguments: .imageConvert(format: "jpeg")), inputs: batchInputs)
+    #expect(batch.count == 3)
+    #expect(batch.allSatisfy { $0.fileURL.pathExtension == "jpg" })
+    #expect(batch.allSatisfy { output in
+        guard let source = CGImageSourceCreateWithURL(output.fileURL as CFURL, nil) else { return false }
+        return CGImageSourceGetType(source) as String? == UTType.jpeg.identifier
+    })
+    #expect(FileManager.default.fileExists(atPath: pngURL.path))
+
+    do {
+        _ = try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
+                                                arguments: .imageConvert(format: "exe")), inputs: [png])
+        Issue.record("Pixel must reject an unsupported image output type.")
+    } catch { #expect(error.localizedDescription.contains("supports PNG, JPEG")) }
+}
+
+@Test func backgroundRemovalRejectsInvalidInputsBeforeVisionAndPreservesSourceFiles() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("KioBackgroundValidation-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let textURLs = try (0..<13).map { index -> URL in
+        let url = root.appendingPathComponent("source-\(index).txt")
+        try Data("preserve-\(index)".utf8).write(to: url)
+        return url
+    }
+    let textArtifacts = try textURLs.map { try ArtifactRef.inspect($0) }
+    let executor = ToolExecutor()
+
+    do {
+        _ = try await executor.execute(TaskStep(operation: .removeImageBackground, source: .artifacts([textArtifacts[0].id])),
+                                       inputs: [textArtifacts[0]])
+        Issue.record("Single-image background removal must reject non-image input before Vision runs.")
+    } catch { #expect(error.localizedDescription.contains("Choose one image")) }
+
+    do {
+        _ = try await executor.execute(TaskStep(operation: .batchRemoveImageBackground, source: .artifacts(textArtifacts.map(\.id))),
+                                       inputs: textArtifacts)
+        Issue.record("Batch background removal must reject more than twelve inputs before Vision runs.")
+    } catch { #expect(error.localizedDescription.contains("1 to 12 images")) }
+
+    #expect(try textURLs.enumerated().allSatisfy { index, url in
+        try String(contentsOf: url, encoding: .utf8) == "preserve-\(index)"
+    })
+}
+
+@Test func transparentPNGToJPEGFlattensAgainstWhiteAndPreservesTheInput() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("KioAlphaFormatTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("transparent.png")
+    let context = CGContext(data: nil, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    context.clear(CGRect(x: 0, y: 0, width: 32, height: 32))
+    context.setFillColor(NSColor.systemRed.cgColor)
+    context.fill(CGRect(x: 0, y: 0, width: 12, height: 32))
+    let data = NSMutableData()
+    let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+    #expect(CGImageDestinationFinalize(destination))
+    try (data as Data).write(to: url)
+    let input = try ArtifactRef.inspect(url)
+    let result = try #require(try await ToolExecutor().execute(TaskStep(operation: .convertImage, source: .artifacts([input.id]),
+                                                                        arguments: .imageConvert(format: "jpeg")), inputs: [input]).first)
+    #expect(FileManager.default.fileExists(atPath: url.path))
+    let convertedSource = try #require(CGImageSourceCreateWithURL(result.fileURL as CFURL, nil))
+    let converted = try #require(CGImageSourceCreateImageAtIndex(convertedSource, 0, nil))
+    #expect(converted.alphaInfo == .none || converted.alphaInfo == .noneSkipFirst || converted.alphaInfo == .noneSkipLast)
+    let sample = try #require(NSBitmapImageRep(cgImage: converted).colorAt(x: 27, y: 27)?.usingColorSpace(.deviceRGB))
+    #expect(sample.redComponent > 0.82 && sample.greenComponent > 0.82 && sample.blueComponent > 0.82)
 }
 
 private func makePNG(width: Int, height: Int) throws -> Data {
