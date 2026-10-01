@@ -459,16 +459,10 @@ private struct NotchContents: View {
         let contentHeight = max(90, controller.layout.expandedHeight - topInset - 8)
         return Group {
           if cueSurface || cueIsActive {
-            HStack(spacing: cueIsActive ? 0 : 10) {
-              if !cueIsActive {
-                mascotStage
-                    .frame(width: mascotWidth, height: contentHeight)
-              }
-              CueSurfaceView(onActiveChange: { cueIsActive = $0 },
-                             onDone: { cueIsActive = false; cueSurface = false },
-                             initialText: $cueInitialText)
-                  .frame(width: controller.layout.expandedWidth - 28, height: contentHeight)
-            }
+            CueSurfaceView(onActiveChange: { cueIsActive = $0 },
+                           onDone: { cueIsActive = false; cueSurface = false },
+                           initialText: $cueInitialText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
           } else {
             HStack(spacing: 10) {
             if presentation.exposesMascot && presentationMode != .cueActive {

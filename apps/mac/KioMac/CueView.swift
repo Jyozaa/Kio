@@ -56,6 +56,23 @@ private enum CueMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum CueTextSize: String, CaseIterable, Identifiable {
+    case small = "Small"
+    case medium = "Medium"
+    case large = "Large"
+    case extraLarge = "Extra Large"
+
+    var id: String { rawValue }
+    var points: CGFloat {
+        switch self {
+        case .small: 17
+        case .medium: 21
+        case .large: 25
+        case .extraLarge: 29
+        }
+    }
+}
+
 @MainActor
 private final class CueSpeechRecognizer: ObservableObject {
     var onTranscript: ((String, Float, Int) -> Void)?
@@ -129,7 +146,7 @@ struct CueSurfaceView: View {
     @Binding var initialText: String
     @State private var script = ""
     @State private var mode: CueMode = .wordTracking
-    @State private var textSize: Double = 20
+    @State private var textSize: CueTextSize = .medium
     @State private var speed: Double = 150
     @State private var languageIdentifier = "system"
     @State private var isActive = false
@@ -169,46 +186,63 @@ struct CueSurfaceView: View {
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 AgentBlob(.cue, mood: .curious, size: 25)
                 Text("Cue").font(.system(size: 11, weight: .semibold))
-                Spacer()
+                Spacer(minLength: 4)
                 Button { fileImporter = true } label: { Image(systemName: "doc.badge.plus") }
-                    .buttonStyle(.plain).help("Open a text file")
+                    .cueIconButton("Open a text file")
                 Button { if let clipboard = NSPasteboard.general.string(forType: .string) { script = clipboard } } label: { Image(systemName: "doc.on.clipboard") }
-                    .buttonStyle(.plain).help("Paste from clipboard")
+                    .cueIconButton("Paste from clipboard")
+                Button { exitCue() } label: { Image(systemName: "xmark") }
+                    .cueIconButton("Close Cue")
             }
             TextEditor(text: $script)
-                .font(.system(size: 10))
+                .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
-                .padding(4)
-                .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(alignment: .topLeading) {
-                    if script.isEmpty { Text("Paste or type your speaking script") .font(.system(size: 10)).foregroundStyle(.white.opacity(0.35)).padding(9).allowsHitTesting(false) }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 11))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(Color.white.opacity(0.085), lineWidth: 1)
+                        .allowsHitTesting(false)
                 }
-                .frame(minHeight: 43)
-            HStack(spacing: 7) {
-                Picker("Mode", selection: $mode) { ForEach(CueMode.allCases) { Text($0.rawValue).tag($0) } }
-                    .labelsHidden().frame(maxWidth: 145)
-                Slider(value: $textSize, in: 14...30, step: 1).help("Text size")
-                Menu {
-                    Button("System Default") { languageIdentifier = "system" }
-                    ForEach(speechLocales, id: \.identifier) { locale in
-                        Button(locale.localizedString(forIdentifier: locale.identifier) ?? locale.identifier) {
-                            languageIdentifier = locale.identifier
-                        }
+                .overlay(alignment: .topLeading) {
+                    if script.isEmpty {
+                        Text("Paste or type your speaking script")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.44))
+                            .padding(.leading, 12)
+                            .padding(.top, 11)
+                            .allowsHitTesting(false)
                     }
-                } label: { Image(systemName: "globe") }
-                    .help("Speech recognition language")
-                    .accessibilityLabel("Cue speech recognition language")
+                }
+                .frame(maxWidth: .infinity, minHeight: 48, maxHeight: .infinity)
+
+            HStack(spacing: 6) {
+                modeMenu
+                textSizeMenu
+                if mode == .wordTracking { languageMenu }
+                Spacer(minLength: 0)
+            }
+            HStack {
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 3)
                 Button("Start") { begin() }
                     .buttonStyle(.borderedProminent)
                     .tint(Color(hex: AgentID.cue.colorHex))
+                    .controlSize(.small)
                     .disabled(script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let errorMessage {
                 HStack(spacing: 4) {
-                    Text(errorMessage).font(.system(size: 9)).foregroundStyle(.orange).lineLimit(2)
                     if errorMessage.localizedCaseInsensitiveContains("access") || errorMessage.localizedCaseInsensitiveContains("permission") {
                         Button("Microphone Settings") { openPrivacyPane("Privacy_Microphone") }
                             .font(.system(size: 8)).buttonStyle(.plain)
@@ -247,12 +281,13 @@ struct CueSurfaceView: View {
                 HStack(spacing: 8) {
                     Button(paused ? "Resume" : "Pause") { paused.toggle(); lastTick = .now }
                     Button("Restart") { restart() }
+                    textSizeMenu
                     if mode != .wordTracking {
-                        Slider(value: $speed, in: 60...260, step: 10).frame(maxWidth: 100).help("Reading speed")
+                        Slider(value: $speed, in: 60...260, step: 10).frame(maxWidth: 72).help("Reading speed")
                     }
                     Spacer()
                     Text("\(min(readPosition, alignment.tokens.count)) / \(alignment.tokens.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.58))
-                    Button { exitCue() } label: { Image(systemName: "xmark") }.help("Done and close Cue")
+                    Button("Done") { exitCue() }.help("Done and close Cue")
                 }
                 .buttonStyle(.bordered).controlSize(.mini)
             }
@@ -282,10 +317,10 @@ struct CueSurfaceView: View {
                 let range = NSRange(location: token.range.location, length: max(0, end - token.range.location))
                 let fragment = range.location <= ns.length && NSMaxRange(range) <= ns.length ? ns.substring(with: range) : token.text
                 Text(fragment)
-                    .font(.system(size: textSize, weight: index == readPosition ? .bold : .medium, design: .rounded))
+                    .font(.system(size: textSize.points, weight: .medium, design: .rounded))
                     .foregroundStyle(index < readPosition ? .white.opacity(0.56) : (index == readPosition ? .black : .white.opacity(0.92)))
-                    .padding(.horizontal, index == readPosition ? 4 : 0)
-                    .padding(.vertical, index == readPosition ? 1 : 0)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
                     .background(index == readPosition ? Color(hex: AgentID.cue.colorHex) : .clear,
                                 in: RoundedRectangle(cornerRadius: 5))
                     .id(index)
@@ -387,9 +422,86 @@ struct CueSurfaceView: View {
         }
     }
 
+    private var modeMenu: some View {
+        Menu {
+            ForEach(CueMode.allCases) { option in
+                Button(option.rawValue) { mode = option }
+            }
+        } label: {
+            compactMenuLabel(mode.rawValue)
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Cue mode: \(mode.rawValue)")
+    }
+
+    private var textSizeMenu: some View {
+        Menu {
+            ForEach(CueTextSize.allCases) { option in
+                Button(option.rawValue) { textSize = option }
+            }
+        } label: {
+            compactMenuLabel("Text: \(textSize.rawValue)")
+        }
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel("Text size: \(textSize.rawValue)")
+    }
+
+    private var languageMenu: some View {
+        Menu {
+            Button("System Default") { languageIdentifier = "system" }
+            ForEach(speechLocales, id: \.identifier) { locale in
+                Button(locale.localizedString(forIdentifier: locale.identifier) ?? locale.identifier) {
+                    languageIdentifier = locale.identifier
+                }
+            }
+        } label: {
+            Label(languageTitle, systemImage: "globe")
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 9, weight: .medium))
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.055), in: Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.09), lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .help("Speech recognition language")
+        .accessibilityLabel("Speech recognition language: \(languageTitle)")
+    }
+
+    private var languageTitle: String {
+        guard languageIdentifier != "system" else { return "System" }
+        return Locale(identifier: languageIdentifier).localizedString(forIdentifier: languageIdentifier) ?? languageIdentifier
+    }
+
+    private func compactMenuLabel(_ title: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold))
+        }
+        .font(.system(size: 9, weight: .medium))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.055), in: Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.09), lineWidth: 1))
+    }
+
     private func openPrivacyPane(_ pane: String) {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+private extension View {
+    func cueIconButton(_ title: String) -> some View {
+        self
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.white.opacity(0.76))
+            .frame(width: 22, height: 22)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .help(title)
     }
 }
 
