@@ -169,6 +169,16 @@ final class NotchPanelController: ObservableObject {
         }
     }
 
+    func cueSessionChanged(_ active: Bool) {
+        interaction.setCueSession(active)
+        if active {
+            hoverTask?.cancel()
+            hoverTask = nil
+            cancelCollapse()
+            setExpanded(true)
+        }
+    }
+
     func activateForInput(pinned: Bool = false) {
         show()
         panel?.makeKeyAndOrderFront(nil)
@@ -189,14 +199,17 @@ final class NotchPanelController: ObservableObject {
 
     func collapse() {
         guard !KioWorkspace.shared.isWorking else { return }
-        interaction.set(.composing, active: false)
-        interaction.set(.pointer, active: false)
-        interaction.set(.attachments, active: false)
-        interaction.set(.dragging, active: false)
-        interaction.set(.pinned, active: false)
-        interaction.set(.working, active: false)
-        interaction.set(.resultInteraction, active: false)
-        interaction.set(.menuOrPopover, active: false)
+        guard !interaction.isActive(.cueSession) else { return }
+        clearInteractionReasons()
+        setExpanded(false, force: true)
+    }
+
+    func collapseAfterCue() {
+        hoverTask?.cancel()
+        hoverTask = nil
+        cancelCollapse()
+        cueSessionChanged(false)
+        clearInteractionReasons()
         setExpanded(false, force: true)
     }
 
@@ -215,6 +228,13 @@ final class NotchPanelController: ObservableObject {
 
     private var shouldRemainExpandedAutomatically: Bool {
         interaction.shouldRemainExpanded
+    }
+
+    private func clearInteractionReasons() {
+        for reason in [NotchInteractionReason.composing, .pointer, .attachments, .dragging, .pinned,
+                       .working, .resultInteraction, .menuOrPopover, .cueSession] {
+            interaction.set(reason, active: false)
+        }
     }
 
     private func scheduleCollapse(after delay: Duration = .milliseconds(340)) {
@@ -445,7 +465,7 @@ private struct NotchContents: View {
         .onChange(of: controller.focusCommandRequest) { _, _ in
             commandFocused = true
         }
-        .onExitCommand { controller.collapse() }
+        .onExitCommand { handleExitCommand() }
         .onAppear { expansionProgress = controller.isExpanded ? 1 : 0 }
         .accessibilityElement(children: .contain)
     }
@@ -457,7 +477,7 @@ private struct NotchContents: View {
         return Group {
           if cueSurface || cueIsActive {
             CueSurfaceView(onActiveChange: { cueIsActive = $0 },
-                           onDone: { cueIsActive = false; cueSurface = false },
+                           onDone: { finishCueSession() },
                            initialText: $cueInitialText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
           } else {
@@ -654,8 +674,7 @@ private struct NotchContents: View {
                 if artifact.kind == .text && artifact.fileURL.pathExtension.lowercased() != "kio-reel-info" {
                     Button("Cue") {
                         if let script = try? String(contentsOf: artifact.fileURL, encoding: .utf8), script.utf8.count <= 500_000 {
-                            cueInitialText = script
-                            cueSurface = true
+                            openCue(with: script)
                         }
                     }
                     .help("Open this text result in Cue")
@@ -767,15 +786,32 @@ private struct NotchContents: View {
     }
 
     private var cueButton: some View {
-        Button { cueSurface.toggle() } label: {
+        Button { cueSurface || cueIsActive ? finishCueSession() : openCue() } label: {
             Image(systemName: "text.alignleft")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.82))
                 .frame(width: 24, height: 24)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(cueSurface ? "Close Cue setup" : "Open Cue teleprompter")
+        .accessibilityLabel(cueSurface || cueIsActive ? "Close Cue" : "Open Cue teleprompter")
         .help("Cue")
+    }
+
+    private func openCue(with script: String? = nil) {
+        if let script { cueInitialText = script }
+        controller.cueSessionChanged(true)
+        cueSurface = true
+    }
+
+    private func finishCueSession() {
+        cueIsActive = false
+        cueSurface = false
+        controller.collapseAfterCue()
+    }
+
+    private func handleExitCommand() {
+        if cueSurface || cueIsActive { finishCueSession() }
+        else { controller.collapse() }
     }
 
     private var composer: some View {

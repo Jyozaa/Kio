@@ -409,7 +409,7 @@ public struct TaskExecutionState: Sendable, Equatable {
 }
 
 public enum NotchInteractionReason: Hashable, Sendable {
-    case pointer, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover
+    case pointer, composing, attachments, dragging, pinned, working, resultInteraction, menuOrPopover, cueSession
 }
 
 public enum NotchMode: String, Sendable, Equatable {
@@ -620,6 +620,10 @@ public struct NotchInteractionState: Sendable, Equatable {
     public mutating func set(_ reason: NotchInteractionReason, active: Bool) {
         if active { activeReasons.insert(reason) }
         else { activeReasons.remove(reason) }
+    }
+
+    public mutating func setCueSession(_ active: Bool) {
+        set(.cueSession, active: active)
     }
 
     public var shouldRemainExpanded: Bool { !activeReasons.isEmpty }

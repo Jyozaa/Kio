@@ -19,27 +19,71 @@ import KioCore
     }
 }
 
-@Test func reelInspectionDecoderSanitizesMetadataAndRejectsMalformedOrOversizedOutput() throws {
+@Test func reelInspectionDecoderSanitizesCompactMetadataAndNormalizesDuplicateFormats() throws {
     let remoteURL = URL(string: "https://media.example/watch")!
-    let fixture = Data(#"{"title":"../unsafe: title?","duration":92.5,"extractor_key":"Example","is_live":false,"audio_ext":"m4a","formats":[{"height":720,"ext":"mp4","acodec":"none"},{"height":1080,"ext":"webm","acodec":"opus"},{"height":480,"ext":"mkv","acodec":"none"}]}"#.utf8)
+    let fixture = Data((#"{"title":"../unsafe: title?","duration":92.5,"extractor_key":"Example","is_live":false,"audio_ext":"m4a","formats":[{"height":2160,"ext":"mp4","acodec":"none"},{"height":2160,"ext":"mp4","acodec":"none"},{"height":1440,"ext":"webm","acodec":"none"},{"height":1080,"ext":"webm","acodec":"opus"},{"height":720,"ext":"mp4","acodec":"none"},{"height":480,"ext":"mkv","acodec":"none"},{"height":360,"ext":"mp4","acodec":"none"}]}"# + "\n").utf8)
     let info = try ReelInspectionDecoder.decode(fixture, remoteURL: remoteURL)
     #expect(info.remoteURL == remoteURL.absoluteString)
     #expect(info.title == "unsafe- title")
     #expect(info.durationSeconds == 92.5)
     #expect(info.source == "Example")
     #expect(!info.isLive)
-    #expect(info.qualities == ["best", "1080p", "720p", "480p"])
+    #expect(info.qualities == ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"])
     #expect(info.videoFormats == ["mkv", "mp4", "webm"])
     #expect(info.audioAvailable)
 
-    do {
-        _ = try ReelInspectionDecoder.decode(Data("[]".utf8), remoteURL: remoteURL)
-        Issue.record("Malformed inspection output must be rejected.")
-    } catch { #expect(error.localizedDescription.contains("malformed")) }
-    do {
-        _ = try ReelInspectionDecoder.decode(Data(repeating: 0x20, count: 8_000_001), remoteURL: remoteURL)
-        Issue.record("Inspection output over 8 MB must be rejected before parsing.")
-    } catch { #expect(error.localizedDescription.contains("malformed")) }
+    #expect(try ReelInspectionDecoder.decode(Data("  \n{\"formats\":[{\"acodec\":\"none\"}]}\n  ".utf8), remoteURL: remoteURL).audioAvailable == false)
+    #expect(try ReelInspectionDecoder.decode(Data("{\"audio_ext\":\"none\"}".utf8), remoteURL: remoteURL).audioAvailable == false)
+    #expect(try ReelInspectionDecoder.decode(Data("{\"formats\":[{\"acodec\":\"aac\"}]}".utf8), remoteURL: remoteURL).audioAvailable)
+    #expect(try ReelInspectionDecoder.decode(Data("{\"audio_ext\":\"m4a\"}".utf8), remoteURL: remoteURL).audioAvailable)
+
+    let hundreds = (0..<700).map { _ in ["height": 720, "ext": "mp4", "acodec": "aac", "vcodec": "avc1"] as [String: Any] }
+    let manyFormats = try JSONSerialization.data(withJSONObject: ["formats": hundreds])
+    let boundedInfo = try ReelInspectionDecoder.decode(manyFormats, remoteURL: remoteURL)
+    #expect(boundedInfo.qualities == ["best", "720p"])
+
+    for (data, message) in [
+        (Data("".utf8), "didn't receive"),
+        (Data("[]".utf8), "couldn't decode"),
+        (Data("<html>not media</html>".utf8), "couldn't decode"),
+        (Data(repeating: 0x20, count: ReelInspectionDecoder.maximumOutputBytes + 1), "too much media metadata")
+    ] {
+        do {
+            _ = try ReelInspectionDecoder.decode(data, remoteURL: remoteURL)
+            Issue.record("Invalid inspection output must be rejected: \(message)")
+        } catch { #expect(error.localizedDescription.contains(message)) }
+    }
+}
+
+@Test func reelInspectionCommandRequestsOnlyCompactJSONAndKeepsHelperIsolation() throws {
+    let url = URL(string: "https://media.example/watch")!
+    let arguments = try ReelCommandBuilder.inspection(url: url, denoURL: URL(fileURLWithPath: "/app/Reel/deno"))
+    #expect(arguments.contains("--print"))
+    #expect(arguments.contains(ReelCommandBuilder.inspectionJSONTemplate))
+    #expect(arguments.contains("--skip-download"))
+    #expect(arguments.contains("--no-cookies"))
+    #expect(arguments.contains("--no-cookies-from-browser"))
+    #expect(arguments.contains("--no-plugin-dirs"))
+    #expect(arguments.contains("--no-remote-components"))
+    #expect(arguments.contains("--ignore-config"))
+    #expect(arguments.contains("deno:/app/Reel/deno"))
+    #expect(!arguments.contains("--dump-single-json"))
+    #expect(arguments.last == url.absoluteString)
+}
+
+@Test func reelBoundedProcessOutputReportsTruncationAndKeepsDrainingCount() {
+    var accumulator = ReelProcessOutputAccumulator(maximumBytes: 5)
+    accumulator.append(Data("abc".utf8))
+    accumulator.append(Data("defgh".utf8))
+    let output = accumulator.output
+    #expect(String(decoding: output.data, as: UTF8.self) == "abcde")
+    #expect(output.byteCount == 8)
+    #expect(output.truncated)
+
+    var exactLimit = ReelProcessOutputAccumulator(maximumBytes: 3)
+    exactLimit.append(Data("abc".utf8))
+    #expect(exactLimit.output.byteCount == 3)
+    #expect(!exactLimit.output.truncated)
 }
 
 @Test func reelHelperTrustFailureClassificationAndPreparedBinaryChecksAreBounded() throws {

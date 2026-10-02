@@ -792,7 +792,7 @@ import KioCore
     #expect(state.shouldRemainExpanded)
     state.set(.composing, active: false)
 
-    for reason in [NotchInteractionReason.attachments, .dragging, .pinned, .working, .resultInteraction, .menuOrPopover] {
+    for reason in [NotchInteractionReason.attachments, .dragging, .pinned, .working, .resultInteraction, .menuOrPopover, .cueSession] {
         state.set(reason, active: true)
         state.set(.pointer, active: true)
         state.set(.pointer, active: false)
@@ -800,6 +800,25 @@ import KioCore
         state.set(reason, active: false)
     }
 
+    #expect(!state.shouldRemainExpanded)
+}
+
+@Test func cueSessionPinsNotchFromSetupThroughCompletionAndCanReleaseForCollapse() {
+    var state = NotchInteractionState()
+    state.setCueSession(true) // Cue setup begins.
+    #expect(state.isActive(.cueSession))
+    #expect(state.shouldRemainExpanded)
+
+    state.set(.pointer, active: true)
+    state.set(.pointer, active: false)
+    #expect(state.shouldRemainExpanded)
+
+    // Start and mode changes do not relinquish Cue ownership.
+    #expect(state.isActive(.cueSession))
+    state.setCueSession(false) // Completion or manual Done.
+    #expect(!state.shouldRemainExpanded)
+    state.setCueSession(true)
+    state.setCueSession(false)
     #expect(!state.shouldRemainExpanded)
 }
 

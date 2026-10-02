@@ -133,6 +133,74 @@ import KioCore
     #expect(repeated.isFinished)
 }
 
+@Test func cueAudioCaptureAndAnalyzerFormatsRejectInvalidValuesAndKeepHardwareRate() {
+    #expect(CueAudioFormatPolicy.captureFormat(for: .init(sampleRate: 0, channelCount: 2)) == nil)
+    #expect(CueAudioFormatPolicy.captureFormat(for: .init(sampleRate: 48_000, channelCount: 0)) == nil)
+    #expect(CueAudioFormatPolicy.captureFormat(for: .init(sampleRate: .nan, channelCount: 1)) == nil)
+    #expect(CueAudioFormatPolicy.captureFormat(for: .init(sampleRate: 48_000, channelCount: 2)) == .init(sampleRate: 48_000, channelCount: 1))
+    #expect(CueAudioFormatPolicy.captureFormat(for: .init(sampleRate: 44_100, channelCount: 1)) == .init(sampleRate: 44_100, channelCount: 1))
+
+    #expect(CueAudioFormatPolicy.analyzerFormat(preferred: nil) == nil)
+    #expect(CueAudioFormatPolicy.analyzerFormat(preferred: .init(sampleRate: 16_000, channelCount: 1)) == .init(sampleRate: 16_000, channelCount: 1))
+    #expect(CueAudioFormatPolicy.analyzerFormat(preferred: .init(sampleRate: -1, channelCount: 1)) == nil)
+}
+
+@Test func cueAudioLifecycleGuardsTapsAndSupportsStopFailureAndRepeatedRestart() {
+    var session = CueAudioSessionLifecycle()
+    session.stop() // Stop before the first start is harmless.
+    #expect(session.phase == .stopped)
+    #expect(!session.tapInstalled)
+
+    for _ in 0..<3 {
+        guard let attempt = session.beginStart() else { Issue.record("An idle Cue session should be startable."); return }
+        #expect(session.phase == .starting)
+        let installed = session.installTap(for: attempt)
+        let duplicateInstall = session.installTap(for: attempt)
+        let started = session.didStart(attempt)
+        #expect(installed)
+        #expect(!duplicateInstall)
+        #expect(started)
+        #expect(session.phase == .running)
+        #expect(session.tapInstalled)
+        session.stop()
+        #expect(session.phase == .stopped)
+        #expect(!session.tapInstalled)
+    }
+
+    guard let failed = session.beginStart() else { Issue.record("A stopped Cue session should be startable after failure."); return }
+    let failedTapInstalled = session.installTap(for: failed)
+    #expect(failedTapInstalled)
+    session.failStart(failed)
+    #expect(session.phase == .stopped)
+    #expect(!session.tapInstalled)
+    #expect(!session.isCurrent(failed))
+
+    guard let restartedAfterJump = session.beginStart() else { Issue.record("Cue should restart after a jump stop."); return }
+    let jumpTapInstalled = session.installTap(for: restartedAfterJump)
+    let jumpStarted = session.didStart(restartedAfterJump)
+    #expect(jumpTapInstalled)
+    #expect(jumpStarted)
+    let fallbackStarted = session.beginFallback(restartedAfterJump)
+    #expect(fallbackStarted)
+    #expect(session.phase == .starting)
+    let fallbackTapInstalled = session.installTap(for: restartedAfterJump)
+    let fallbackEngineStarted = session.didStart(restartedAfterJump)
+    #expect(fallbackTapInstalled)
+    #expect(fallbackEngineStarted)
+    session.stop()
+    guard let restartedAgain = session.beginStart() else { Issue.record("Repeated Cue restart should be allowed."); return }
+    let repeatedTapInstalled = session.installTap(for: restartedAgain)
+    let repeatedStarted = session.didStart(restartedAgain)
+    #expect(repeatedTapInstalled)
+    #expect(repeatedStarted)
+}
+
+@Test func cueSpeechBackendSelectionFallsBackToLegacyWhenModernPreparationFails() {
+    #expect(CueSpeechBackendPolicy.select(modernPrepared: true, legacyAvailable: true) == .speechAnalyzer)
+    #expect(CueSpeechBackendPolicy.select(modernPrepared: false, legacyAvailable: true) == .speechRecognizer)
+    #expect(CueSpeechBackendPolicy.select(modernPrepared: false, legacyAvailable: false) == nil)
+}
+
 @Test func cueConfidenceManualJumpAndCompletionBoundsAreDeterministic() {
     var cue = CueTextAlignment(script: "One two three four five.")
     #expect(!cue.isFinished)

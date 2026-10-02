@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import KioCore
 import KioModel
+import os
 import ZIPFoundation
 
 public enum ReelBackend: String, Sendable, Equatable {
@@ -48,24 +49,68 @@ public enum ReelMediaRouter {
 }
 
 public enum ReelInspectionDecoder {
+    public static let maximumOutputBytes = 512 * 1_024
+    public static let maximumFormats = 512
+
     public static func decode(_ data: Data, remoteURL: URL) throws -> ReelInspectionInfo {
-        guard data.count <= 8_000_000,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw KioFailure.verification("Reel received malformed media inspection data.")
+        guard data.count <= maximumOutputBytes else {
+            throw KioFailure.verification("Reel received too much media metadata to inspect safely.")
+        }
+        guard !data.isEmpty else { throw KioFailure.verification("Reel didn't receive media details from this source.") }
+        guard let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty,
+              let trimmedData = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: trimmedData) as? [String: Any] else {
+            throw KioFailure.verification("Reel couldn't decode yt-dlp's media details.")
         }
         let title = ReelMediaRouter.safeTitle(json["title"] as? String ?? "Online media")
         let rawDuration = (json["duration"] as? NSNumber)?.doubleValue
         let duration = rawDuration.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
-        let formats = json["formats"] as? [[String: Any]] ?? []
+        let formats = Array((json["formats"] as? [[String: Any]] ?? []).prefix(maximumFormats))
         let qualities = ReelMediaRouter.normalizedQualities(formats.map { ($0["height"] as? NSNumber)?.intValue })
         let containers = Array(Set(formats.compactMap { ($0["ext"] as? String)?.lowercased() }
             .filter { ["mp4", "webm", "mkv", "mov"].contains($0) })).sorted()
-        let audioAvailable = (json["audio_ext"] as? String) != nil
+        let audioAvailable = (json["audio_ext"] as? String).map { !$0.isEmpty && $0.lowercased() != "none" } == true
             || formats.contains { ($0["acodec"] as? String).map { $0 != "none" } == true }
+        let liveValue = json["is_live"] as? Bool
+            ?? (json["is_live"] as? String).flatMap { ["true": true, "false": false][$0.lowercased()] }
         return ReelInspectionInfo(remoteURL: remoteURL.absoluteString, title: title, durationSeconds: duration,
                                   source: json["extractor_key"] as? String ?? remoteURL.host ?? "Unknown",
-                                  isLive: (json["is_live"] as? Bool) == true,
+                                  isLive: liveValue == true,
                                   qualities: qualities, videoFormats: containers, audioAvailable: audioAvailable)
+    }
+}
+
+public struct ReelBoundedProcessOutput: Sendable, Equatable {
+    public let data: Data
+    public let byteCount: Int
+    public let truncated: Bool
+
+    public init(data: Data, byteCount: Int, truncated: Bool) {
+        self.data = data
+        self.byteCount = byteCount
+        self.truncated = truncated
+    }
+}
+
+/// Stores only a bounded prefix while continuing to count and drain all process output.
+public struct ReelProcessOutputAccumulator: Sendable, Equatable {
+    public let maximumBytes: Int
+    private var data = Data()
+    private var byteCount = 0
+    private var truncated = false
+
+    public init(maximumBytes: Int) { self.maximumBytes = max(0, maximumBytes) }
+
+    public mutating func append(_ chunk: Data) {
+        byteCount = byteCount.addingReportingOverflow(chunk.count).overflow ? Int.max : byteCount + chunk.count
+        let remaining = max(0, maximumBytes - data.count)
+        if remaining > 0 { data.append(chunk.prefix(remaining)) }
+        if chunk.count > remaining { truncated = true }
+    }
+
+    public var output: ReelBoundedProcessOutput {
+        ReelBoundedProcessOutput(data: data, byteCount: byteCount, truncated: truncated)
     }
 }
 
@@ -123,6 +168,17 @@ public enum ReelCommandBuilder {
     private static let qualities: Set<String> = ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"]
     private static let videoFormats: Set<String> = ["mp4", "webm", "mkv", "mov"]
     private static let audioFormats: Set<String> = ["mp3", "m4a", "wav", "flac"]
+    public static let inspectionJSONTemplate = #"{"title":%(title|"Online media")j,"duration":%(duration|null)j,"extractor_key":%(extractor_key|"")j,"is_live":%(is_live|false)j,"audio_ext":%(audio_ext|null)j,"formats":%(formats.:.{height,ext,acodec,vcodec}|[])j}"#
+
+    public static func inspection(url: URL, denoURL: URL = ReelRuntime.denoURL) throws -> [String] {
+        guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http" else {
+            throw KioFailure.invalidInput("Reel's media inspection URL must use HTTP or HTTPS.")
+        }
+        return ["--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", "--no-plugin-dirs",
+                "--no-remote-components", "--no-cache-dir", "--no-cookies", "--no-cookies-from-browser",
+                "--ignore-no-formats-error", "--js-runtimes", "deno:\(denoURL.path)", "--skip-download",
+                "--print", inspectionJSONTemplate, url.absoluteString]
+    }
 
     public static func ytDlp(operation: ToolOperation, url: URL, outputTemplate: String, quality: String?, format: String?,
                              ffmpegDirectory: URL, denoURL: URL = ReelRuntime.denoURL) throws -> [String] {
@@ -343,8 +399,15 @@ enum ReelWorkflow {
                                                          audioAvailable: ["mp3", "m4a", "wav", "flac"].contains(ext)), input: input)
         }
         guard ReelHelperManager.isPrepared("yt-dlp") else { throw KioFailure.verification("Reel's bundled media runtime is missing or damaged. Reinstall Kio to restore it.") }
-        let data = try await runHelper(name: "yt-dlp", arguments: ["--dump-single-json", "--skip-download", "--no-playlist", "--no-warnings", "--no-progress", "--ignore-config", "--no-plugin-dirs", "--no-remote-components", "--js-runtimes", "deno:\(ReelRuntime.denoURL.path)", url.absoluteString])
-        let info = try ReelInspectionDecoder.decode(data, remoteURL: url)
+        let output = try await runHelper(name: "yt-dlp", arguments: ReelCommandBuilder.inspection(url: url),
+                                         maximumStdoutBytes: ReelInspectionDecoder.maximumOutputBytes)
+        guard !output.truncated else {
+            throw KioFailure.verification("Reel received too much media metadata to inspect safely.")
+        }
+        guard !output.data.isEmpty else {
+            throw KioFailure.verification("Reel didn't receive media details from this source.")
+        }
+        let info = try ReelInspectionDecoder.decode(output.data, remoteURL: url)
         return try writeInspection(info, input: input)
     }
 
@@ -380,7 +443,10 @@ enum ReelWorkflow {
                                                     quality: quality, format: format,
                                                     ffmpegDirectory: ReelRuntime.ffmpegURL.deletingLastPathComponent())
             }
-            _ = try await runHelper(name: helper, arguments: args)
+            let helperOutput = try await runHelper(name: helper, arguments: args, maximumStdoutBytes: 64 * 1_024)
+            if helperOutput.truncated {
+                Self.logger.info("Download helper output truncated after \(helperOutput.byteCount, privacy: .public) bytes; completed files remain authoritative.")
+            }
             try Task.checkCancellation()
             let produced = try outputFiles(in: parent, maximumCount: operation == .downloadRemoteGallery ? 100 : 8)
             guard let first = produced.first else { throw KioFailure.verification("Reel finished without a usable output file.") }
@@ -429,7 +495,9 @@ enum ReelWorkflow {
         return try ArtifactRef.inspect(output, parentID: input.id)
     }
 
-    private static func runHelper(name: String, arguments: [String]) async throws -> Data {
+    private static let logger = Logger(subsystem: "app.kio.mac", category: "Reel")
+
+    private static func runHelper(name: String, arguments: [String], maximumStdoutBytes: Int) async throws -> ReelBoundedProcessOutput {
         try Task.checkCancellation()
         let executable: URL
         let processArguments: [String]
@@ -458,7 +526,7 @@ enum ReelWorkflow {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
         do { try process.run() } catch { throw KioFailure.processing("Reel couldn't start its verified helper: \(error.localizedDescription)") }
-        let outputTask = Task.detached { Self.readBounded(outputPipe.fileHandleForReading, maximumBytes: 8_000_000) }
+        let outputTask = Task.detached { Self.readBounded(outputPipe.fileHandleForReading, maximumBytes: maximumStdoutBytes) }
         let errorTask = Task.detached { Self.readBounded(errorPipe.fileHandleForReading, maximumBytes: 2_000) }
         do {
             while process.isRunning {
@@ -473,27 +541,28 @@ enum ReelWorkflow {
             _ = await errorTask.value
             throw CancellationError()
         }
-        let detail = String(data: await errorTask.value, encoding: .utf8) ?? ""
-        let outputData = await outputTask.value
+        let errorOutput = await errorTask.value
+        let output = await outputTask.value
+        logger.info("Helper \(name, privacy: .public) exited with status \(process.terminationStatus, privacy: .public); stdout bytes=\(output.byteCount, privacy: .public), truncated=\(output.truncated, privacy: .public), stderr bytes=\(errorOutput.byteCount, privacy: .public), stderr truncated=\(errorOutput.truncated, privacy: .public).")
+        let detail = String(data: errorOutput.data, encoding: .utf8) ?? ""
         guard process.terminationStatus == 0 else {
             switch ReelHelperFailureKind.classify(detail) {
             case .drmProtected: throw KioFailure.unsupported("This source is DRM-protected; Reel doesn't bypass DRM.")
             case .authenticationRequired: throw KioFailure.unsupported("This source requires account authentication. Reel doesn't read browser cookies or pass login credentials.")
-            case .processFailure: throw KioFailure.processing("Reel's verified helper couldn't complete this request. \(String(detail.prefix(240)))")
+            case .processFailure: throw KioFailure.processing("Reel's verified helper couldn't complete this request.")
             }
         }
-        guard outputData.count <= 8_000_000 else { throw KioFailure.verification("Reel helper metadata exceeded its 8 MB limit.") }
-        return outputData
+        return output
     }
 
-    private static func readBounded(_ handle: FileHandle, maximumBytes: Int) -> Data {
-        var result = Data()
+    private static func readBounded(_ handle: FileHandle, maximumBytes: Int) -> ReelBoundedProcessOutput {
+        var result = ReelProcessOutputAccumulator(maximumBytes: maximumBytes)
         while true {
             let chunk = handle.readData(ofLength: 16_384)
             if chunk.isEmpty { break }
-            if result.count < maximumBytes { result.append(chunk.prefix(maximumBytes - result.count)) }
+            result.append(chunk)
         }
-        return result
+        return result.output
     }
 
     private static func writeInspection(_ info: ReelInspectionInfo, input: ArtifactRef) throws -> ArtifactRef {

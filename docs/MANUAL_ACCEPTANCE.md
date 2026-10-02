@@ -4,6 +4,67 @@ This checklist is for the user to run after the code-only verification pass. The
 
 Use your own files and media you have permission to save. Do not put real provider keys in screenshots, screen recordings, or issue reports. Record the Kio version and build number for any failure.
 
+## Focused acceptance: Cue startup, notch pinning, and Reel inspection
+
+This section covers the focused fixes from baseline `69f7943f082e2fbf38b9f5847574f520932beb5b`. Codex did not launch Kio, request microphone access, inspect Cue visually, or use a live media URL. The following checks remain for you.
+
+### Test 1 — Cue crash
+
+1. From `/Users/joe/Desktop/Kio`, build and install using `bash scripts/dev-run.sh`.
+2. Launch Kio and expand the notch.
+3. Open Cue and paste:
+
+   ```text
+   Welcome to Kio.
+   This is a short Cue crash test.
+   The teleprompter should remain open while I speak.
+   When I finish, the notch should collapse.
+   ```
+
+4. Select **Follow My Voice** and press **Start**.
+
+Expected: Kio does not crash; first-use microphone/speech permission may appear; the active teleprompter opens and the waveform responds.
+
+If Kio crashes, collect the newest Kio report from `~/Library/Logs/DiagnosticReports/` and Console entries for subsystem `app.kio.mac`, category `Cue`. Do not paste unrelated private logs.
+
+### Test 2 — Word Tracking crash
+
+Repeat Test 1 with **Word Tracking**. Expected: no crash.
+
+### Test 3 — Classic
+
+Repeat Test 1 with **Classic**. Expected: no microphone is required and Kio does not crash. If Classic works while both speech modes fail, that points toward audio/speech startup.
+
+### Test 4 — Cue stays expanded
+
+Start **Follow My Voice**, move the pointer completely away from the notch, and wait 10 seconds. Expected: the notch stays fully expanded and the teleprompter remains visible. Switch to another app; Cue should remain expanded while the session is active.
+
+### Test 5 — Cue natural completion
+
+Use a short 1–2 sentence script and read it to the end. Expected: recognition reaches the end, a brief completion state appears, Cue exits, and the black notch smoothly collapses. The mascot should not appear during collapse; the collapsed notch should be completely black.
+
+### Test 6 — Manual Done
+
+Start a longer script and press **Done** or **Close** before finishing. Expected: speech stops, Cue exits, the notch collapses, and no expanded normal Kio screen remains.
+
+### Test 7 — Pointer does not override Cue
+
+Start Cue, move the pointer away, back, then away again. Expected: the notch remains expanded until Cue ends.
+
+### Test 8 — Reel inspection
+
+Use a video URL you have permission to download, paste it, and ask **“download this”**. Expected: no “malformed media inspection data” error; Reel displays title/media information and a quality picker when needed.
+
+### Test 9 — Reel explicit download
+
+Ask **“download this in 720p mp4”**. Expected: the download proceeds without an inspection parsing error.
+
+### Test 10 — Reel audio
+
+Ask **“download the audio as m4a”**. Expected: Reel returns a valid M4A result.
+
+If Reel still fails, record the site/domain, exact Kio error, and Reel Diagnostics versions. Do not provide a sensitive/private URL.
+
 ## Focused acceptance: Cue transcript tracking and bundled Reel
 
 This covers the 2026-10-01 implementation pass. Codex did not launch Kio, inspect the UI, request permissions, use a browser, or run a live media URL. Perform these checks manually after installing the Debug build.

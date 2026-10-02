@@ -4,6 +4,7 @@ import KioCore
 import KioModel
 import KioUI
 @preconcurrency import Speech
+import os
 import SwiftUI
 
 // These permission callbacks can arrive on a background queue. Keep the continuation
@@ -24,26 +25,139 @@ private func requestCueSpeechAuthorization() async -> SFSpeechRecognizerAuthoriz
     }
 }
 
-private final class CueAudioBufferPacket: @unchecked Sendable {
-    let buffer: AVAudioPCMBuffer
-    init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+private let cueLogger = Logger(subsystem: "app.kio.mac", category: "Cue")
+
+private protocol CueAudioInputSink: Sendable {
+    func append(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime)
+}
+
+private final class CueLegacyAudioInputSink: CueAudioInputSink, @unchecked Sendable {
+    private let request: SFSpeechAudioBufferRecognitionRequest
+
+    init(request: SFSpeechAudioBufferRecognitionRequest) { self.request = request }
+
+    func append(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
+        request.append(buffer)
+    }
+}
+
+@available(macOS 26.0, *)
+private final class CueAnalyzerInputConverterBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private let conversion: (AVAudioPCMBuffer, AVAudioTime) throws -> [AnalyzerInput]
+
+    init(captureFormat: AVAudioFormat, analyzerFormat: AVAudioFormat) throws {
+        if #available(macOS 27.0, *) {
+            let converter = AnalyzerInputConverter(analyzerFormat: analyzerFormat)
+            conversion = { buffer, time in try converter.convert(buffer, at: time) }
+        } else {
+            guard let converter = AVAudioConverter(from: captureFormat, to: analyzerFormat) else {
+                throw CueFailure.unavailable("Cue couldn't create a safe audio converter for SpeechAnalyzer.")
+            }
+            conversion = { buffer, time in
+                let ratio = analyzerFormat.sampleRate / captureFormat.sampleRate
+                let capacity = AVAudioFrameCount(max(1, ceil(Double(buffer.frameLength) * ratio) + 128))
+                guard let output = AVAudioPCMBuffer(pcmFormat: analyzerFormat, frameCapacity: capacity) else {
+                    throw CueFailure.unavailable("Cue couldn't allocate an analyzer audio buffer.")
+                }
+                var suppliedInput = false
+                var conversionError: NSError?
+                let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+                    guard !suppliedInput else {
+                        inputStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    suppliedInput = true
+                    inputStatus.pointee = .haveData
+                    return buffer
+                }
+                if status == .error {
+                    throw conversionError ?? CueFailure.unavailable("Cue couldn't convert microphone audio for SpeechAnalyzer.")
+                }
+                guard output.frameLength > 0 else { return [] }
+                return [AnalyzerInput(buffer: output, bufferStartTime: Self.startTime(for: time))]
+            }
+        }
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) throws -> [AnalyzerInput] {
+        lock.lock()
+        defer { lock.unlock() }
+        return try conversion(buffer, time)
+    }
+
+    private static func startTime(for time: AVAudioTime) -> CMTime? {
+        guard time.isSampleTimeValid, time.sampleRate.isFinite, time.sampleRate > 0,
+              time.sampleTime >= 0, time.sampleRate <= Double(Int32.max) else { return nil }
+        let timescale = Int32(time.sampleRate.rounded())
+        guard timescale > 0 else { return nil }
+        return CMTime(value: time.sampleTime, timescale: timescale)
+    }
+}
+
+@available(macOS 26.0, *)
+private final class CueAnalyzerAudioInputSink: CueAudioInputSink, @unchecked Sendable {
+    private let converter: CueAnalyzerInputConverterBox
+    private let continuation: AsyncStream<AnalyzerInput>.Continuation
+    private let lock = NSLock()
+    private var didLogConversionFailure = false
+
+    init(converter: CueAnalyzerInputConverterBox, continuation: AsyncStream<AnalyzerInput>.Continuation) {
+        self.converter = converter
+        self.continuation = continuation
+    }
+
+    func append(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
+        do {
+            for input in try converter.convert(buffer, at: time) { continuation.yield(input) }
+        } catch {
+            lock.lock()
+            let shouldLog = !didLogConversionFailure
+            didLogConversionFailure = true
+            lock.unlock()
+            if shouldLog { cueLogger.error("Cue analyzer audio conversion failed: \(String(reflecting: type(of: error)), privacy: .public).") }
+        }
+    }
 }
 
 private final class CueAudioTapContext: @unchecked Sendable {
-    private let appendAudio: @Sendable (AVAudioPCMBuffer) -> Void
+    private let audioSink: any CueAudioInputSink
+    private let captureConverter: AVAudioConverter?
+    private let captureFormat: AVAudioFormat
     private let onPower: @MainActor (Float) -> Void
     private let lock = NSLock()
     private var lastPowerUpdate = 0.0
+    private var didLogCaptureFailure = false
 
-    init(appendAudio: @escaping @Sendable (AVAudioPCMBuffer) -> Void, onPower: @escaping @MainActor (Float) -> Void) {
-        self.appendAudio = appendAudio
+    init(audioSink: any CueAudioInputSink, captureConverter: AVAudioConverter?, captureFormat: AVAudioFormat,
+         onPower: @escaping @MainActor (Float) -> Void) {
+        self.audioSink = audioSink
+        self.captureConverter = captureConverter
+        self.captureFormat = captureFormat
         self.onPower = onPower
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) {
-        appendAudio(buffer)
-        guard let channel = buffer.floatChannelData?.pointee else { return }
-        let count = Int(buffer.frameLength)
+    func append(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
+        let capturedBuffer: AVAudioPCMBuffer
+        if let captureConverter {
+            if let converted = AVAudioPCMBuffer(pcmFormat: captureFormat, frameCapacity: buffer.frameLength) {
+                do {
+                    try captureConverter.convert(to: converted, from: buffer)
+                    capturedBuffer = converted
+                } catch {
+                    logCaptureFailure(error)
+                    capturedBuffer = buffer
+                }
+            } else {
+                logCaptureFailure(CueFailure.unavailable("Cue couldn't allocate a mono microphone buffer."))
+                capturedBuffer = buffer
+            }
+        } else {
+            capturedBuffer = buffer
+        }
+        audioSink.append(capturedBuffer, at: time)
+        guard let channel = capturedBuffer.floatChannelData?.pointee else { return }
+        let count = Int(capturedBuffer.frameLength)
         guard count > 0 else { return }
         var sum: Float = 0
         for index in 0..<count { sum += channel[index] * channel[index] }
@@ -56,10 +170,18 @@ private final class CueAudioTapContext: @unchecked Sendable {
         guard shouldPublish else { return }
         Task { @MainActor [onPower] in onPower(power) }
     }
+
+    private func logCaptureFailure(_ error: Error) {
+        lock.lock()
+        let shouldLog = !didLogCaptureFailure
+        didLogCaptureFailure = true
+        lock.unlock()
+        if shouldLog { cueLogger.error("Cue microphone capture conversion failed; using the device buffer: \(String(reflecting: type(of: error)), privacy: .public).") }
+    }
 }
 
 private func cueAudioTapBlock(context: CueAudioTapContext) -> AVAudioNodeTapBlock {
-    { buffer, _ in context.append(buffer) }
+    { buffer, time in context.append(buffer, at: time) }
 }
 
 private enum CueMode: String, CaseIterable, Identifiable {
@@ -98,7 +220,8 @@ private enum CueTextSize: String, CaseIterable, Identifiable {
 @MainActor
 private protocol CueSpeechBackend: AnyObject {
     var name: String { get }
-    func append(_ buffer: AVAudioPCMBuffer)
+    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+               onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink
     func stop()
 }
 
@@ -107,6 +230,7 @@ private final class LegacyCueSpeechBackend: CueSpeechBackend {
     let name = "Speech Recognition"
     private let request: SFSpeechAudioBufferRecognitionRequest
     private var task: SFSpeechRecognitionTask?
+    private var didStart = false
 
     init(recognizer: SFSpeechRecognizer, hints: [String], generation: Int,
          onTranscript: @escaping (String, Float, Int) -> Void) {
@@ -122,7 +246,12 @@ private final class LegacyCueSpeechBackend: CueSpeechBackend {
         }
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) { request.append(buffer) }
+    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+               onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink {
+        guard !didStart else { throw CueFailure.unavailable("Cue speech recognition has already started.") }
+        didStart = true
+        return CueLegacyAudioInputSink(request: request)
+    }
     func stop() { request.endAudio(); task?.cancel(); task = nil }
 }
 
@@ -132,28 +261,45 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
     let name = "SpeechAnalyzer"
     private let transcriber: SpeechTranscriber
     private let analyzer: SpeechAnalyzer
+    private let inputConverter: CueAnalyzerInputConverterBox
+    private enum State: Equatable { case prepared, running, stopping, stopped }
+    private var state: State = .prepared
     private var continuation: AsyncStream<AnalyzerInput>.Continuation?
     private var resultTask: Task<Void, Never>?
     private var analysisTask: Task<Void, Never>?
 
-    init(transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer) {
+    init(transcriber: SpeechTranscriber, analyzer: SpeechAnalyzer, inputConverter: CueAnalyzerInputConverterBox) {
         self.transcriber = transcriber
         self.analyzer = analyzer
+        self.inputConverter = inputConverter
     }
 
-    static func prepared(locale: Locale, format: AVAudioFormat) async throws -> ModernCueSpeechBackend {
+    static func prepared(locale: Locale, captureFormat: AVAudioFormat) async throws -> ModernCueSpeechBackend {
         guard SpeechTranscriber.isAvailable,
               await SpeechTranscriber.supportedLocale(equivalentTo: locale) != nil else {
             throw CueFailure.unavailable("SpeechAnalyzer is unavailable for this language.")
         }
         let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
+            compatibleWith: [transcriber], considering: captureFormat
+        ) else { throw CueFailure.unavailable("SpeechAnalyzer has no compatible audio format for this language.") }
+        let analyzerDescriptor = CueAudioFormatDescriptor(sampleRate: analyzerFormat.sampleRate,
+                                                           channelCount: analyzerFormat.channelCount)
+        guard CueAudioFormatPolicy.analyzerFormat(preferred: analyzerDescriptor) != nil else {
+            throw CueFailure.unavailable("SpeechAnalyzer returned an invalid audio format.")
+        }
         let analyzer = SpeechAnalyzer(modules: [transcriber])
-        try await analyzer.prepareToAnalyze(in: format)
-        return ModernCueSpeechBackend(transcriber: transcriber, analyzer: analyzer)
+        try await analyzer.prepareToAnalyze(in: analyzerFormat)
+        let inputConverter = try CueAnalyzerInputConverterBox(captureFormat: captureFormat, analyzerFormat: analyzerFormat)
+        cueLogger.info("SpeechAnalyzer prepared: capture=\(captureFormat.sampleRate, privacy: .public) Hz/\(captureFormat.channelCount, privacy: .public) ch, analyzer=\(analyzerFormat.sampleRate, privacy: .public) Hz/\(analyzerFormat.channelCount, privacy: .public) ch.")
+        return ModernCueSpeechBackend(transcriber: transcriber, analyzer: analyzer, inputConverter: inputConverter)
     }
 
-    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int) {
-        let (inputs, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+               onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink {
+        guard state == .prepared else { throw CueFailure.unavailable("Cue's SpeechAnalyzer input sequence cannot be restarted.") }
+        state = .running
+        let (inputs, continuation) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingNewest(64))
         self.continuation = continuation
         resultTask = Task { @MainActor [transcriber] in
             do {
@@ -162,125 +308,270 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
                 }
             } catch { }
         }
-        analysisTask = Task { [analyzer] in
+        analysisTask = Task { @MainActor [analyzer, onFailure] in
             do { try await analyzer.start(inputSequence: inputs) }
-            catch { }
+            catch {
+                cueLogger.error("SpeechAnalyzer failed during start: \(String(reflecting: type(of: error)), privacy: .public).")
+                onFailure(error)
+            }
         }
+        return CueAnalyzerAudioInputSink(converter: inputConverter, continuation: continuation)
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) { continuation?.yield(AnalyzerInput(buffer: buffer)) }
     func stop() {
+        guard state != .stopped, state != .stopping else { return }
+        state = .stopping
         continuation?.finish()
         continuation = nil
         resultTask?.cancel()
         resultTask = nil
         analysisTask?.cancel()
         analysisTask = nil
-        Task { await analyzer.cancelAndFinishNow() }
+        Task { [analyzer] in await analyzer.cancelAndFinishNow() }
+        state = .stopped
     }
+
 }
 
 @MainActor
 private final class CueSpeechRecognizer: ObservableObject {
     var onTranscript: ((String, Float, Int) -> Void)?
     var onPower: ((Float) -> Void)?
+    var onFailure: ((String) -> Void)?
+    private struct LegacyFallbackConfiguration {
+        let recognizer: SFSpeechRecognizer
+        let hints: [String]
+        let generation: Int
+        let captureConverter: AVAudioConverter?
+        let captureFormat: AVAudioFormat
+    }
     private let engine = AVAudioEngine()
     private var backend: (any CueSpeechBackend)?
-    private var audioContinuation: AsyncStream<CueAudioBufferPacket>.Continuation?
-    private var audioConsumerTask: Task<Void, Never>?
+    private var audioTapContext: CueAudioTapContext?
+    private var tapInstalled = false
+    private var lifecycle = CueAudioSessionLifecycle()
     private var warmedLocaleIdentifier: String?
-    private var warmedSampleRate: Double?
-    private var warmedChannelCount: AVAudioChannelCount?
     private var warmedLegacyRecognizer: SFSpeechRecognizer?
-    private var warmedBackend: (any CueSpeechBackend)?
+    private var legacyFallbackConfiguration: LegacyFallbackConfiguration?
 
     func preheat(locale: Locale) {
         guard warmedLocaleIdentifier != locale.identifier else { return }
         warmedLocaleIdentifier = locale.identifier
         warmedLegacyRecognizer = SFSpeechRecognizer(locale: locale)
         guard #available(macOS 26.0, *) else { return }
-        let inputFormat = engine.inputNode.outputFormat(forBus: 0)
-        let format = inputFormat.sampleRate > 0
-            ? inputFormat
-            : AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
-        warmedSampleRate = format.sampleRate
-        warmedChannelCount = format.channelCount
-        let localeIdentifier = locale.identifier
-        Task { [weak self] in
-            guard let self else { return }
-            let backend = try? await ModernCueSpeechBackend.prepared(locale: locale, format: format)
-            guard self.warmedLocaleIdentifier == localeIdentifier else { return }
-            self.warmedBackend = backend
+        Task {
+            let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) != nil
+            cueLogger.info("Cue locale preheat completed; SpeechAnalyzer locale supported=\(supported, privacy: .public).")
         }
     }
 
     func start(locale: Locale, hints: [String], generation: Int, recognizeWords: Bool) async throws {
-        let micAllowed = await requestCueMicrophonePermission()
-        guard micAllowed else { throw CueFailure.permission("Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone.") }
         stop()
-        if recognizeWords {
-            let speechStatus = await requestCueSpeechAuthorization()
-            guard speechStatus == .authorized else { throw CueFailure.permission("Speech Recognition access is off. Enable Kio in System Settings → Privacy & Security → Speech Recognition. Classic mode remains available.") }
+        guard let attempt = lifecycle.beginStart() else {
+            throw CueFailure.unavailable("Cue audio is already starting.")
         }
-        let selectedRecognizer = recognizeWords
-            ? (warmedLocaleIdentifier == locale.identifier ? warmedLegacyRecognizer : SFSpeechRecognizer(locale: locale))
-            : nil
-        if recognizeWords && selectedRecognizer == nil { throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.") }
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        var chosenBackend: (any CueSpeechBackend)?
-        if recognizeWords {
-            if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
-                chosenBackend = warmedLocaleIdentifier == locale.identifier
-                    && warmedSampleRate == format.sampleRate && warmedChannelCount == format.channelCount
-                    ? warmedBackend : nil
-                if chosenBackend == nil { chosenBackend = try? await ModernCueSpeechBackend.prepared(locale: locale, format: format) }
-            }
-            if chosenBackend == nil, let selectedRecognizer, selectedRecognizer.isAvailable {
-                chosenBackend = LegacyCueSpeechBackend(recognizer: selectedRecognizer, hints: hints, generation: generation) { [weak self] text, confidence, generation in
-                    self?.onTranscript?(text, confidence, generation)
+        do {
+            let micAllowed = await requestCueMicrophonePermission()
+            try Task.checkCancellation()
+            guard lifecycle.isCurrent(attempt) else { throw CancellationError() }
+            guard micAllowed else { throw CueFailure.permission("Microphone access is off. Enable it in System Settings → Privacy & Security → Microphone.") }
+
+            if recognizeWords {
+                let speechStatus = await requestCueSpeechAuthorization()
+                try Task.checkCancellation()
+                guard lifecycle.isCurrent(attempt) else { throw CancellationError() }
+                guard speechStatus == .authorized else {
+                    throw CueFailure.permission("Speech Recognition access is off. Enable Kio in System Settings → Privacy & Security → Speech Recognition. Classic mode remains available.")
                 }
             }
-            guard let chosenBackend else { throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.") }
-            if #available(macOS 26.0, *), let modern = chosenBackend as? ModernCueSpeechBackend {
-                modern.start(onTranscript: { [weak self] text, confidence, generation in
+
+            let input = engine.inputNode
+            let hardwareFormat = input.outputFormat(forBus: 0)
+            let hardwareDescriptor = CueAudioFormatDescriptor(sampleRate: hardwareFormat.sampleRate,
+                                                               channelCount: hardwareFormat.channelCount)
+            guard hardwareDescriptor.isValid else {
+                throw CueFailure.unavailable("Cue couldn't use the microphone's current audio format.")
+            }
+            let requestedCaptureFormat = cueCaptureFormat(for: hardwareFormat)
+            let captureConverter: AVAudioConverter?
+            let captureFormat: AVAudioFormat
+            if let requestedCaptureFormat,
+               let converter = AVAudioConverter(from: hardwareFormat, to: requestedCaptureFormat) {
+                captureConverter = converter
+                captureFormat = requestedCaptureFormat
+            } else {
+                // Keep the actual device format if mono conversion isn't supported; Speech's converter
+                // can still downmix it, and the legacy recognizer receives the unmodified device buffer.
+                captureConverter = nil
+                captureFormat = hardwareFormat
+                cueLogger.error("Cue couldn't create same-rate mono capture conversion; using the validated hardware format.")
+            }
+            let captureDescriptor = CueAudioFormatDescriptor(sampleRate: captureFormat.sampleRate,
+                                                               channelCount: captureFormat.channelCount)
+            guard CueAudioFormatPolicy.captureFormat(for: hardwareDescriptor) != nil,
+                  captureDescriptor.isValid else {
+                throw CueFailure.unavailable("Cue couldn't create a safe microphone capture format.")
+            }
+
+            let selectedRecognizer = warmedLocaleIdentifier == locale.identifier
+                ? warmedLegacyRecognizer : SFSpeechRecognizer(locale: locale)
+            var chosenBackend: (any CueSpeechBackend)?
+            if recognizeWords {
+                if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
+                    do {
+                        chosenBackend = try await ModernCueSpeechBackend.prepared(locale: locale, captureFormat: captureFormat)
+                    } catch {
+                        cueLogger.warning("SpeechAnalyzer setup failed; trying Speech Recognition fallback (\(String(reflecting: type(of: error)), privacy: .public)).")
+                    }
+                    guard lifecycle.isCurrent(attempt) else { throw CancellationError() }
+                }
+                if chosenBackend == nil, let selectedRecognizer, selectedRecognizer.isAvailable {
+                    chosenBackend = LegacyCueSpeechBackend(recognizer: selectedRecognizer, hints: hints,
+                                                           generation: generation) { [weak self] text, confidence, generation in
+                        self?.onTranscript?(text, confidence, generation)
+                    }
+                }
+                guard let chosenBackend else {
+                    throw CueFailure.unavailable("Speech recognition is unavailable for this language right now.")
+                }
+                if #available(macOS 26.0, *), chosenBackend is ModernCueSpeechBackend,
+                   let selectedRecognizer, selectedRecognizer.isAvailable {
+                    legacyFallbackConfiguration = LegacyFallbackConfiguration(recognizer: selectedRecognizer,
+                        hints: hints, generation: generation, captureConverter: captureConverter,
+                        captureFormat: captureFormat)
+                } else {
+                    legacyFallbackConfiguration = nil
+                }
+                let sink = try chosenBackend.start(onTranscript: { [weak self] text, confidence, generation in
                     self?.onTranscript?(text, confidence, generation)
-                }, generation: generation)
+                }, generation: generation, onFailure: { [weak self] error in
+                    self?.fallbackFromModern(error, attempt: attempt)
+                })
+                backend = chosenBackend
+                cueLogger.info("Cue selected backend: \(chosenBackend.name, privacy: .public); tap installed=false.")
+                let audioContext = CueAudioTapContext(audioSink: sink, captureConverter: captureConverter,
+                                                      captureFormat: captureFormat) { [weak self] power in
+                    self?.onPower?(power)
+                }
+                guard !tapInstalled else { throw CueFailure.unavailable("Cue already has an active microphone tap.") }
+                input.installTap(onBus: 0, bufferSize: 1_024, format: nil,
+                                 block: cueAudioTapBlock(context: audioContext))
+                tapInstalled = true
+                audioTapContext = audioContext
+                guard lifecycle.installTap(for: attempt) else {
+                    input.removeTap(onBus: 0)
+                    tapInstalled = false
+                    throw CueFailure.unavailable("Cue couldn't safely attach its microphone tap.")
+                }
+                cueLogger.info("Cue microphone: hardware=\(hardwareFormat.sampleRate, privacy: .public) Hz/\(hardwareFormat.channelCount, privacy: .public) ch, capture=\(captureFormat.sampleRate, privacy: .public) Hz/\(captureFormat.channelCount, privacy: .public) ch, tap installed=true.")
             }
-        }
-        backend = chosenBackend
-        let (audioStream, audioContinuation) = AsyncStream<CueAudioBufferPacket>.makeStream(
-            bufferingPolicy: .bufferingNewest(64)
-        )
-        self.audioContinuation = audioContinuation
-        self.audioConsumerTask = Task { @MainActor [weak self] in
-            for await packet in audioStream {
-                guard !Task.isCancelled else { return }
-                self?.backend?.append(packet.buffer)
+
+            engine.prepare()
+            try engine.start()
+            guard lifecycle.didStart(attempt) else {
+                throw CueFailure.unavailable("Cue audio startup was interrupted before the engine started.")
             }
+            cueLogger.info("Cue audio session started; backend=\(self.backend?.name ?? "Classic", privacy: .public).")
+        } catch {
+            if lifecycle.isCurrent(attempt) {
+                tearDownRuntime(for: attempt)
+                lifecycle.failStart(attempt)
+            }
+            if !(error is CancellationError) {
+                cueLogger.error("Cue startup failed: \(String(reflecting: type(of: error)), privacy: .public); tap installed=\(self.tapInstalled, privacy: .public).")
+            }
+            throw error
         }
-        let audioContext = CueAudioTapContext(appendAudio: { buffer in
-            audioContinuation.yield(CueAudioBufferPacket(buffer))
-        }) { [weak self] power in
-            self?.onPower?(power)
-        }
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format,
-                         block: cueAudioTapBlock(context: audioContext))
-        engine.prepare()
-        try engine.start()
     }
 
     func stop() {
-        if engine.isRunning { engine.stop() }
-        if engine.inputNode.numberOfInputs > 0 { engine.inputNode.removeTap(onBus: 0) }
-        audioContinuation?.finish()
-        audioContinuation = nil
-        audioConsumerTask?.cancel()
-        audioConsumerTask = nil
-        backend?.stop()
-        backend = nil
+        let attempt = lifecycle.generation
+        tearDownRuntime(for: attempt)
+        lifecycle.stop()
+        cueLogger.info("Cue audio session stopped; tap installed=\(self.tapInstalled, privacy: .public).")
     }
 
+    private func tearDownRuntime(for attempt: Int) {
+        if engine.isRunning { engine.stop() }
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+            lifecycle.removeTap(attempt)
+        }
+        audioTapContext = nil
+        backend?.stop()
+        backend = nil
+        legacyFallbackConfiguration = nil
+    }
+
+    private func cueCaptureFormat(for hardwareFormat: AVAudioFormat) -> AVAudioFormat? {
+        let descriptor = CueAudioFormatDescriptor(sampleRate: hardwareFormat.sampleRate,
+                                                  channelCount: hardwareFormat.channelCount)
+        guard let capture = CueAudioFormatPolicy.captureFormat(for: descriptor) else { return nil }
+        return AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: capture.sampleRate,
+                             channels: capture.channelCount, interleaved: false)
+    }
+
+    private func fallbackFromModern(_ error: Error, attempt: Int) {
+        guard #available(macOS 26.0, *), lifecycle.isCurrent(attempt), backend is ModernCueSpeechBackend,
+              lifecycle.beginFallback(attempt) else { return }
+        cueLogger.warning("SpeechAnalyzer failed after startup; switching to Speech Recognition fallback (\(String(reflecting: type(of: error)), privacy: .public)).")
+        if engine.isRunning { engine.stop() }
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+            lifecycle.removeTap(attempt)
+        }
+        audioTapContext = nil
+        backend?.stop()
+        backend = nil
+
+        guard let configuration = legacyFallbackConfiguration,
+              configuration.recognizer.isAvailable else {
+            failSpeechFallback(for: attempt)
+            return
+        }
+        do {
+            let legacy = LegacyCueSpeechBackend(recognizer: configuration.recognizer,
+                hints: configuration.hints, generation: configuration.generation) { [weak self] text, confidence, generation in
+                    self?.onTranscript?(text, confidence, generation)
+                }
+            let sink = try legacy.start(onTranscript: { [weak self] text, confidence, generation in
+                self?.onTranscript?(text, confidence, generation)
+            }, generation: configuration.generation, onFailure: { _ in })
+            let context = CueAudioTapContext(audioSink: sink,
+                captureConverter: configuration.captureConverter, captureFormat: configuration.captureFormat) { [weak self] power in
+                    self?.onPower?(power)
+                }
+            engine.inputNode.installTap(onBus: 0, bufferSize: 1_024, format: nil,
+                                        block: cueAudioTapBlock(context: context))
+            tapInstalled = true
+            audioTapContext = context
+            guard lifecycle.installTap(for: attempt) else {
+                engine.inputNode.removeTap(onBus: 0)
+                tapInstalled = false
+                throw CueFailure.unavailable("Cue couldn't safely attach its fallback microphone tap.")
+            }
+            backend = legacy
+            engine.prepare()
+            try engine.start()
+            guard lifecycle.didStart(attempt) else {
+                throw CueFailure.unavailable("Cue's fallback audio startup was interrupted.")
+            }
+            legacyFallbackConfiguration = nil
+            cueLogger.info("Cue fallback started: backend=Speech Recognition, tap installed=\(self.tapInstalled, privacy: .public).")
+        } catch {
+            tearDownRuntime(for: attempt)
+            lifecycle.failStart(attempt)
+            onFailure?("Cue couldn't start SpeechAnalyzer or Speech Recognition. Try Classic mode or select another language.")
+        }
+    }
+
+    private func failSpeechFallback(for attempt: Int) {
+        tearDownRuntime(for: attempt)
+        lifecycle.failStart(attempt)
+        onFailure?("Cue couldn't start SpeechAnalyzer or Speech Recognition. Try Classic mode or select another language.")
+    }
 }
 
 private enum CueFailure: LocalizedError {
@@ -300,6 +591,7 @@ struct CueSurfaceView: View {
     @State private var speed: Double = 150
     @State private var languageIdentifier = "system"
     @State private var isActive = false
+    @State private var isStarting = false
     @State private var paused = false
     @State private var complete = false
     @State private var errorMessage: String?
@@ -312,6 +604,9 @@ struct CueSurfaceView: View {
     @State private var controlsVisible = false
     @State private var controlsHovered = false
     @State private var controlsHideTask: Task<Void, Never>?
+    @State private var startTask: Task<Void, Never>?
+    @State private var completionTask: Task<Void, Never>?
+    @State private var startGeneration = 0
     @State private var fileImporter = false
     @StateObject private var speech = CueSpeechRecognizer()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -329,7 +624,12 @@ struct CueSurfaceView: View {
             }
         }
         .onExitCommand { exitCue() }
-        .onDisappear { speech.stop() }
+        .onDisappear {
+            startGeneration &+= 1
+            startTask?.cancel()
+            completionTask?.cancel()
+            speech.stop()
+        }
         .onChange(of: isActive) { _, value in onActiveChange(value) }
         .onAppear {
             if !initialText.isEmpty { script = initialText; initialText = "" }
@@ -389,11 +689,11 @@ struct CueSurfaceView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 3)
-                Button("Start") { begin() }
+                Button(isStarting ? "Starting…" : "Start") { begin() }
                     .buttonStyle(.borderedProminent)
                     .tint(Color(hex: AgentID.cue.colorHex))
                     .controlSize(.small)
-                    .disabled(script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isStarting || script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if let errorMessage {
                 HStack(spacing: 4) {
@@ -553,6 +853,7 @@ struct CueSurfaceView: View {
     }
 
     private func begin() {
+        guard !isStarting else { return }
         alignment = CueTextAlignment(script: script)
         readPosition = 0
         complete = false
@@ -561,23 +862,43 @@ struct CueSurfaceView: View {
         guard !alignment.tokens.isEmpty else { errorMessage = "Add some words to the script first."; return }
         classicClock = CueClassicClock()
         if mode == .classic { isActive = true; lastTick = .now; return }
-        Task {
+        startSpeechSession()
+    }
+
+    private func startSpeechSession() {
+        guard !isStarting else { return }
+        startTask?.cancel()
+        startGeneration &+= 1
+        let currentGeneration = startGeneration
+        isStarting = true
+        speech.onFailure = { message in
+            errorMessage = message
+            isActive = false
+            isStarting = false
+        }
+        startTask = Task { @MainActor in
             do {
                 speech.onTranscript = { text, confidence, generation in
-                    guard isActive, mode != .classic, !paused else { return }
+                    guard isActive, !complete, mode != .classic, !paused else { return }
                     let policy: CueTrackingPolicy = mode == .wordTracking ? .accurate : .responsive
                     let value = alignment.consume(text, confidence: confidence, generation: generation, policy: policy)
                     readPosition = min(max(0, value), max(0, alignment.tokens.count - 1))
-                    if alignment.isFinished { complete = true; speech.stop() }
+                    if alignment.isFinished { finishScript() }
                 }
                 speech.onPower = { power in
                     _ = voiceState.update(power: power)
                 }
                 try await speech.start(locale: activeLocale, hints: alignment.upcomingContextWords,
                                        generation: alignment.generation, recognizeWords: mode != .classic)
+                guard !Task.isCancelled, currentGeneration == startGeneration else { speech.stop(); return }
                 isActive = true
                 lastTick = .now
-            } catch { errorMessage = error.localizedDescription }
+            } catch is CancellationError {
+                // A newer Start/Restart or closing Cue invalidated this request.
+            } catch {
+                if currentGeneration == startGeneration { errorMessage = error.localizedDescription }
+            }
+            if currentGeneration == startGeneration { isStarting = false }
         }
     }
 
@@ -588,7 +909,7 @@ struct CueSurfaceView: View {
         guard !paused else { return }
         let next = Int(classicClock.advance(elapsed: delta, wordsPerMinute: speed,
                                             totalWords: alignment.tokens.count, paused: false))
-        if next != readPosition { readPosition = next; if next >= alignment.tokens.count { complete = true } }
+        if next != readPosition { readPosition = next; if next >= alignment.tokens.count { finishScript() } }
     }
 
     private func jump(to index: Int) {
@@ -596,16 +917,16 @@ struct CueSurfaceView: View {
         _ = alignment.jump(to: index)
         readPosition = index
         if mode != .classic {
-            Task {
-                do {
-                    try await speech.start(locale: activeLocale, hints: alignment.upcomingContextWords,
-                                           generation: alignment.generation, recognizeWords: true)
-                } catch { errorMessage = error.localizedDescription }
-            }
+            startSpeechSession()
         }
     }
 
     private func restart() {
+        completionTask?.cancel()
+        completionTask = nil
+        startGeneration &+= 1
+        startTask?.cancel()
+        isStarting = false
         speech.stop()
         alignment = CueTextAlignment(script: script)
         readPosition = 0
@@ -613,13 +934,37 @@ struct CueSurfaceView: View {
         paused = false
         classicClock = CueClassicClock()
         if mode != .classic {
-            isActive = false
-            begin()
+            errorMessage = nil
+            startSpeechSession()
+            isActive = true
+        } else {
+            isActive = true
         }
         lastTick = .now
     }
 
-    private func exitCue() { speech.stop(); isActive = false; complete = false; onDone() }
+    private func finishScript() {
+        guard !complete else { return }
+        complete = true
+        speech.stop()
+        completionTask?.cancel()
+        completionTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
+            guard !Task.isCancelled else { return }
+            exitCue()
+        }
+    }
+
+    private func exitCue() {
+        startGeneration &+= 1
+        startTask?.cancel()
+        completionTask?.cancel()
+        speech.stop()
+        isStarting = false
+        isActive = false
+        complete = false
+        onDone()
+    }
 
     private var activeLocale: Locale {
         languageIdentifier == "system" ? .current : Locale(identifier: languageIdentifier)
