@@ -5,6 +5,9 @@ import KioCore
 /// indexes are treated as untrusted data and are rejected unless they map to known inputs.
 public enum ModelPlanDecoder {
     public static func validationErrors(_ response: String, request: String, artifacts: [ArtifactRef]) -> [String] {
+        if SemanticIntentParser.explicitlyNegatesAction(request) {
+            return ["request: an action in the request is explicitly prohibited"]
+        }
         if decode(response, request: request, artifacts: artifacts) != nil { return [] }
         guard response.utf8.count <= 32_000, let data = response.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -74,6 +77,7 @@ public enum ModelPlanDecoder {
     }
 
     public static func decode(_ response: String, request: String, artifacts: [ArtifactRef]) -> TaskPlan? {
+        guard !SemanticIntentParser.explicitlyNegatesAction(request) else { return nil }
         guard response.utf8.count <= 32_000, let data = response.data(using: .utf8) else { return nil }
         let wire: WirePlan
         do { wire = try JSONDecoder().decode(WirePlan.self, from: data) }
@@ -381,13 +385,11 @@ public enum ModelPlanDecoder {
     }
 
     private static func hasExplicitMoveIntent(_ request: String) -> Bool {
-        let normalized = request.lowercased()
-        guard normalized.range(of: #"\b(?:move|relocate|transfer)\b"#, options: .regularExpression) != nil else { return false }
-        return !["don't move", "do not move", "never move", "don't relocate", "do not relocate"].contains(where: normalized.contains)
+        SemanticIntentParser.requestsAction("move", in: request, synonyms: ["relocate", "transfer"])
     }
 
     private static func hasExplicitCopyIntent(_ request: String) -> Bool {
-        request.lowercased().range(of: #"\b(?:copy|copies|duplicate)\b"#, options: .regularExpression) != nil
+        SemanticIntentParser.requestsAction("copy", in: request, synonyms: ["duplicate"])
     }
 
     private struct WireStep: Decodable {

@@ -72,6 +72,8 @@ import KioCore
     #expect(info.audioAvailable == nil)
     #expect(info.isLive == nil)
     #expect(info.variants.allSatisfy { $0.needsTranscode })
+    #expect(info.variants.allSatisfy { $0.container == "mp4" && $0.sourceContainer == nil })
+    #expect(info.variants.allSatisfy { $0.formatNote?.contains("source container unknown") == true })
     let confirmedLive = try ReelStreamlinkInspectionDecoder.decode(
         Data(#"{"is_live":true,"streams":{"720p":{"type":"HLSStream"}}}"#.utf8), remoteURL: url)
     #expect(confirmedLive.isLive == true)
@@ -130,17 +132,136 @@ import KioCore
         ffmpegDirectory: URL(fileURLWithPath: "/app/Reel/ffmpeg"), variant: fallback)
     #expect(fallbackCommand[try #require(fallbackCommand.firstIndex(of: "--merge-output-format")) + 1] == "mkv")
 
-    let lowerCompatible = ReelVariantSelector.build(from: [
+    let exactNeedsConversion = ReelVariantSelector.build(from: [
         ["format_id": "399", "height": 1080, "ext": "webm", "vcodec": "av01.0.08M.08", "acodec": "none"],
         ["format_id": "22", "height": 720, "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "mp4a.40.2"]
     ])
-    let selectedLower = try #require(ReelVariantSelector.select(lowerCompatible, quality: "1080p", container: "mp4"))
-    #expect(selectedLower.quality == "720p")
-    #expect(selectedLower.videoFormatID == "22")
-    #expect(selectedLower.needsTranscode == false)
-    let bestMP4 = try #require(ReelVariantSelector.select(lowerCompatible, quality: "best", container: "mp4"))
+    let selectedExact = try #require(ReelVariantSelector.resolve(exactNeedsConversion, quality: "1080p", container: "mp4"))
+    #expect(selectedExact.variant.quality == "1080p")
+    #expect(selectedExact.variant.videoFormatID == "399")
+    #expect(selectedExact.variant.needsTranscode)
+    #expect(!selectedExact.usedLowerQualityFallback)
+    #expect(selectedExact.method == .transcode)
+    #expect(selectedExact.diagnosticDescription.contains("video=399"))
+    #expect(selectedExact.diagnosticDescription.contains("method=transcode"))
+    let bestMP4 = try #require(ReelVariantSelector.select(exactNeedsConversion, quality: "best", container: "mp4"))
     #expect(bestMP4.quality == "720p")
     #expect(bestMP4.needsTranscode == false)
+
+    let noExactQuality = ReelVariantSelector.build(from: [
+        ["format_id": "22", "height": 720, "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "mp4a.40.2"]
+    ])
+    let selectedLower = try #require(ReelVariantSelector.resolve(noExactQuality, quality: "1080p", container: "mp4"))
+    #expect(selectedLower.variant.quality == "720p")
+    #expect(!selectedLower.variant.needsTranscode)
+    #expect(selectedLower.usedLowerQualityFallback)
+    #expect(selectedLower.diagnosticDescription.contains("fallback=lower-quality"))
+}
+
+@Test func reelBestQualityIsResolvedPerContainerAndExactSourceCanConvert() throws {
+    let fixture: [[String: Any]] = [
+        ["format_id": "2160-av1", "width": 3840, "height": 2160, "ext": "webm", "vcodec": "av01.0.08M.08", "acodec": "opus", "tbr": 9_000],
+        ["format_id": "1080-h264", "width": 1920, "height": 1080, "ext": "mp4", "vcodec": "avc1.640028", "acodec": "mp4a.40.2", "fps": 30, "vbr": 4_000],
+        ["format_id": "1080-vp9", "width": 1920, "height": 1080, "ext": "webm", "vcodec": "vp09.00.40.08", "acodec": "opus", "fps": 60, "vbr": 3_500],
+        ["format_id": "720-h264", "width": 1280, "height": 720, "ext": "mp4", "vcodec": "avc1.4d401f", "acodec": "mp4a.40.2", "fps": 30, "vbr": 2_000]
+    ]
+    let variants = ReelVariantSelector.build(from: fixture)
+    let bestMP4 = try #require(ReelVariantSelector.resolve(variants, quality: "best", container: "mp4"))
+    let bestWebM = try #require(ReelVariantSelector.resolve(variants, quality: "best", container: "webm"))
+    #expect(bestMP4.variant.quality == "1080p")
+    #expect(bestMP4.variant.videoFormatID == "1080-h264")
+    #expect(bestWebM.variant.quality == "2160p")
+    #expect(bestWebM.variant.videoFormatID == "2160-av1")
+
+    let exact1080 = try #require(ReelVariantSelector.select(variants, quality: "1080p", container: "mp4"))
+    #expect(exact1080.videoFormatID == "1080-h264")
+    #expect(!exact1080.needsTranscode)
+    let exact2160 = try #require(ReelVariantSelector.resolve(variants, quality: "2160p", container: "mp4"))
+    #expect(exact2160.variant.quality == "2160p")
+    #expect(exact2160.variant.videoFormatID == "2160-av1")
+    #expect(exact2160.variant.needsTranscode)
+    #expect(!exact2160.usedLowerQualityFallback)
+}
+
+@Test func reelAudioLanguagePreferenceOutranksExtractorOrderingAndCodecConvenience() throws {
+    let video: [String: Any] = ["format_id": "137", "height": 1080, "width": 1920,
+        "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "vbr": 4_000]
+    let dubbed: [String: Any] = ["format_id": "audio-dub", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2",
+        "language": "en", "language_preference": -1, "format_note": "dubbed", "abr": 128]
+    let originalAAC: [String: Any] = ["format_id": "audio-original-aac", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2",
+        "language": "ja", "language_preference": 10, "format_note": "original", "audio_channels": 2,
+        "abr": 96, "preference": 2, "source_preference": 1]
+    let defaultAAC: [String: Any] = ["format_id": "audio-default", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2",
+        "language": "en", "language_preference": 5, "format_note": "default", "abr": 192]
+    let originalOpus: [String: Any] = ["format_id": "audio-original-opus", "ext": "webm", "vcodec": "none", "acodec": "opus",
+        "language": "ja", "language_preference": 10, "format_note": "original", "audio_channels": 2,
+        "abr": 160, "preference": 1]
+
+    for formats in [[video, dubbed, originalAAC, defaultAAC, originalOpus],
+                    [originalOpus, defaultAAC, originalAAC, dubbed, video]] {
+        let variants = ReelVariantSelector.build(from: formats)
+        let selected = try #require(ReelVariantSelector.resolve(variants, quality: "1080p", container: "mp4"))
+        #expect(selected.variant.videoFormatID == "137")
+        #expect(selected.variant.audioFormatID == "audio-original-aac")
+        #expect(selected.variant.language == "ja")
+        #expect(selected.variant.languagePreference == 10)
+        #expect(selected.variant.formatNote == "original")
+        #expect(selected.variant.audioChannels == 2)
+        #expect(selected.variant.abr == 96)
+        #expect(selected.variant.preference == 2)
+        #expect(selected.variant.sourcePreference == 1)
+        #expect(!selected.variant.needsTranscode)
+    }
+
+    let progressiveDub: [String: Any] = ["format_id": "progressive-dub", "height": 1080, "width": 1920,
+        "ext": "mp4", "vcodec": "avc1.640028", "acodec": "mp4a.40.2", "language": "en",
+        "language_preference": -1, "format_note": "dubbed", "vbr": 4_000]
+    let progressiveVariants = ReelVariantSelector.build(from: [progressiveDub, dubbed, originalAAC, defaultAAC, originalOpus])
+    let progressiveSelection = try #require(ReelVariantSelector.resolve(progressiveVariants, quality: "1080p", container: "mp4"))
+    #expect(progressiveSelection.variant.audioFormatID == "audio-original-aac")
+    #expect(progressiveSelection.variant.language == "ja")
+
+    let originalRequiresConversion = ReelVariantSelector.build(from: [progressiveDub, originalOpus])
+    let bestOriginal = try #require(ReelVariantSelector.resolve(originalRequiresConversion, quality: "best", container: "mp4"))
+    #expect(bestOriginal.variant.audioFormatID == "audio-original-opus")
+    #expect(bestOriginal.variant.needsTranscode)
+    #expect(bestOriginal.variant.languagePreference == 10)
+
+    let preferenceOnly = ReelVariantSelector.build(from: [video,
+        ["format_id": "default", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "language": "en", "language_preference": 5],
+        ["format_id": "original", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "language": "ja", "language_preference": 10]])
+    let preferenceSelection = try #require(ReelVariantSelector.resolve(preferenceOnly, quality: "1080p", container: "mp4"))
+    #expect(preferenceSelection.variant.audioFormatID == "original")
+}
+
+@Test func reelInspectionPolicyAppliesOnePersistedSizeAndVariantBound() throws {
+    let url = URL(string: "https://media.example/watch")!
+    let formats: [[String: Any]] = (0..<ReelInspectionPolicy.maximumFormats).map { index in
+        ["format_id": "v\(index)", "height": 1080, "width": 1920, "ext": "mp4",
+         "vcodec": "avc1.640028", "acodec": "mp4a.40.2", "format_note": String(repeating: "x", count: 160)]
+    }
+    let source = try JSONSerialization.data(withJSONObject: ["formats": formats])
+    #expect(source.count <= ReelInspectionPolicy.maximumJSONBytes)
+    let decoded = try ReelInspectionDecoder.decode(source, remoteURL: url)
+    let persisted = try JSONEncoder().encode(decoded)
+    #expect(persisted.count <= ReelInspectionPolicy.maximumJSONBytes)
+    #expect(try ReelInspectionPolicy.decodePersistedInfo(persisted) == decoded)
+
+    let atLimit = ReelInspectionInfo(remoteURL: url.absoluteString, title: "Bounded", durationSeconds: nil,
+        source: "Fixture", isLive: false, qualities: ["best"], videoFormats: ["mp4"], audioAvailable: true,
+        variants: (0..<ReelInspectionPolicy.maximumVariants).map { index in
+            ReelVariant(quality: "1080p", container: "mp4", videoFormatID: "v\(index)", needsTranscode: false)
+        })
+    var tooManyObject = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(atLimit)) as? [String: Any])
+    var rawVariants = try #require(tooManyObject["variants"] as? [[String: Any]])
+    rawVariants.append(try #require(rawVariants.first))
+    tooManyObject["variants"] = rawVariants
+    let tooManyData = try JSONSerialization.data(withJSONObject: tooManyObject)
+    #expect(tooManyData.count < ReelInspectionPolicy.maximumJSONBytes)
+    #expect(throws: (any Error).self) { try ReelInspectionPolicy.decodePersistedInfo(tooManyData) }
+    #expect(throws: (any Error).self) {
+        try ReelInspectionPolicy.decodePersistedInfo(Data(repeating: 0x20, count: ReelInspectionPolicy.maximumJSONBytes + 1))
+    }
 }
 
 @Test func internalReelMetadataNeverSelectsItsInspectionFolderAsOutput() throws {
@@ -193,7 +314,10 @@ import KioCore
     #expect(ReelHelperFailureKind.classify("Please sign in to continue") == .authenticationRequired)
     #expect(ReelHelperFailureKind.classify("network timeout") == .timeout)
     #expect(ReelHelperFailureKind.unsupportedExtractor.allowsFallback)
+    #expect(ReelHelperFailureKind.extractionFailure.allowsFallback)
     #expect(ReelHelperFailureKind.noMatchingSource.allowsFallback)
+    #expect(!ReelHelperFailureKind.sourceSelectionFailure.allowsFallback)
+    #expect(!ReelHelperFailureKind.audioTrackUnavailable.allowsFallback)
     #expect(!ReelHelperFailureKind.drmProtected.allowsFallback)
     #expect(!ReelHelperFailureKind.authenticationRequired.allowsFallback)
     #expect(!ReelHelperFailureKind.timeout.allowsFallback)
@@ -223,6 +347,9 @@ import KioCore
     #expect(excerpt?.contains("/Users/joe") == false)
     #expect(excerpt?.contains("private.example") == false)
     #expect(excerpt?.contains("<path>") == true)
+    let spacedPath = ReelMediaDiagnostic.sanitizedExcerpt("Error opening /Users/joe/Private Folder/source.mp4: invalid stream\n")
+    #expect(spacedPath?.contains("Private Folder") == false)
+    #expect(spacedPath?.contains("source.mp4") == false)
 
     let failure = ReelMediaProcessFailure(kind: .videoToolbox, exitStatus: 218,
         operationCategory: "video conversion", sourceCodec: "av1", targetFormat: "MP4 (H.264/AAC)",
@@ -245,6 +372,7 @@ import KioCore
     #expect(manifest.component("deno")?.version == "2.9.7")
     #expect(manifest.component("ffmpeg")?.license.contains("LGPL") == true)
     #expect(manifest.component("lame")?.license == "LGPL-2.0-or-later")
+    #expect(manifest.component("openh264") == nil)
     #expect(manifest.component("streamlink")?.version == "8.6.0")
     #expect(manifest.component("gallery-dl") == nil)
     #expect(manifest.wheels.count == 20)

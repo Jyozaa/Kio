@@ -255,7 +255,7 @@ import KioCore
     let farPhrase = (30..<38).map { "unique\($0)" }.joined(separator: " ")
     #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) == 0)
     #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) == 0)
-    #expect(cue.consume((31..<39).map { "unique\($0)" }.joined(separator: " "), confidence: 0.9, policy: .responsive) == 39)
+    #expect(cue.consume((31..<39).map { "unique\($0)" }.joined(separator: " "), confidence: 0.9, policy: .responsive) == 0)
 }
 
 @Test func cueAlignmentFollowsTheExactJoeRegressionWithoutWeakWordTeleporting() {
@@ -268,7 +268,7 @@ import KioCore
     #expect(cue.consume("my", confidence: 0.95, policy: .responsive) == 6)
     #expect(cue.consume("testing testing one two three my", confidence: 0.95, policy: .responsive) == 6)
     #expect(cue.consume("my name is joe", confidence: 0.95, policy: .responsive) == 9)
-    #expect(cue.consume("my productivity app kio", confidence: 0.95, policy: .responsive) == cue.tokens.count)
+    #expect(cue.consume("my productivity app kio", confidence: 0.95, policy: .responsive) == 9)
 }
 
 @Test func cueNumberExpansionsMatchOnlyTheNearbyScriptInterpretation() {
@@ -286,6 +286,51 @@ import KioCore
     var distant = CueTextAlignment(script: "start " + Array(repeating: "different", count: 20).joined(separator: " ") + " one two three")
     #expect(distant.consume("123", confidence: 0.9, policy: .responsive) == 0)
     #expect(distant.consume("123", confidence: 0.9, policy: .responsive) == 0)
+}
+
+@Test func cueExactScriptMatrixStaysAnchoredAcrossRevisionsNumbersAndKioAliases() {
+    let script = "testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio"
+    var firstWord = CueTextAlignment(script: script)
+    #expect(firstWord.consume("testing", confidence: 0.95, policy: .responsive) == 1)
+    #expect(firstWord.consume("testing testing", confidence: 0.95, policy: .responsive) == 2)
+    #expect(firstWord.consume("testing testing 1", confidence: 0.95, policy: .responsive) == 3)
+    #expect(firstWord.consume("testing testing one two three", confidence: 0.95, policy: .responsive) == 5)
+    #expect(firstWord.consume("my", confidence: 0.95, policy: .responsive) == 6)
+    #expect(firstWord.consume("my productivity app kio", confidence: 0.95, policy: .responsive) == 6)
+    #expect(firstWord.consume("my name is joe", confidence: 0.95, policy: .responsive) == 9)
+    #expect(firstWord.consume("today i am testing", confidence: 0.95, policy: .responsive) == 14)
+    #expect(firstWord.consume("cue in my productivity app kio", confidence: 0.95, policy: .responsive) == firstWord.tokens.count)
+
+    var fastNumber = CueTextAlignment(script: script)
+    #expect(fastNumber.consume("testing testing", confidence: 0.95, policy: .responsive) == 2)
+    #expect(fastNumber.consume("testing testing 123", confidence: 0.95, policy: .responsive) == 5)
+    #expect(fastNumber.confirmedReadPosition == 5)
+
+    for ending in ["kio", "kyo", "keo"] {
+        var cue = CueTextAlignment(script: script)
+        #expect(cue.consume("productivity app \(ending)", confidence: 0.95, policy: .responsive) == 0,
+                "A distinctive later phrase still requires local progress evidence.")
+        #expect(cue.consume("testing testing 1 2 3 my name is joe", confidence: 0.95, policy: .responsive) == 9)
+        #expect(cue.consume("today i am testing", confidence: 0.95, policy: .responsive) == 14)
+        #expect(cue.consume("cue in my productivity app \(ending)", confidence: 0.95, policy: .responsive) == cue.tokens.count)
+    }
+}
+
+@Test func cueContextVocabularyMovesWithProgressAndRefreshesAtStrideBoundaries() {
+    let cue = CueTextAlignment(script: "Welcome to Kio. Then we will discuss the QoS API and teleprompter architecture.")
+    let opening = cue.upcomingContextWords
+    #expect(opening.contains("Kio"))
+    #expect(opening.contains("QoS"))
+    #expect(opening.contains("teleprompter"))
+    #expect(CueContextVocabulary.shouldRefresh(from: 0, to: 7) == false)
+    #expect(CueContextVocabulary.shouldRefresh(from: 7, to: 8))
+    #expect(!CueContextVocabulary.shouldRefresh(from: 8, to: 8))
+
+    var moved = cue
+    _ = moved.jump(to: 5)
+    let later = CueContextVocabulary.terms(in: moved.tokens, from: moved.confirmedReadPosition)
+    #expect(!later.contains("Welcome"))
+    #expect(later.contains("QoS"))
 }
 
 @Test func cueKioPhoneticVariantsAreDistinctiveAndNearOnly() {

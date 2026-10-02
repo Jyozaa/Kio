@@ -218,10 +218,19 @@ public struct ReelVariant: Codable, Sendable, Equatable, Identifiable {
     public let height: Int?
     public let fps: Double?
     public let bitrate: Double?
+    public let videoBitrate: Double?
     public let filesize: Int64?
     public let hasVideo: Bool?
     public let hasAudio: Bool?
     public let language: String?
+    public let languagePreference: Double?
+    public let formatNote: String?
+    public let audioChannels: Int?
+    public let abr: Double?
+    public let preference: Double?
+    public let sourcePreference: Double?
+    public let videoPreference: Double?
+    public let videoSourcePreference: Double?
     public let sourceContainer: String?
     public let sourceProtocol: String?
     public let sourceBackend: String?
@@ -232,8 +241,12 @@ public struct ReelVariant: Codable, Sendable, Equatable, Identifiable {
     public init(quality: String, container: String, videoFormatID: String, audioFormatID: String? = nil,
                 videoCodec: String? = nil, audioCodec: String? = nil, needsTranscode: Bool,
                 width: Int? = nil, height: Int? = nil, fps: Double? = nil, bitrate: Double? = nil,
+                videoBitrate: Double? = nil,
                 filesize: Int64? = nil, hasVideo: Bool? = true, hasAudio: Bool? = nil,
-                language: String? = nil, sourceContainer: String? = nil,
+                language: String? = nil, languagePreference: Double? = nil, formatNote: String? = nil,
+                audioChannels: Int? = nil, abr: Double? = nil, preference: Double? = nil,
+                sourcePreference: Double? = nil, videoPreference: Double? = nil,
+                videoSourcePreference: Double? = nil, sourceContainer: String? = nil,
                 sourceProtocol: String? = nil, sourceBackend: String? = nil) {
         self.quality = quality
         self.container = container
@@ -246,13 +259,56 @@ public struct ReelVariant: Codable, Sendable, Equatable, Identifiable {
         self.height = height
         self.fps = fps
         self.bitrate = bitrate
+        self.videoBitrate = videoBitrate
         self.filesize = filesize
         self.hasVideo = hasVideo
         self.hasAudio = hasAudio
         self.language = language
+        self.languagePreference = languagePreference
+        self.formatNote = formatNote
+        self.audioChannels = audioChannels
+        self.abr = abr
+        self.preference = preference
+        self.sourcePreference = sourcePreference
+        self.videoPreference = videoPreference
+        self.videoSourcePreference = videoSourcePreference
         self.sourceContainer = sourceContainer
         self.sourceProtocol = sourceProtocol
         self.sourceBackend = sourceBackend
+    }
+}
+
+public enum ReelVariantResolutionMethod: String, Sendable, Equatable {
+    case direct
+    case remux
+    case transcode
+}
+
+/// Typed result of resolving a picker selection to inspected source tracks.
+/// The diagnostic string is bounded and intended for logs/tests, not UI copy.
+public struct ReelVariantResolution: Sendable, Equatable {
+    public let variant: ReelVariant
+    public let requestedQuality: String
+    public let targetContainer: String
+    public let method: ReelVariantResolutionMethod
+    public let usedLowerQualityFallback: Bool
+
+    public init(variant: ReelVariant, requestedQuality: String, targetContainer: String,
+                method: ReelVariantResolutionMethod, usedLowerQualityFallback: Bool) {
+        self.variant = variant
+        self.requestedQuality = requestedQuality
+        self.targetContainer = targetContainer
+        self.method = method
+        self.usedLowerQualityFallback = usedLowerQualityFallback
+    }
+
+    public var diagnosticDescription: String {
+        let audio = variant.audioFormatID.map { "audio=\($0)" } ?? "audio=embedded-or-none"
+        let language = variant.language.map { " language=\($0)" } ?? ""
+        let codecs = " codecs=\(variant.videoCodec ?? "unknown")/\(variant.audioCodec ?? "none")"
+        let qualityDecision = usedLowerQualityFallback ? " fallback=lower-quality"
+            : (requestedQuality == "best" ? " best-available" : " exact-quality")
+        return String("requested=\(requestedQuality) \(targetContainer); selected=\(variant.quality) video=\(variant.videoFormatID) \(audio)\(language)\(codecs) method=\(method.rawValue)\(qualityDecision)".prefix(512))
     }
 }
 

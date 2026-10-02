@@ -196,6 +196,45 @@ import KioCore
     }
 }
 
+@Test func genericActionPolarityBlocksNegatedToolOperationsAndModelPlans() throws {
+    #expect(SemanticIntentParser.requestsAction("copy", in: "copies these files", synonyms: ["duplicate"]))
+    #expect(!SemanticIntentParser.requestsAction("copy", in: "do not copy these files", synonyms: ["duplicate"]))
+    let text = try makeArtifact(name: "notes.txt", kind: .text)
+    let pdf = try makeArtifact(name: "pages.pdf", kind: .pdf)
+    let image = try makeArtifact(name: "photo.png", kind: .image)
+    let audio = try makeArtifact(name: "voice.m4a", kind: .audio)
+    let folder = try makeArtifact(name: "folder", kind: .folder)
+    let files = try makeArtifact(name: "draft.txt", kind: .text)
+
+    let cases: [(String, [ArtifactRef], String)] = [
+        ("don't summarize this", [text], "summarize"),
+        ("do not translate this", [text], "translate"),
+        ("don't move these files", [files, folder], "move"),
+        ("never remove page 7", [pdf], "remove"),
+        ("don't crop this", [image], "crop"),
+        ("don't transcribe this", [audio], "transcribe")
+    ]
+    for (request, artifacts, action) in cases {
+        let plan = FastPathPlanner().plan(request: request, artifacts: artifacts)
+        #expect(plan.steps.isEmpty, "\(request)")
+        #expect(plan.clarification != nil, "\(request)")
+        #expect(SemanticIntentParser.explicitlyNegatesAction(request), "\(request)")
+        #expect(SemanticIntentParser.actionPolarities(in: request).first?.action == action, "\(request)")
+        #expect(SemanticIntentParser.actionPolarities(in: request).first?.polarity == .prohibited, "\(request)")
+    }
+
+    let modelPlan = #"{"steps":[{"operation":"text.summarize","inputIndexes":[0],"arguments":{"request":"summarize this"}}]}"#
+    #expect(ModelPlanDecoder.decode(modelPlan, request: "don't summarize this", artifacts: [text]) == nil)
+    #expect(!ModelPlanDecoder.validationErrors(modelPlan, request: "don't summarize this", artifacts: [text]).isEmpty)
+}
+
+@Test func compoundTrimAndConversionCannotSilentlyDropEitherAction() throws {
+    let video = try makeArtifact(name: "clip.mov", kind: .video)
+    let plan = FastPathPlanner().plan(request: "trim this and convert it to mp4", artifacts: [video])
+    #expect(plan.steps.isEmpty)
+    #expect(plan.clarification != nil)
+}
+
 @Test func localVideoFormatsRemainTypedAndUnsupportedWebMSourceIsNotSelected() throws {
     let mp4 = try makeArtifact(name: "source.mp4", kind: .video)
     for format in [VideoTargetFormat.mp4, .mov, .mkv] {
@@ -1116,6 +1155,14 @@ import KioCore
     #expect(cue.consume("word19 word20", confidence: 0.99, generation: oldGeneration) == 25)
     #expect(cue.consume("word25 word26", confidence: 0.1) == 25)
     #expect(cue.consume("word25 word26", confidence: 0.9, generation: cue.generation) == 27)
+}
+
+@Test func cueNewReadingSessionsCanRejectCallbacksFromAnEarlierSession() {
+    let previous = CueTextAlignment(script: "old script", generation: 4)
+    var current = CueTextAlignment(script: "new script", generation: 5)
+    #expect(current.generation == 5)
+    #expect(current.consume("new script", confidence: 0.95, generation: previous.generation) == 0)
+    #expect(current.consume("new script", confidence: 0.95, generation: current.generation) == current.tokens.count)
 }
 
 @Test func cueContextClassicClockAndVoiceActivityStayBounded() {

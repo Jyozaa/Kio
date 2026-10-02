@@ -40,7 +40,7 @@ public enum ReelMediaDiagnostic {
         let selected = Array((relevant.isEmpty ? lines : relevant).suffix(3))
         let sanitized = selected.map { line in
             line.replacingOccurrences(of: #"https?://\S+"#, with: "<URL>", options: .regularExpression)
-                .replacingOccurrences(of: #"(?:[A-Za-z]:)?/[^\s,:;]+"#, with: "<path>", options: .regularExpression)
+                .replacingOccurrences(of: #"(?:[A-Za-z]:)?/[^,:;]+"#, with: "<path>", options: .regularExpression)
                 .unicodeScalars.map { CharacterSet.controlCharacters.contains($0) ? " " : String($0) }.joined()
                 .split(whereSeparator: \.isWhitespace).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -238,22 +238,9 @@ public enum BundledMediaRuntime {
         let args = ["-nostdin", "-hide_banner", "-v", "error", "-y", "-i", input.path]
             + heightFilter + ["-map", "0:v:0", "-map", "0:a?"] + codecArgs + ["-f", muxer, output.path]
         let executable = runtimeRoot.flatMap { ReelRuntime.url(for: "ffmpeg", in: $0) } ?? ffmpegURL
-        do {
-            _ = try await run(executable, arguments: args, timeoutSeconds: timeoutSeconds, maximumOutputBytes: 64_000,
-                              monitorOutputURL: output, maximumOutputFileBytes: maximumMediaBytes,
-                              operationCategory: "video conversion", sourceCodec: sourceCodec, targetFormat: targetFormat)
-        } catch {
-            guard codecArgs.contains("h264_videotoolbox"),
-                  ReelMediaDiagnostic.classify(error.localizedDescription) == .videoToolbox,
-                  let softwareEncoder = await permittedSoftwareH264Encoder(runtimeRoot: runtimeRoot) else { throw error }
-            let softwareArgs = args.enumerated().map { index, value in
-                value == "h264_videotoolbox" ? softwareEncoder : value
-            }
-            _ = try await run(executable, arguments: softwareArgs, timeoutSeconds: timeoutSeconds, maximumOutputBytes: 64_000,
-                              monitorOutputURL: output, maximumOutputFileBytes: maximumMediaBytes,
-                              operationCategory: "video conversion software fallback", sourceCodec: sourceCodec,
-                              targetFormat: "\(container.rawValue.uppercased()) (OpenH264)")
-        }
+        _ = try await run(executable, arguments: args, timeoutSeconds: timeoutSeconds, maximumOutputBytes: 64_000,
+                          monitorOutputURL: output, maximumOutputFileBytes: maximumMediaBytes,
+                          operationCategory: "video conversion", sourceCodec: sourceCodec, targetFormat: targetFormat)
     }
 
     public static func videoBitrate(forHeight height: Int) -> (maximumKbps: Int, audioKbps: Int) {
@@ -264,19 +251,6 @@ public enum BundledMediaRuntime {
         case 1081...1440: (7_500, 192)
         default: (12_000, 256)
         }
-    }
-
-    private static func permittedSoftwareH264Encoder(runtimeRoot: URL?) async -> String? {
-        guard let manifest = ReelRuntimeManifest.bundled,
-              manifest.component("ffmpeg")?.license.localizedCaseInsensitiveContains("LGPL") == true,
-              let encoderComponent = manifest.component("openh264"),
-              encoderComponent.license.localizedCaseInsensitiveContains("LGPL") else { return nil }
-        let executable = runtimeRoot.flatMap { ReelRuntime.url(for: "ffmpeg", in: $0) } ?? ffmpegURL
-        guard let output = try? await run(executable, arguments: ["-hide_banner", "-encoders"],
-                                          timeoutSeconds: 10, maximumOutputBytes: 128_000),
-              output.stdout.count <= 128_000 else { return nil }
-        let list = String(decoding: output.stdout, as: UTF8.self)
-        return list.contains("libopenh264") ? "libopenh264" : nil
     }
 
     private static let logger = Logger(subsystem: "app.kio.mac", category: "Reel.MediaRuntime")

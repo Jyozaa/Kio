@@ -203,9 +203,27 @@ private final class BoundedReelDownloader: NSObject, URLSessionDownloadDelegate,
     }
 }
 
-public enum ReelInspectionDecoder {
-    public static let maximumOutputBytes = 512 * 1_024
+public enum ReelInspectionPolicy {
+    public static let maximumJSONBytes = 512 * 1_024
     public static let maximumFormats = 512
+    public static let maximumVariants = 512
+
+    public static func decodePersistedInfo(_ data: Data) throws -> ReelInspectionInfo {
+        guard !data.isEmpty, data.count <= maximumJSONBytes,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              ((object["variants"] as? [Any])?.count ?? 0) <= maximumVariants,
+              ((object["qualities"] as? [Any])?.count ?? 0) <= 16,
+              ((object["videoFormats"] as? [Any])?.count ?? 0) <= 8,
+              let info = try? JSONDecoder().decode(ReelInspectionInfo.self, from: data) else {
+            throw KioFailure.invalidInput("This saved Reel inspection is unavailable or malformed.")
+        }
+        return info
+    }
+}
+
+public enum ReelInspectionDecoder {
+    public static let maximumOutputBytes = ReelInspectionPolicy.maximumJSONBytes
+    public static let maximumFormats = ReelInspectionPolicy.maximumFormats
 
     public static func decode(_ data: Data, remoteURL: URL) throws -> ReelInspectionInfo {
         guard data.count <= maximumOutputBytes else {
@@ -234,14 +252,13 @@ public enum ReelInspectionDecoder {
             ?? (json["is_live"] as? String).flatMap { ["true": true, "false": false][$0.lowercased()] }
         return ReelInspectionInfo(remoteURL: remoteURL.absoluteString, title: title, durationSeconds: duration,
                                   source: json["extractor_key"] as? String ?? remoteURL.host ?? "Unknown",
-                                  isLive: liveValue,
-                                  qualities: qualities,
+                                  isLive: liveValue, qualities: qualities,
                                   videoFormats: containers, audioAvailable: audioAvailable, variants: variants)
     }
 }
 
 public enum ReelStreamlinkInspectionDecoder {
-    public static let maximumOutputBytes = 256 * 1_024
+    public static let maximumOutputBytes = ReelInspectionPolicy.maximumJSONBytes
     public static let maximumStreams = 128
 
     public static func decode(_ data: Data, remoteURL: URL) throws -> ReelInspectionInfo {
@@ -256,30 +273,31 @@ public enum ReelStreamlinkInspectionDecoder {
             ?? remoteURL.deletingPathExtension().lastPathComponent)
         let qualities = streams.keys.compactMap { key -> Int? in
             guard let match = key.range(of: #"(?i)(?:^|\D)(\d{3,4})p(?:$|\D)"#, options: .regularExpression) else { return nil }
-            let value = key[match].filter(\.isNumber)
-            return Int(value)
+            return Int(key[match].filter(\.isNumber))
         }
         let qualityOptions = ReelMediaRouter.normalizedQualities(qualities)
         let variants = qualityOptions.map { quality in
-            let key = streams.keys.first { streamQuality($0) == quality }
+            let key = streams.keys.filter { streamQuality($0) == quality }.sorted().first
             let stream = key.flatMap { streams[$0] as? [String: Any] }
             return ReelVariant(quality: quality, container: "mp4",
                                videoFormatID: "streamlink-" + quality.replacingOccurrences(of: "[^A-Za-z0-9._-]", with: "", options: .regularExpression),
                                needsTranscode: true, height: Int(quality.dropLast()), hasVideo: quality == "best" ? nil : true,
-                               sourceProtocol: stream?["type"] as? String, sourceBackend: "streamlink")
+                               formatNote: "Streamlink target conversion; source container unknown",
+                               sourceContainer: nil, sourceProtocol: stream?["type"] as? String,
+                               sourceBackend: "streamlink")
         }
         let liveValue = booleanValue(object["is_live"]) ?? booleanValue(metadata["is_live"])
         return ReelInspectionInfo(remoteURL: remoteURL.absoluteString, title: title, durationSeconds: nil,
                                   source: (object["plugin"] as? String)?.split(separator: ".").last.map(String.init)
                                     ?? remoteURL.host ?? "Unknown",
                                   isLive: liveValue, qualities: qualityOptions,
-                                  videoFormats: ["mp4"], audioAvailable: nil, variants: variants)
+                                  videoFormats: Array(Set(variants.map(\.container))).sorted(),
+                                  audioAvailable: nil, variants: variants)
     }
 
     private static func streamQuality(_ key: String) -> String? {
         guard let range = key.range(of: #"(?i)(?:^|\D)(\d{3,4})p(?:$|\D)"#, options: .regularExpression) else { return nil }
-        let value = key[range].filter(\.isNumber)
-        return Int(value).map { "\($0)p" }
+        return Int(key[range].filter(\.isNumber)).map { "\($0)p" }
     }
 
     private static func booleanValue(_ value: Any?) -> Bool? {
@@ -290,143 +308,308 @@ public enum ReelStreamlinkInspectionDecoder {
 }
 
 public enum ReelVariantSelector {
+    private struct Track {
+        let id: String
+        let ext: String
+        let videoCodec: String?
+        let audioCodec: String?
+        let width: Int?
+        let height: Int?
+        let fps: Double?
+        let bitrate: Double?
+        let videoBitrate: Double?
+        let filesize: Int64?
+        let language: String?
+        let languagePreference: Double?
+        let formatNote: String?
+        let audioChannels: Int?
+        let abr: Double?
+        let preference: Double?
+        let sourcePreference: Double?
+        let protocolName: String?
+        let hasVideo: Bool
+        let hasAudio: Bool
+    }
+
     public static func build(from formats: [[String: Any]]) -> [ReelVariant] {
-        struct Track {
-            let id: String
-            let ext: String
-            let videoCodec: String?
-            let audioCodec: String?
-            let width: Int?
-            let height: Int?
-            let fps: Double?
-            let bitrate: Double?
-            let filesize: Int64?
-            let language: String?
-            let protocolName: String?
-            let hasVideo: Bool
-            let hasAudio: Bool
-        }
         let tracks = formats.compactMap { value -> Track? in
             guard let id = value["format_id"] as? String,
                   id.range(of: #"^[A-Za-z0-9._-]{1,80}$"#, options: .regularExpression) != nil,
                   let ext = value["ext"] as? String else { return nil }
             let videoCodec = (value["vcodec"] as? String).flatMap { $0 == "none" ? nil : $0.lowercased() }
             let audioCodec = (value["acodec"] as? String).flatMap { $0 == "none" ? nil : $0.lowercased() }
-            let videoBitrate = (value["vbr"] as? NSNumber)?.doubleValue
-            let audioBitrate = (value["abr"] as? NSNumber)?.doubleValue
-            let combinedBitrate = (value["tbr"] as? NSNumber)?.doubleValue ?? [videoBitrate, audioBitrate].compactMap { $0 }.reduce(0, +)
+            let videoBitrate = finiteNumber(value["vbr"])
+            let audioBitrate = finiteNumber(value["abr"])
+            let totalBitrate = finiteNumber(value["tbr"]) ?? [videoBitrate, audioBitrate].compactMap { $0 }.reduce(0, +)
             let rawFilesize = (value["filesize"] as? NSNumber)?.int64Value ?? (value["filesize_approx"] as? NSNumber)?.int64Value
             return Track(id: id, ext: ext.lowercased(), videoCodec: videoCodec, audioCodec: audioCodec,
                          width: (value["width"] as? NSNumber)?.intValue,
                          height: (value["height"] as? NSNumber)?.intValue,
-                         fps: (value["fps"] as? NSNumber)?.doubleValue,
-                         bitrate: combinedBitrate > 0 ? combinedBitrate : nil,
-                         filesize: rawFilesize.flatMap { $0 > 0 ? $0 : nil },
-                         language: value["language"] as? String, protocolName: value["protocol"] as? String,
+                         fps: finiteNumber(value["fps"]), bitrate: totalBitrate > 0 ? totalBitrate : nil,
+                         videoBitrate: videoBitrate, filesize: rawFilesize.flatMap { $0 > 0 ? $0 : nil },
+                         language: value["language"] as? String,
+                         languagePreference: finiteNumber(value["language_preference"]),
+                         formatNote: value["format_note"] as? String,
+                         audioChannels: (value["audio_channels"] as? NSNumber)?.intValue,
+                         abr: audioBitrate, preference: finiteNumber(value["preference"]),
+                         sourcePreference: finiteNumber(value["source_preference"]),
+                         protocolName: value["protocol"] as? String,
                          hasVideo: videoCodec != nil, hasAudio: audioCodec != nil)
         }
-        let videos = tracks.filter { $0.hasVideo && ($0.height ?? 0) > 0 }.prefix(256)
-        let audioTracks = Array(tracks.filter { !$0.hasVideo && $0.hasAudio }.prefix(64))
+        let videos = tracks.filter { $0.hasVideo && ($0.height ?? 0) > 0 }
+            .sorted(by: videoTrackPrecedes).prefix(ReelInspectionPolicy.maximumFormats)
+        let audioTracks = tracks.filter { !$0.hasVideo && $0.hasAudio }
         let containers = ["mp4", "mov", "mkv", "webm"]
-        var bestByOption: [String: (variant: ReelVariant, score: Int)] = [:]
+        let selectableQualities: Set<String> = ["2160p", "1440p", "1080p", "720p", "480p", "360p"]
+        var bestByOption: [String: ReelVariant] = [:]
+
         for video in videos {
-            let pairings: [(Track?, String?, Bool)]
-            if video.hasAudio {
-                pairings = [(nil, video.audioCodec, true)]
-            } else if audioTracks.isEmpty {
-                pairings = [(nil, nil, false)]
-            } else {
-                pairings = audioTracks.map { ($0, $0.audioCodec, false) }
-            }
-            for (audioTrack, audioCodec, progressive) in pairings {
+            var pairings: [(track: Track?, codec: String?, embedded: Bool)] = audioTracks.map { ($0, $0.audioCodec, false) }
+            if video.hasAudio { pairings.append((video, video.audioCodec, true)) }
+            if pairings.isEmpty { pairings = [(nil, nil, false)] }
+            for container in containers {
+                guard let pairing = pairings.min(by: { audioPairingPrecedes($0, $1, video: video, target: container) }) else { continue }
+                let audioTrack = pairing.track
+                let audioCodec = pairing.codec
+                let progressive = pairing.embedded
                 let audioID = progressive ? nil : audioTrack?.id
-                let audioExt = audioTrack?.ext
-                for container in containers {
-                    let webmCompatible = (video.videoCodec.map(isWebMVideo) ?? false)
-                        && (audioCodec.map(isWebMAudio) ?? true)
-                        && (video.ext == "webm" || audioExt == "webm")
-                    guard container != "webm" || webmCompatible else { continue }
-                    let compatible: Bool
-                    switch container {
-                    case "mp4", "mov":
-                        compatible = isH264(video.videoCodec) && (audioCodec == nil || isAAC(audioCodec))
-                    case "webm": compatible = webmCompatible
-                    default: compatible = true
-                    }
-                    let quality = "\(video.height!)p"
-                    let variant = ReelVariant(quality: quality, container: container, videoFormatID: video.id,
-                                              audioFormatID: progressive ? nil : audioID,
-                                              videoCodec: video.videoCodec, audioCodec: audioCodec,
-                                              needsTranscode: !compatible,
-                                              width: video.width, height: video.height, fps: video.fps,
-                                              bitrate: (video.bitrate ?? 0) + (audioTrack?.bitrate ?? 0) > 0
-                                                ? (video.bitrate ?? 0) + (audioTrack?.bitrate ?? 0) : nil,
-                                              filesize: (video.filesize ?? 0) + (audioTrack?.filesize ?? 0) > 0
-                                                ? (video.filesize ?? 0) + (audioTrack?.filesize ?? 0) : nil,
-                                              hasVideo: video.hasVideo, hasAudio: video.hasAudio || audioCodec != nil,
-                                              language: audioTrack?.language, sourceContainer: video.ext,
-                                              sourceProtocol: video.protocolName, sourceBackend: "yt-dlp")
-                    let key = quality + ":" + container
-                    let codecScore: Int
-                    switch container {
-                    case "mp4", "mov": codecScore = (isH264(video.videoCodec) ? 100 : 0) + (isAAC(audioCodec) ? 50 : 0)
-                    case "webm": codecScore = ((video.videoCodec == "vp9" || video.videoCodec?.hasPrefix("vp09") == true) ? 100 : (isAV1(video.videoCodec) ? 90 : 70)) + (audioCodec == "opus" ? 40 : 0)
-                    default: codecScore = (compatible ? 100 : 0) + (isH264(video.videoCodec) ? 10 : 0)
-                    }
-                    let score = codecScore + (progressive ? 1 : 0)
-                    if bestByOption[key].map({ score > $0.score }) ?? true { bestByOption[key] = (variant, score) }
+                let compatible = compatible(video: video.videoCodec, audio: audioCodec, target: container)
+                guard container != "webm" || compatible else { continue }
+                let audioLanguage = audioTrack?.language
+                let variant = ReelVariant(quality: "\(video.height!)p", container: container,
+                                          videoFormatID: video.id, audioFormatID: audioID,
+                                          videoCodec: video.videoCodec, audioCodec: audioCodec,
+                                          needsTranscode: !compatible, width: video.width, height: video.height,
+                                          fps: video.fps,
+                                          bitrate: (video.bitrate ?? 0) + (audioTrack?.abr ?? audioTrack?.bitrate ?? 0) > 0
+                                            ? (video.bitrate ?? 0) + (audioTrack?.abr ?? audioTrack?.bitrate ?? 0) : nil,
+                                          videoBitrate: video.videoBitrate,
+                                          filesize: (video.filesize ?? 0) + (progressive ? 0 : audioTrack?.filesize ?? 0) > 0
+                                            ? (video.filesize ?? 0) + (progressive ? 0 : audioTrack?.filesize ?? 0) : nil,
+                                          hasVideo: true, hasAudio: video.hasAudio || audioCodec != nil,
+                                          language: audioLanguage,
+                                          languagePreference: audioTrack?.languagePreference,
+                                          formatNote: audioTrack?.formatNote,
+                                          audioChannels: audioTrack?.audioChannels,
+                                          abr: audioTrack?.abr,
+                                          preference: audioTrack?.preference,
+                                          sourcePreference: audioTrack?.sourcePreference,
+                                          videoPreference: video.preference,
+                                          videoSourcePreference: video.sourcePreference,
+                                          sourceContainer: video.ext, sourceProtocol: video.protocolName,
+                                          sourceBackend: "yt-dlp")
+                let key = variant.quality + ":" + container
+                if selectableQualities.contains(variant.quality) {
+                    if let existing = bestByOption[key] {
+                        if variantPrecedes(variant, existing, target: container) { bestByOption[key] = variant }
+                    } else { bestByOption[key] = variant }
                 }
+                let bestKey = "best:" + container
+                let bestVariant = copy(variant, quality: "best")
+                if let existing = bestByOption[bestKey] {
+                    if bestVariantPrecedes(bestVariant, existing, target: container) { bestByOption[bestKey] = bestVariant }
+                } else { bestByOption[bestKey] = bestVariant }
             }
         }
-        var result = bestByOption.values.map(\.variant)
-        let availableHeights = Set(result.compactMap { Int($0.quality.dropLast()) })
-        for container in containers {
-            guard let height = availableHeights.max(),
-                  let best = bestByOption["\(height)p:\(container)"]?.variant else { continue }
-            result.append(ReelVariant(quality: "best", container: best.container,
-                                      videoFormatID: best.videoFormatID, audioFormatID: best.audioFormatID,
-                                      videoCodec: best.videoCodec, audioCodec: best.audioCodec,
-                                      needsTranscode: best.needsTranscode,
-                                      width: best.width, height: best.height, fps: best.fps, bitrate: best.bitrate,
-                                      filesize: best.filesize, hasVideo: best.hasVideo, hasAudio: best.hasAudio,
-                                      language: best.language, sourceContainer: best.sourceContainer,
-                                      sourceProtocol: best.sourceProtocol, sourceBackend: best.sourceBackend))
-        }
-        return Array(result.sorted { ($0.quality, $0.container) < ($1.quality, $1.container) }.prefix(512))
+        let result = Array(bestByOption.values)
+        return Array(result.sorted {
+            if $0.quality != $1.quality { return qualitySortValue($0.quality) > qualitySortValue($1.quality) }
+            if $0.container != $1.container { return $0.container < $1.container }
+            return variantPrecedes($0, $1, target: $0.container)
+        }.prefix(ReelInspectionPolicy.maximumVariants))
+    }
+
+    public static func resolve(_ variants: [ReelVariant], quality: String, container: String) -> ReelVariantResolution? {
+        let target = container.lowercased()
+        let matching = variants.filter { $0.container.lowercased() == target }
+        guard !matching.isEmpty else { return nil }
+        let selected: ReelVariant
+        let fallback: Bool
+        if quality == "best" {
+            if let best = matching.filter({ $0.quality == "best" })
+                .sorted(by: { bestVariantPrecedes($0, $1, target: target) }).first {
+                selected = copy(best, quality: best.height.map { "\($0)p" } ?? "best")
+            } else if let best = matching.filter({ Int($0.quality.dropLast()) != nil })
+                        .sorted(by: { bestVariantPrecedes($0, $1, target: target) }).first {
+                selected = best
+            } else { return nil }
+            fallback = false
+        } else if let exact = matching.filter({ $0.quality == quality })
+                    .sorted(by: { variantPrecedes($0, $1, target: target) }).first {
+            selected = exact
+            fallback = false
+        } else if let requestedHeight = Int(quality.dropLast()) {
+            let lower = matching.filter { (Int($0.quality.dropLast()) ?? Int.max) < requestedHeight }
+            guard let lowerHeight = lower.compactMap(\.height).max() else { return nil }
+            let atHeight = lower.filter { $0.height == lowerHeight }
+            let direct = atHeight.filter { !$0.needsTranscode }
+            guard let choice = (direct.isEmpty ? atHeight : direct)
+                .sorted(by: { variantPrecedes($0, $1, target: target) }).first else { return nil }
+            selected = choice
+            fallback = true
+        } else { return nil }
+
+        let method: ReelVariantResolutionMethod
+        if selected.needsTranscode { method = .transcode }
+        else if selected.audioFormatID != nil || selected.sourceContainer?.lowercased() != target { method = .remux }
+        else { method = .direct }
+        return ReelVariantResolution(variant: selected, requestedQuality: quality, targetContainer: target,
+                                     method: method, usedLowerQualityFallback: fallback)
     }
 
     public static func select(_ variants: [ReelVariant], quality: String, container: String) -> ReelVariant? {
-        let matching = variants.filter { $0.container == container }
-        let concrete = matching.filter { Int($0.quality.dropLast()) != nil }
-        let nativePreferred = ["mp4", "mov"].contains(container)
-        if quality == "best" {
-            let directlyCompatible = concrete.filter { !$0.needsTranscode }
-            let candidates = nativePreferred && !directlyCompatible.isEmpty ? directlyCompatible : concrete
-            if let bestHeight = candidates.compactMap({ Int($0.quality.dropLast()) }).max() {
-                return candidates.first { $0.quality == "\(bestHeight)p" }
-            }
-            return matching.first { $0.quality == "best" }
-        }
-        if let exact = matching.first(where: { $0.quality == quality && !$0.needsTranscode }) { return exact }
-        if nativePreferred, let requestedHeight = Int(quality.dropLast()) {
-            let lowerCompatible = concrete.filter { !$0.needsTranscode }
-                .compactMap { variant -> (ReelVariant, Int)? in
-                    guard let height = Int(variant.quality.dropLast()), height <= requestedHeight else { return nil }
-                    return (variant, height)
-                }
-                .max { $0.1 < $1.1 }
-            if let lowerCompatible { return lowerCompatible.0 }
-        }
-        return matching.first { $0.quality == quality }
+        resolve(variants, quality: quality, container: container)?.variant
     }
 
+    private static func copy(_ value: ReelVariant, quality: String) -> ReelVariant {
+        ReelVariant(quality: quality, container: value.container, videoFormatID: value.videoFormatID,
+                    audioFormatID: value.audioFormatID, videoCodec: value.videoCodec, audioCodec: value.audioCodec,
+                    needsTranscode: value.needsTranscode, width: value.width, height: value.height, fps: value.fps,
+                    bitrate: value.bitrate, videoBitrate: value.videoBitrate, filesize: value.filesize,
+                    hasVideo: value.hasVideo, hasAudio: value.hasAudio, language: value.language,
+                    languagePreference: value.languagePreference, formatNote: value.formatNote,
+                    audioChannels: value.audioChannels, abr: value.abr, preference: value.preference,
+                    sourcePreference: value.sourcePreference, videoPreference: value.videoPreference,
+                    videoSourcePreference: value.videoSourcePreference, sourceContainer: value.sourceContainer,
+                    sourceProtocol: value.sourceProtocol, sourceBackend: value.sourceBackend)
+    }
+
+    private static func finiteNumber(_ value: Any?) -> Double? {
+        guard let number = (value as? NSNumber)?.doubleValue, number.isFinite else { return nil }
+        return number
+    }
+
+    private static func videoTrackPrecedes(_ lhs: Track, _ rhs: Track) -> Bool {
+        if lhs.height != rhs.height { return (lhs.height ?? 0) > (rhs.height ?? 0) }
+        if lhs.preference != rhs.preference { return (lhs.preference ?? -.infinity) > (rhs.preference ?? -.infinity) }
+        if lhs.sourcePreference != rhs.sourcePreference { return (lhs.sourcePreference ?? -.infinity) > (rhs.sourcePreference ?? -.infinity) }
+        if lhs.videoBitrate != rhs.videoBitrate { return (lhs.videoBitrate ?? 0) > (rhs.videoBitrate ?? 0) }
+        return lhs.id < rhs.id
+    }
+
+    private static func audioPairingPrecedes(_ lhs: (track: Track?, codec: String?, embedded: Bool),
+                                             _ rhs: (track: Track?, codec: String?, embedded: Bool),
+                                             video: Track, target: String) -> Bool {
+        let leftRank = audioLanguageRank(languagePreference: lhs.track?.languagePreference, note: lhs.track?.formatNote)
+        let rightRank = audioLanguageRank(languagePreference: rhs.track?.languagePreference, note: rhs.track?.formatNote)
+        if leftRank != rightRank { return leftRank > rightRank }
+        let leftCompatible = compatible(video: video.videoCodec, audio: lhs.codec, target: target)
+        let rightCompatible = compatible(video: video.videoCodec, audio: rhs.codec, target: target)
+        if leftCompatible != rightCompatible { return leftCompatible }
+        let leftCodec = codecRank(video: video.videoCodec, audio: lhs.codec, target: target)
+        let rightCodec = codecRank(video: video.videoCodec, audio: rhs.codec, target: target)
+        if leftCodec != rightCodec { return leftCodec > rightCodec }
+        if lhs.track?.abr != rhs.track?.abr { return (lhs.track?.abr ?? 0) > (rhs.track?.abr ?? 0) }
+        if lhs.track?.audioChannels != rhs.track?.audioChannels {
+            return (lhs.track?.audioChannels ?? 0) > (rhs.track?.audioChannels ?? 0)
+        }
+        if lhs.track?.preference != rhs.track?.preference {
+            return (lhs.track?.preference ?? -.infinity) > (rhs.track?.preference ?? -.infinity)
+        }
+        if lhs.track?.sourcePreference != rhs.track?.sourcePreference {
+            return (lhs.track?.sourcePreference ?? -.infinity) > (rhs.track?.sourcePreference ?? -.infinity)
+        }
+        return (lhs.track?.id ?? "") < (rhs.track?.id ?? "")
+    }
+
+    private static func variantPrecedes(_ lhs: ReelVariant, _ rhs: ReelVariant, target: String) -> Bool {
+        let lhsLanguage = audioLanguageRank(languagePreference: lhs.languagePreference, note: lhs.formatNote)
+        let rhsLanguage = audioLanguageRank(languagePreference: rhs.languagePreference, note: rhs.formatNote)
+        if lhsLanguage != rhsLanguage { return lhsLanguage > rhsLanguage }
+        if lhs.needsTranscode != rhs.needsTranscode { return !lhs.needsTranscode }
+        if codecRank(video: lhs.videoCodec, audio: lhs.audioCodec, target: target)
+            != codecRank(video: rhs.videoCodec, audio: rhs.audioCodec, target: target) {
+            return codecRank(video: lhs.videoCodec, audio: lhs.audioCodec, target: target)
+                > codecRank(video: rhs.videoCodec, audio: rhs.audioCodec, target: target)
+        }
+        if lhs.height != rhs.height { return (lhs.height ?? 0) > (rhs.height ?? 0) }
+        if lhs.fps != rhs.fps { return (lhs.fps ?? 0) > (rhs.fps ?? 0) }
+        if lhs.videoBitrate != rhs.videoBitrate { return (lhs.videoBitrate ?? 0) > (rhs.videoBitrate ?? 0) }
+        if lhs.abr != rhs.abr { return (lhs.abr ?? 0) > (rhs.abr ?? 0) }
+        if lhs.audioChannels != rhs.audioChannels { return (lhs.audioChannels ?? 0) > (rhs.audioChannels ?? 0) }
+        let lhsPreference = (lhs.videoPreference ?? 0) + (lhs.preference ?? 0)
+        let rhsPreference = (rhs.videoPreference ?? 0) + (rhs.preference ?? 0)
+        if lhsPreference != rhsPreference { return lhsPreference > rhsPreference }
+        let lhsSource = (lhs.videoSourcePreference ?? 0) + (lhs.sourcePreference ?? 0)
+        let rhsSource = (rhs.videoSourcePreference ?? 0) + (rhs.sourcePreference ?? 0)
+        if lhsSource != rhsSource { return lhsSource > rhsSource }
+        if lhs.videoFormatID != rhs.videoFormatID { return lhs.videoFormatID < rhs.videoFormatID }
+        return (lhs.audioFormatID ?? "") < (rhs.audioFormatID ?? "")
+    }
+
+    private static func bestVariantPrecedes(_ lhs: ReelVariant, _ rhs: ReelVariant, target: String) -> Bool {
+        let lhsLanguage = audioLanguageRank(languagePreference: lhs.languagePreference, note: lhs.formatNote)
+        let rhsLanguage = audioLanguageRank(languagePreference: rhs.languagePreference, note: rhs.formatNote)
+        if lhsLanguage != rhsLanguage { return lhsLanguage > rhsLanguage }
+        if lhs.needsTranscode != rhs.needsTranscode { return !lhs.needsTranscode }
+        if lhs.height != rhs.height { return (lhs.height ?? 0) > (rhs.height ?? 0) }
+        if codecRank(video: lhs.videoCodec, audio: lhs.audioCodec, target: target)
+            != codecRank(video: rhs.videoCodec, audio: rhs.audioCodec, target: target) {
+            return codecRank(video: lhs.videoCodec, audio: lhs.audioCodec, target: target)
+                > codecRank(video: rhs.videoCodec, audio: rhs.audioCodec, target: target)
+        }
+        if lhs.fps != rhs.fps { return (lhs.fps ?? 0) > (rhs.fps ?? 0) }
+        if lhs.videoBitrate != rhs.videoBitrate { return (lhs.videoBitrate ?? 0) > (rhs.videoBitrate ?? 0) }
+        if lhs.abr != rhs.abr { return (lhs.abr ?? 0) > (rhs.abr ?? 0) }
+        if lhs.audioChannels != rhs.audioChannels { return (lhs.audioChannels ?? 0) > (rhs.audioChannels ?? 0) }
+        let lhsPreference = (lhs.videoPreference ?? 0) + (lhs.preference ?? 0)
+        let rhsPreference = (rhs.videoPreference ?? 0) + (rhs.preference ?? 0)
+        if lhsPreference != rhsPreference { return lhsPreference > rhsPreference }
+        let lhsSource = (lhs.videoSourcePreference ?? 0) + (lhs.sourcePreference ?? 0)
+        let rhsSource = (rhs.videoSourcePreference ?? 0) + (rhs.sourcePreference ?? 0)
+        if lhsSource != rhsSource { return lhsSource > rhsSource }
+        if lhs.videoFormatID != rhs.videoFormatID { return lhs.videoFormatID < rhs.videoFormatID }
+        return (lhs.audioFormatID ?? "") < (rhs.audioFormatID ?? "")
+    }
+
+    private static func audioLanguageRank(languagePreference: Double?, note: String?) -> Int {
+        let normalized = note?.lowercased() ?? ""
+        if normalized.contains("original") { return 4 }
+        if normalized.contains("descriptive") || normalized.contains("audio description")
+            || normalized.contains("audio-described") || (languagePreference ?? 0) <= -10 { return 1 }
+        if (languagePreference ?? 0) >= 10 { return 4 }
+        if normalized.contains("default") || (languagePreference ?? 0) >= 5 { return 3 }
+        return 2
+    }
+
+    private static func codecRank(video: String?, audio: String?, target: String) -> Int {
+        switch target {
+        case "mp4": (isH264(video) ? 30 : 0) + (isAAC(audio) ? 20 : 0)
+        case "mov": (isH264(video) ? 30 : isMOVVideo(video) ? 25 : 0) + (isAAC(audio) ? 20 : isMOVAudio(audio) ? 15 : 0)
+        case "webm": (isVP9(video) ? 30 : isAV1(video) ? 25 : isWebMVideo(video) ? 20 : 0) + (isOpus(audio) ? 20 : isWebMAudio(audio) ? 15 : 0)
+        default: (isH264(video) ? 10 : 0) + (isAAC(audio) ? 5 : 0)
+        }
+    }
+
+    private static func compatible(video: String?, audio: String?, target: String) -> Bool {
+        switch target {
+        case "mp4": isH264(video) && (audio == nil || isAAC(audio))
+        case "mov": isMOVVideo(video) && (audio == nil || isMOVAudio(audio))
+        case "webm": isWebMVideo(video) && (audio == nil || isWebMAudio(audio))
+        default: true
+        }
+    }
+
+    private static func qualitySortValue(_ quality: String) -> Int {
+        quality == "best" ? Int.max : Int(quality.dropLast()) ?? 0
+    }
     private static func isH264(_ codec: String?) -> Bool { codec == "h264" || codec?.hasPrefix("avc1") == true }
     private static func isAAC(_ codec: String?) -> Bool { codec == "aac" || codec?.hasPrefix("mp4a") == true }
     private static func isAV1(_ codec: String?) -> Bool { codec == "av1" || codec?.hasPrefix("av01") == true }
-    private static func isWebMVideo(_ codec: String) -> Bool {
-        ["vp8", "vp9"].contains { codec == $0 || codec.hasPrefix($0) } || isAV1(codec)
+    private static func isVP9(_ codec: String?) -> Bool { codec == "vp9" || codec?.hasPrefix("vp09") == true }
+    private static func isOpus(_ codec: String?) -> Bool { codec == "opus" || codec?.hasPrefix("opus") == true }
+    private static func isMOVVideo(_ codec: String?) -> Bool {
+        isH264(codec) || ["hevc", "h265", "prores", "mpeg4"].contains { codec == $0 || codec?.hasPrefix($0) == true }
     }
-    private static func isWebMAudio(_ codec: String) -> Bool { ["opus", "vorbis"].contains { codec == $0 || codec.hasPrefix($0) } }
+    private static func isMOVAudio(_ codec: String?) -> Bool {
+        isAAC(codec) || codec == "alac" || codec?.hasPrefix("pcm_") == true
+    }
+    private static func isWebMVideo(_ codec: String?) -> Bool {
+        ["vp8", "vp9"].contains { codec == $0 || codec?.hasPrefix($0) == true } || isAV1(codec)
+    }
+    private static func isWebMAudio(_ codec: String?) -> Bool {
+        ["opus", "vorbis"].contains { codec == $0 || codec?.hasPrefix($0) == true }
+    }
 }
 
 public struct ReelBoundedProcessOutput: Sendable, Equatable {
@@ -466,13 +649,18 @@ public enum ReelHelperFailureKind: Sendable, Equatable {
     case drmProtected
     case authenticationRequired
     case unsupportedExtractor
+    case extractionFailure
     case noMatchingSource
+    case sourceSelectionFailure
+    case audioTrackUnavailable
     case unsafeRedirect
     case invalidURL
     case timeout
     case processFailure
 
-    public var allowsFallback: Bool { self == .unsupportedExtractor || self == .noMatchingSource }
+    public var allowsFallback: Bool {
+        self == .unsupportedExtractor || self == .extractionFailure || self == .noMatchingSource
+    }
 
     public static func classify(_ detail: String) -> Self {
         let lower = detail.lowercased()
@@ -481,8 +669,12 @@ public enum ReelHelperFailureKind: Sendable, Equatable {
         if lower.contains("unsafe redirect") || lower.contains("private address") { return .unsafeRedirect }
         if lower.contains("invalid url") || lower.contains("unsupported url scheme") { return .invalidURL }
         if lower.contains("no suitable extractor") || lower.contains("unsupported url") { return .unsupportedExtractor }
+        if lower.contains("audio track") && (lower.contains("not available") || lower.contains("not found")) { return .audioTrackUnavailable }
+        if lower.contains("format selector") && (lower.contains("not available") || lower.contains("not found")) { return .sourceSelectionFailure }
         if lower.contains("no formats found") || lower.contains("requested format is not available")
             || lower.contains("no matching formats") { return .noMatchingSource }
+        if lower.contains("unable to extract") || lower.contains("failed to extract")
+            || lower.contains("extractor error") || lower.contains("extraction failed") { return .extractionFailure }
         if lower.contains("timed out") || lower.contains("timeout") { return .timeout }
         return .processFailure
     }
@@ -498,7 +690,10 @@ private struct ReelHelperRunFailure: LocalizedError, Sendable {
         case .drmProtected: "This source is DRM-protected; Reel doesn't bypass DRM.\(excerpt)"
         case .authenticationRequired: "This source requires account authentication. Reel doesn't read browser cookies or pass login credentials.\(excerpt)"
         case .unsupportedExtractor: "Reel's media helper doesn't support this source.\(excerpt)"
+        case .extractionFailure: "Reel couldn't extract a playable stream from this source.\(excerpt)"
         case .noMatchingSource: "Reel couldn't find a matching media stream for this request.\(excerpt)"
+        case .sourceSelectionFailure: "Reel couldn't download the inspected video variant. Inspect the source again and choose another quality.\(excerpt)"
+        case .audioTrackUnavailable: "The selected original audio track is no longer available from this source. Inspect it again to refresh the choices.\(excerpt)"
         case .unsafeRedirect: "The source redirected to a destination that Reel won't access."
         case .invalidURL: "Reel received an invalid media URL."
         case .timeout: "Reel's media helper exceeded its configured timeout.\(excerpt)"
@@ -569,7 +764,7 @@ public enum ReelCommandBuilder {
     private static let qualities: Set<String> = ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"]
     private static let videoFormats: Set<String> = ["mp4", "webm", "mkv", "mov"]
     private static let audioFormats: Set<String> = ["mp3", "m4a", "wav", "flac"]
-    public static let inspectionJSONTemplate = #"{"title":%(title|"Online media")j,"duration":%(duration|null)j,"extractor_key":%(extractor_key|"")j,"is_live":%(is_live|null)j,"audio_ext":%(audio_ext|null)j,"formats":%(formats.:.{format_id,width,height,fps,ext,acodec,vcodec,tbr,vbr,abr,filesize,filesize_approx,language,protocol}|[])j}"#
+    public static let inspectionJSONTemplate = #"{"title":%(title|"Online media")j,"duration":%(duration|null)j,"extractor_key":%(extractor_key|"")j,"is_live":%(is_live|null)j,"audio_ext":%(audio_ext|null)j,"formats":%(formats.:.{format_id,width,height,fps,ext,acodec,vcodec,tbr,vbr,abr,filesize,filesize_approx,language,language_preference,format_note,audio_channels,preference,source_preference,protocol}|[])j}"#
 
     public static func inspection(url: URL, denoURL: URL = ReelRuntime.denoURL) throws -> [String] {
         guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http" else {
@@ -781,9 +976,11 @@ public enum ReelInspectionStore {
         guard artifact.fileURL.isFileURL,
               artifact.fileURL.pathExtension.lowercased() == "kio-reel-info",
               artifact.fileURL.deletingLastPathComponent().standardizedFileURL == directory,
-              artifact.sizeBytes <= 32_000,
-              let data = try? Data(contentsOf: artifact.fileURL),
-              let info = try? JSONDecoder().decode(ReelInspectionInfo.self, from: data) else {
+              let values = try? artifact.fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true,
+              let fileSize = values.fileSize, fileSize <= ReelInspectionPolicy.maximumJSONBytes,
+              let data = try? Data(contentsOf: artifact.fileURL), data.count == fileSize,
+              let info = try? ReelInspectionPolicy.decodePersistedInfo(data) else {
             throw KioFailure.invalidInput("This saved Reel inspection is unavailable or malformed.")
         }
         return info
@@ -886,6 +1083,7 @@ enum ReelWorkflow {
         let parent = try OutputLocation.makeDirectoryURL(for: [input], baseName: "Kio-Reel-Tmp-\(UUID().uuidString)")
         return try await ReelTemporaryWorkspace.withDirectory(at: parent) { parent in
             let outputTemplate = parent.appendingPathComponent("media.%(ext)s").path
+            var resolvedSelection: ReelVariantResolution?
             func arguments(for helper: String) throws -> [String] {
                 if helper == "streamlink" {
                     return try ReelCommandBuilder.streamlink(url: url, outputPath: parent.appendingPathComponent("media.ts").path,
@@ -894,11 +1092,13 @@ enum ReelWorkflow {
                 let variant: ReelVariant?
                 if operation == .downloadRemoteVideo || operation == .downloadRemoteLive,
                    let inspection, !inspection.variants.isEmpty, let format {
-                    guard let selected = ReelVariantSelector.select(inspection.variants,
-                                                                   quality: quality ?? "best", container: format) else {
+                    guard let selection = ReelVariantSelector.resolve(inspection.variants,
+                                                                     quality: quality ?? "best", container: format) else {
                         throw KioFailure.invalidInput("That quality and format combination is unavailable for this Reel. Choose an available combination.")
                     }
-                    variant = selected
+                    resolvedSelection = selection
+                    Self.logger.info("Resolved Reel selection: \(selection.diagnosticDescription, privacy: .public).")
+                    variant = selection.variant
                 } else { variant = nil }
                 return try ReelCommandBuilder.ytDlp(operation: operation, url: url, outputTemplate: outputTemplate,
                                                     quality: quality, format: format,
@@ -911,9 +1111,15 @@ enum ReelWorkflow {
                                                    monitorOutputDirectory: parent, maximumOutputBytes: BundledMediaRuntime.maximumMediaBytes)
             } catch {
                 let fallbackKind = (error as? ReelHelperRunFailure)?.kind
+                if let failure = error as? ReelHelperRunFailure,
+                   failure.kind == .noMatchingSource, resolvedSelection != nil {
+                    throw ReelHelperRunFailure(kind: .sourceSelectionFailure, detail: failure.detail)
+                }
                 let canFallback = helper == "yt-dlp" && [ToolOperation.downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive].contains(operation)
+                    && resolvedSelection == nil
                     && ReelHelperManager.isPrepared("streamlink") && fallbackKind?.allowsFallback == true
                 guard canFallback else { throw error }
+                resolvedSelection = nil
                 for partial in try outputFiles(in: parent, maximumCount: 8) { try? FileManager.default.removeItem(at: partial) }
                 helperOutput = try await runHelper(name: "streamlink", arguments: arguments(for: "streamlink"), maximumStdoutBytes: 64 * 1_024,
                                                    monitorOutputDirectory: parent, maximumOutputBytes: BundledMediaRuntime.maximumMediaBytes)
@@ -950,7 +1156,13 @@ enum ReelWorkflow {
                                                                 quality: quality, workspace: parent)
             let output = try OutputLocation.makeURL(for: [input], baseName: sourceTitle, fileExtension: normalized.fileExtension)
             try FileManager.default.moveItem(at: normalized.url, to: output)
-            let artifact = try ArtifactRef.inspect(output, parentID: input.id).withVerificationNote(normalized.note)
+            let selectionNote: String? = resolvedSelection.flatMap { selection in
+                guard selection.usedLowerQualityFallback else { return nil }
+                let requested = selection.requestedQuality
+                return "The exact requested quality (\(requested)) was unavailable; Reel used the nearest lower available source (\(selection.variant.quality))."
+            }
+            let note = [normalized.note, selectionNote].compactMap { $0 }.joined(separator: " ")
+            let artifact = try ArtifactRef.inspect(output, parentID: input.id).withVerificationNote(note.isEmpty ? nil : note)
             return [artifact]
         }
     }
@@ -1185,7 +1397,11 @@ enum ReelWorkflow {
         ReelInspectionStore.prune()
         let name = ReelMediaRouter.safeTitle(info.title) + "-inspection"
         let url = try OutputLocation.makeURL(in: ReelInspectionStore.directory, baseName: name, fileExtension: "kio-reel-info")
-        try JSONEncoder().encode(info).write(to: url, options: .atomic)
+        let data = try JSONEncoder().encode(info)
+        guard data.count <= ReelInspectionPolicy.maximumJSONBytes else {
+            throw KioFailure.verification("Reel's inspected media details exceed the saved metadata size limit.")
+        }
+        try data.write(to: url, options: .atomic)
         return try ArtifactRef.inspect(url, parentID: input.id)
     }
 }

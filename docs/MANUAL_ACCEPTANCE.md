@@ -537,3 +537,82 @@ Stop a running task with the Stop control. It should say **“Cancelled”** (or
 ### Report a failure
 
 Record the exact request, source file type (or media provider/domain only), requested target, Kio version/build, and the visible error/result. For orientation/Cue issues, include a screenshot or short recording that does not reveal private documents, keys, speech content, or account-only media. Do not attach API keys, browser cookies, private URLs, or private recordings.
+
+## Reliability hardening: Reel audio variants, exact quality, Cue, and negation
+
+This section covers the 2026-10-02 reliability pass. Codex ran package tests and an unsigned Debug build but did not launch Kio, use the microphone, or access live media. These steps are for your manual acceptance using a current build.
+
+### Test A — Original audio instead of an auto-dub
+
+Use a video you are permitted to download that offers original and dubbed/alternate tracks.
+
+1. Paste its URL and ask **“download this”**.
+2. Choose **1080p MP4** and download it.
+3. Play the result and listen for the original track rather than the auto-dub.
+4. Repeat at another available quality.
+
+Expected: Kio selects original audio when the source marks it as original, even if keeping that track requires a supported conversion. Video and audio should play normally.
+
+### Test B — Reel picker in chat and notch
+
+Inspect a Reel URL and compare its picker in normal chat with the notch picker.
+
+Expected: the full-chat picker appears inline with its Reel inspection message; both surfaces offer the same available quality/format choices. Changing the selection and starting a download from either surface calls the typed Reel action.
+
+### Test C — Exact requested quality
+
+For a source with multiple resolutions, choose **1080p MP4**. If 1080p is available, inspect the resulting file's resolution.
+
+Expected: Kio keeps the exact 1080p source and converts/remuxes if required; it does not silently select 720p merely to avoid conversion. If the requested resolution is genuinely unavailable, Kio should identify the lower-quality fallback. If available, also try **2160p MP4** from a source where 2160p is offered only in another codec/container.
+
+### Test D — Multiple downloads from the same Reel card
+
+From one inspected Reel card, download **1080p MP4**, then use that same card to download **MP3**. Try another quality/format if available.
+
+Expected: the inspection and picker remain usable after each download, without reinspecting the URL.
+
+### Test E — Cue anchored script
+
+Paste this exact script into Cue and choose **Follow My Voice**:
+
+> testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio
+
+Read the phrases in order, naturally pausing between them: **“testing testing”**, **“one two three”**, **“my name is joe”**, **“today i am testing cue”**, **“in my productivity app kio”**.
+
+Expected: progress stays local and monotonic. Hearing the first “testing” or first “my” alone must not jump to a later duplicate.
+
+### Test F — Spoken digits and numbers
+
+Restart the script from Test E. Say **“testing testing one two three”**. Repeat and speak the number quickly enough that recognition may produce **“123”**.
+
+Expected: both transcripts advance over the nearby `1, 2, 3`. Separately use the script **“the value is 123 and that is important”** and say **“one hundred twenty three”**; it should match the nearby whole number.
+
+### Test G — Kio name recognition
+
+Use the script from Test E and speak **“Kio”** naturally several times near its final occurrence. If Cue's recent transcript shows **“kyo”** or **“keo”**, check that the highlight advances there.
+
+Expected: those aliases work near the expected Kio token and do not cause a distant jump elsewhere in the script.
+
+### Test H — Repeated “my”
+
+Restart Test E and say only **“my”** while still at the beginning of the script.
+
+Expected: Cue does not jump to the later phrase **“my productivity app kio.”** Continue through **“my name is joe”** and confirm ordinary local progress.
+
+### Test I — Context vocabulary later in a long script
+
+Use a several-minute script with distinctive names, acronyms, and technical terms appearing well after the opening section. Read through those later sections at a natural pace.
+
+Expected: recognition remains useful after progress advances; Kio does not keep using only vocabulary from the beginning. This checks the live context refresh and still needs a real microphone.
+
+### Test J — Negated operations
+
+Attach suitable test files and try each request separately:
+
+- **“don’t summarize this”**
+- **“don’t move these files”**
+- **“don’t extract the audio”**
+
+Also try **“don’t translate this,” “don’t remove page 7,” “don’t crop this,”** and **“don’t transcribe this.”**
+
+Expected: Kio does not start the prohibited operation or return a completed artifact for it. It should ask what action you want or otherwise leave the files unchanged.

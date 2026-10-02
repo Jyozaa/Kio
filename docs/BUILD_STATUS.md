@@ -5,43 +5,55 @@ Last updated: 2026-10-02
 ## Repository and CI state
 
 - Repository: `/Users/joe/Desktop/Kio`, branch `main`.
-- Starting and final HEAD: `ede42d60bda5d17cd1fe5e7214c13975f7511894` (`testing`). `origin/main` still points to this commit.
-- This hardening pass is present only as local, uncommitted changes. No commit or push was made.
-- The GitHub Actions run for the unchanged starting HEAD, [36978665130](https://github.com/Jyozaa/Kio/actions/runs/36978665130), was still `in_progress` at the final status check. Therefore CI has no final result for this HEAD, and it does not include the local working-tree changes.
-- The preceding completed run, [36966311918](https://github.com/Jyozaa/Kio/actions/runs/36966311918), was red on an older HEAD. Its Python test subprocess failed while running `scripts/build-mac.sh`; the available traceback did not establish the subprocess's specific underlying cause. The local Python suite now passes.
+- Actual starting HEAD: `4df4e4fe68cd61d3d72a8945f671df647de0de30` (`improvements to reel`). Final HEAD is the same; changes remain local and uncommitted. No commit or push was made.
+- GitHub Actions run [36990214348](https://github.com/Jyozaa/Kio/actions/runs/36990214348) for that unchanged HEAD was `in_progress` at both the start and final status checks. It cannot verify this uncommitted working tree. Run [36978665130](https://github.com/Jyozaa/Kio/actions/runs/36978665130) was also still in progress on the preceding `ede42d6` commit. The older completed run [36966311918](https://github.com/Jyozaa/Kio/actions/runs/36966311918) failed on `1dc9cfd`; it predates this pass.
+- The stale duplicate `docs/BUILD_STATUS 2.md` and untracked `docs/BUILD_STATUS 3.md` were removed. This file is the current status record.
 
-## Reliability changes
+## Reel changes
 
-- Reel inspection now retains bounded per-variant metadata: exact format ID, quality/resolution, frame rate, container, codecs, bitrate, size, audio/video presence, language, protocol, and source backend. Older inspection records decode with defaults for fields they did not store.
-- Reel selection resolves actual inspected video/audio format IDs and records whether conversion is required. MP4 prefers H.264/AVC video plus AAC audio, including a lower compatible source before transcoding; AV1/Opus is not chosen when a suitable H.264/AAC source is available. WebM recognizes VP9/AV1 and Opus aliases; MKV and MOV use their compatible copy/remux paths where possible. Unsafe format IDs are rejected.
-- Quality and format options are derived from available variants, so the picker does not offer unsupported quality/format pairs. Conversion-required and lower-compatible-source choices are identified in the shared Reel picker.
-- The same Reel download card appears in the notch and inline with its Reel inspection message in chat. Historical cards use their own inspection artifact and remain available after a download or later result. Inspection files continue to be subject to existing cleanup/retention behavior.
-- Internal intermediate artifacts can no longer select their own support directory as the final output location. Internal-only inputs use the configured output folder or `Downloads/Kio`.
-- Audio normalization verifies media with ffprobe rather than inferring the encoded format from a `.tmp` filename. Final user-facing paths retain the requested extension. Local video-to-MP3, M4A, WAV, and FLAC integration coverage uses temporary intermediates.
-- Bundled FFmpeg failures now carry a bounded category, exit status, operation, codecs/container, and sanitized relevant stderr excerpt. User-facing errors remain short. VideoToolbox H.264 is used when encoding is necessary; a software fallback is permitted only if the bundled runtime explicitly declares an allowed LGPL encoder. The current runtime does not include that encoder, and no GPL x264/x265 component was added. Encoding bitrate targets vary by output resolution.
-- Streamlink inspection no longer invents MP4, audio, or VOD availability: values remain unknown unless inspection data establishes them. Reel fallback is limited to unsupported-extractor/no-matching-source cases, rather than masking authorization, DRM, unsafe-URL, timeout, or other errors.
-- Cue number matching is bounded by nearby script context, allowing spoken `one two three` to match `1, 2, 3` while also supporting a contextual whole-number reading. Kio/Kyo/Keo matching is local to a short context window; common short words are not accepted as fuzzy names. SpeechAnalyzer receives contextual vocabulary, and Cue does not fabricate confidence for partial results.
-- Semantic routing uses attached artifact context for requests such as “get this as MP3”: local video converts while a URL uses Reel. Supported compound image conversion/resize or conversion/size-limit requests compile both steps; incomplete or ambiguous compound requests clarify. General action negation blocks mutating and non-mutating operations. Common resize, compress, rename, extract, remove, merge, move, and copy paths use their registered typed arguments. Local video target formats are typed and limited to supported runtime behavior.
-- Other audited defects addressed include stale `activeOutput` dependence for Reel cards, internal Reel artifacts appearing as ordinary output cards, unsafe/overbroad variant metadata, and misleading fixed timeout text.
+- The earlier auto-dub selection happened because Kio kept an audio track's language but discarded yt-dlp's `language_preference`, `format_note`, `audio_channels`, `abr`, `preference`, and `source_preference`. Multiple AAC tracks therefore tied and extractor order could decide the winner. These signals are now retained in optional variant fields, so old saved `.kio-reel-info` records remain decodable.
+- Audio is ranked by original, default, ordinary, then descriptive/audio-description class. Original indicators include `language_preference >= 10` or an original note; default includes `>= 5` or a default note; descriptive notes or `<= -10` rank last. Within a class, the selector considers target compatibility, preferred codec, bitrate, channels, source preference, and stable IDs. For MP4, H.264/AAC is preferred; for WebM, compatible VP9/AV1 and Opus streams are retained. An original track that needs a supported conversion outranks a more convenient dub.
+- Same-quality streams receive deterministic ranking by language class, target-container/codec feasibility, codec, FPS, video/audio bitrate, channels, source preference, and stable IDs. Input order is not a tie-break. `best` is computed independently per target container. Exact requested quality remains preferred even if conversion is required; a lower-quality fallback is explicit in `ReelVariantResolution`.
+- Reel now returns a typed resolution record containing requested quality/container, selected source IDs, output method, and whether a lower-quality fallback was used. Bounded internal diagnostics explain source codecs, audio language preference, conversion, and fallback without exposing raw IDs to ordinary users.
+- Streamlink no longer claims its source container is MP4. Its source container and audio availability remain unknown when Streamlink cannot establish them; MP4 is represented as Kio's conversion target, not as observed source capability.
+- One `ReelInspectionPolicy` bounds inspection JSON to 512 KiB and format/variant counts to 512 for both persisted reads and inspection output. Persisted arrays are checked before decoding so historical truncation behavior cannot hide an over-limit file. Reel inspection remains available for multiple downloads from the same card and keeps its bounded cleanup/retention behavior.
+- Error categories distinguish source/audio selection, extractor process, FFmpeg decode/encode/mux, VideoToolbox, verification, timeout, cancellation, output limit, DRM, and authentication. Internal excerpts are bounded and path-sanitized. Streamlink fallback is limited to cases where another resolver may help; explicit inspected selections and DRM/auth/unsafe failures do not silently fall back.
+- The distribution has no software H.264 encoder fallback. The misleading dead OpenH264 path was removed; VideoToolbox is the only H.264 encoder and its failures are reported. No GPL x264 was added. The manifest regression test verifies OpenH264 is absent.
+- The full-chat inline Reel picker and notch picker still use the shared typed selection path. The picker actions call typed operations without converting a selection into English and reparsing it.
 
-## Final noninteractive verification
+## Cue changes
 
-The final complete `./scripts/check.sh` pass exited successfully on 2026-10-02. It ran with isolated Swift and Xcode derived-data directories under `/tmp`; it did not launch the app.
+- The broad forward search was replaced by anchored sequential matching from confirmed progress and a small prior context. Character and word strategies compare bounded local candidates; the matcher allows only small token skips and commits progress monotonically. A distant movement needs agreement from two distinct transcript identities, so duplicate recognition callbacks do not count as fresh evidence.
+- Numbers keep contextual alternatives: spoken `one two three` may align with nearby `1, 2, 3`, while “one hundred twenty three” may align with nearby `123`. Interpretation depends on local script context.
+- Kio/Kyo/Keo are local aliases only when Kio is the nearby expected token. Short common words need near-exact local evidence and cannot establish a distant position.
+- Each reading session/restart/manual jump increments its transcript generation; callbacks from an older generation are rejected. The existing modern SpeechAnalyzer backend and SFSpeechRecognizer fallback are retained.
+- `CueContextVocabulary` selects bounded distinctive terms from up to the next 160 script tokens, capped at 32 hints. It includes names, acronyms, uncommon terms, technical vocabulary, and Kio while excluding common stopwords. Context refreshes after eight confirmed tokens. SpeechAnalyzer receives updates through `setContext`; the legacy recognizer refreshes `contextualStrings` when it restarts its recognition task about every 50 seconds without restarting audio capture or changing the reading anchor.
+- Follow My Voice is the default. The selected mode is stored through `@AppStorage("kio.cue.mode")` and restored rather than reset at launch.
 
-- `git diff --check`: passed.
-- Python script tests: 14 passed.
-- Swift package tests: 62 KioTools tests, 2 KioSync tests, and 103 KioCore tests passed (167 total).
-- macOS Debug and Release builds: passed, with code signing disabled (`CODE_SIGNING_ALLOWED=NO`, identity `-`). The Debug app reports version `0.1.0`, build `1`; products are under `/tmp/KioDerivedDataHardening/Build/Products/{Debug,Release}/Kio.app`.
-- Mobile PWA: dependency installation, TypeScript check, production Vite build, and 2 PWA crypto tests passed.
-- Relay: dependency installation, TypeScript check, local smoke and lifecycle checks, and shared WebCrypto vector passed.
-- Pinned Reel helper runtime validation and resource preparation passed. The local-video media integration tests passed.
-- Non-fatal Xcode warnings remain: the prepared-runtime build phase has no declared outputs and runs on each build; signed upstream helper binaries cannot be stripped.
-- The builds are unsigned. No `codesign --verify` claim applies.
-- **Kio was not launched or manually tested by Codex.** No UI, microphone, live provider/media, physical phone, or relay deployment was tested. See the [manual acceptance guide](MANUAL_ACCEPTANCE.md#reliability-hardening-reel-variants-cue-context-and-semantic-routing).
+## Semantic and related fixes
+
+- Negation is represented as action polarity and blocks deterministic and model-generated tool plans generically, including negated actions that were not in a special-case verb list.
+- A mixed request such as “trim this and convert it to MP4” now clarifies instead of silently planning only one action. Typed action-form normalization also handles plural and `y`-ending forms used by move/copy and related operations.
+- No unrelated product areas were expanded. Existing chat/notch picker surfaces and Cue session pinning behavior were preserved.
+
+## Verification
+
+- Focused Swift runs completed during implementation: 15 Reel acceptance tests, 20 Cue tests, and 2 semantic regression tests passed. The final full command passed:
+
+  ```sh
+  KIO_REEL_RUNTIME_ROOT="$PWD/.cache/reel/runtime/Reel" \
+    swift test --package-path Packages/KioKit --scratch-path /tmp/Kio-hardening-build
+  ```
+
+  The environment variable is needed for the two local-media integration tests to locate the already-prepared runtime. An initial full invocation without it reported those two tests as “runtime not prepared”; the configured full run then passed. SwiftPM emitted a non-fatal MLX bundle build-graph warning.
+- `git diff --check` passed before this documentation update; it is repeated for the final repository check.
+- The pinned Reel runtime manifest digest matched. Read-only helper probes passed: yt-dlp `2026.08.19`, Deno `2.9.7`, FFmpeg/ffprobe `9.0.2`, and Streamlink `8.6.0`; the Streamlink CLI imported successfully. FFmpeg advertises `h264_videotoolbox`; it does not advertise `libx264`.
+- macOS Debug build passed with signing disabled from a temporary snapshot of the current working tree, after Xcode stalled on file coordination while reading the Desktop checkout. The unsigned product is `/tmp/KioHardeningDerivedDataTemp/Build/Products/Debug/Kio.app`, version `0.1.0`, build `1`. Its bundled Reel manifest matches the pinned cache. Xcode warned that the prepared-runtime script has no declared outputs and that signed upstream helper binaries cannot be stripped; the build succeeded.
+- **Kio was not launched or interactively tested by Codex.** No microphone, live speech recognition, live media URL, phone, or relay deployment was used. The app, visual behavior, real source audio, and downloaded playback still need user acceptance.
 
 ## Remaining limitations
 
-- Reel support depends on what yt-dlp, Streamlink, or direct media resolution can inspect and retrieve. Authentication-gated and DRM-protected sources are unsupported; no universal site coverage is claimed.
-- The bundled runtime has no declared LGPL software H.264 encoder. If VideoToolbox encoding fails, Kio returns a diagnostic instead of using a prohibited encoder. Incompatible WebM conversion is not advertised; compatible WebM streams can be copied.
-- WebP conversion depends on ImageIO WebP encoder availability on the user's macOS version.
-- Manual acceptance is still needed for visible picker placement/behavior, real public-source behavior, microphone/Cue recognition, actual user media playback, permissions, and the installed app experience.
+- Source audio preference can only be as reliable as metadata supplied by yt-dlp. When a source provides neither an original/default marker nor useful language metadata, the selector can rank available signals but cannot infer the creator's intent with certainty.
+- The bundled runtime has no software H.264 fallback. A failed VideoToolbox encode returns a diagnostic. WebM output remains limited to compatible streams because incompatible WebM conversion is not supported.
+- Authentication-gated and DRM-protected media are unsupported. Public-source compatibility still depends on the current site and extractor metadata.
+- Cue's live recognizer behavior and vocabulary quality need a real microphone check, especially on long scripts. Manual checks are listed in [MANUAL_ACCEPTANCE.md](MANUAL_ACCEPTANCE.md#reliability-hardening-reel-audio-variants-exact-quality-cue-and-negation).

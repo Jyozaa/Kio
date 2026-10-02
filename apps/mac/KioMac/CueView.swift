@@ -32,12 +32,22 @@ private protocol CueAudioInputSink: Sendable {
 }
 
 private final class CueLegacyAudioInputSink: CueAudioInputSink, @unchecked Sendable {
-    private let request: SFSpeechAudioBufferRecognitionRequest
+    private let lock = NSLock()
+    private var request: SFSpeechAudioBufferRecognitionRequest
 
     init(request: SFSpeechAudioBufferRecognitionRequest) { self.request = request }
 
+    func replaceRequest(_ request: SFSpeechAudioBufferRecognitionRequest) {
+        lock.lock()
+        self.request = request
+        lock.unlock()
+    }
+
     func append(_ buffer: AVAudioPCMBuffer, at time: AVAudioTime) {
-        request.append(buffer)
+        lock.lock()
+        let currentRequest = request
+        lock.unlock()
+        currentRequest.append(buffer)
     }
 }
 
@@ -222,38 +232,127 @@ private protocol CueSpeechBackend: AnyObject {
     var name: String { get }
     func start(onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void, generation: Int,
                onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink
+    func updateContext(_ hints: [String])
     func stop()
 }
 
 @MainActor
 private final class LegacyCueSpeechBackend: CueSpeechBackend {
     let name = "Speech Recognition"
-    private let request: SFSpeechAudioBufferRecognitionRequest
+    private let recognizer: SFSpeechRecognizer
+    private let generation: Int
+    private let onTranscript: (String, CueTranscriptEvidence, Int) -> Void
+    private let inputSink: CueLegacyAudioInputSink
+    private var hints: [String]
+    private var request: SFSpeechAudioBufferRecognitionRequest
     private var task: SFSpeechRecognitionTask?
+    private var taskGeneration = 0
     private var didStart = false
+    private var periodicRestart: Task<Void, Never>?
+    private var pendingRestart: Task<Void, Never>?
 
     init(recognizer: SFSpeechRecognizer, hints: [String], generation: Int,
          onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void) {
-        request = SFSpeechAudioBufferRecognitionRequest()
+        self.recognizer = recognizer
+        self.hints = Array(hints.prefix(32))
+        self.generation = generation
+        self.onTranscript = onTranscript
+        let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
         request.contextualStrings = Array(hints.prefix(32))
-        task = recognizer.recognitionTask(with: request) { result, _ in
-            guard let result else { return }
-            let text = result.bestTranscription.formattedString
-            let confidence = result.bestTranscription.segments.last?.confidence ?? 0
-            let evidence: CueTranscriptEvidence = result.isFinal ? .final : .measuredConfidence(confidence)
-            Task { @MainActor in onTranscript(text, evidence, generation) }
-        }
+        self.request = request
+        inputSink = CueLegacyAudioInputSink(request: request)
+        startRecognitionTask()
     }
 
     func start(onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void, generation: Int,
                onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink {
         guard !didStart else { throw CueFailure.unavailable("Cue speech recognition has already started.") }
         didStart = true
-        return CueLegacyAudioInputSink(request: request)
+        schedulePeriodicRestart()
+        return inputSink
     }
-    func stop() { request.endAudio(); task?.cancel(); task = nil }
+
+    func updateContext(_ hints: [String]) {
+        let bounded = Array(hints.prefix(32))
+        guard bounded != self.hints else { return }
+        self.hints = bounded
+        guard didStart else { return }
+        scheduleRestart(after: .milliseconds(120))
+    }
+
+    func stop() {
+        didStart = false
+        periodicRestart?.cancel()
+        periodicRestart = nil
+        pendingRestart?.cancel()
+        pendingRestart = nil
+        taskGeneration &+= 1
+        request.endAudio()
+        task?.cancel()
+        task = nil
+    }
+
+    private func makeRequest() -> SFSpeechAudioBufferRecognitionRequest {
+        let value = SFSpeechAudioBufferRecognitionRequest()
+        value.shouldReportPartialResults = true
+        value.taskHint = .dictation
+        value.contextualStrings = Array(hints.prefix(32))
+        return value
+    }
+
+    private func startRecognitionTask() {
+        let currentGeneration = taskGeneration
+        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self else { return }
+            if let result {
+                let text = result.bestTranscription.formattedString
+                let confidence = result.bestTranscription.segments.last?.confidence ?? 0
+                let evidence: CueTranscriptEvidence = result.isFinal ? .final : .measuredConfidence(confidence)
+                Task { @MainActor in
+                    guard self.taskGeneration == currentGeneration else { return }
+                    self.onTranscript(text, evidence, self.generation)
+                    if result.isFinal { self.scheduleRestart(after: .milliseconds(180)) }
+                }
+            }
+            if error != nil {
+                Task { @MainActor in
+                    guard self.taskGeneration == currentGeneration else { return }
+                    self.scheduleRestart(after: .milliseconds(350))
+                }
+            }
+        }
+    }
+
+    private func scheduleRestart(after delay: Duration) {
+        pendingRestart?.cancel()
+        pendingRestart = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self, self.didStart else { return }
+            self.pendingRestart = nil
+            self.restartRecognitionTask()
+        }
+    }
+
+    private func restartRecognitionTask() {
+        taskGeneration &+= 1
+        request.endAudio()
+        task?.cancel()
+        request = makeRequest()
+        inputSink.replaceRequest(request)
+        startRecognitionTask()
+    }
+
+    private func schedulePeriodicRestart() {
+        periodicRestart?.cancel()
+        periodicRestart = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(50))
+            guard !Task.isCancelled, let self, self.didStart else { return }
+            self.restartRecognitionTask()
+            self.schedulePeriodicRestart()
+        }
+    }
 }
 
 @available(macOS 26.0, *)
@@ -335,6 +434,16 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
         state = .stopped
     }
 
+    func updateContext(_ hints: [String]) {
+        guard state == .running else { return }
+        let context = AnalysisContext()
+        context.contextualStrings[.general] = Array(hints.prefix(32))
+        Task { @MainActor [analyzer] in
+            do { try await analyzer.setContext(context) }
+            catch { cueLogger.warning("Cue couldn't refresh SpeechAnalyzer context: \(String(reflecting: type(of: error)), privacy: .public).") }
+        }
+    }
+
 }
 
 @MainActor
@@ -344,7 +453,7 @@ private final class CueSpeechRecognizer: ObservableObject {
     var onFailure: ((String) -> Void)?
     private struct LegacyFallbackConfiguration {
         let recognizer: SFSpeechRecognizer
-        let hints: [String]
+        var hints: [String]
         let generation: Int
         let captureConverter: AVAudioConverter?
         let captureFormat: AVAudioFormat
@@ -497,6 +606,12 @@ private final class CueSpeechRecognizer: ObservableObject {
         cueLogger.info("Cue audio session stopped; tap installed=\(self.tapInstalled, privacy: .public).")
     }
 
+    func updateContext(_ hints: [String]) {
+        let bounded = Array(hints.prefix(32))
+        legacyFallbackConfiguration?.hints = bounded
+        backend?.updateContext(bounded)
+    }
+
     private func tearDownRuntime(for attempt: Int) {
         if engine.isRunning { engine.stop() }
         if tapInstalled {
@@ -592,7 +707,8 @@ struct CueSurfaceView: View {
     var onDone: () -> Void = {}
     @Binding var initialText: String
     @State private var script = ""
-    @State private var mode: CueMode = .wordTracking
+    @AppStorage("kio.cue.mode") private var savedMode = CueMode.followMyVoice.rawValue
+    @State private var mode: CueMode = .followMyVoice
     @State private var textSize: CueTextSize = .medium
     @State private var speed: Double = 150
     @State private var languageIdentifier = "system"
@@ -607,6 +723,7 @@ struct CueSurfaceView: View {
     @State private var classicClock = CueClassicClock()
     @State private var lastTick = Date.now
     @State private var transcriptGeneration = 0
+    @State private var lastContextPosition = 0
     @State private var controlsVisible = false
     @State private var controlsHovered = false
     @State private var controlsHideTask: Task<Void, Never>?
@@ -639,9 +756,13 @@ struct CueSurfaceView: View {
         .onChange(of: isActive) { _, value in onActiveChange(value) }
         .onAppear {
             if !initialText.isEmpty { script = initialText; initialText = "" }
+            mode = CueMode(rawValue: savedMode) ?? .followMyVoice
             speech.preheat(locale: activeLocale)
         }
-        .onChange(of: mode) { _, _ in speech.preheat(locale: activeLocale) }
+        .onChange(of: mode) { _, value in
+            savedMode = value.rawValue
+            speech.preheat(locale: activeLocale)
+        }
     }
 
     private var setup: some View {
@@ -860,8 +981,10 @@ struct CueSurfaceView: View {
 
     private func begin() {
         guard !isStarting else { return }
-        alignment = CueTextAlignment(script: script)
+        transcriptGeneration &+= 1
+        alignment = CueTextAlignment(script: script, generation: transcriptGeneration)
         readPosition = 0
+        lastContextPosition = 0
         complete = false
         paused = false
         errorMessage = nil
@@ -889,6 +1012,11 @@ struct CueSurfaceView: View {
                     let policy: CueTrackingPolicy = mode == .wordTracking ? .accurate : .responsive
                     let value = alignment.consume(text, evidence: evidence, generation: generation, policy: policy)
                     readPosition = min(max(0, value), max(0, alignment.tokens.count - 1))
+                    let confirmed = alignment.confirmedReadPosition
+                    if CueContextVocabulary.shouldRefresh(from: lastContextPosition, to: confirmed) {
+                        lastContextPosition = confirmed
+                        speech.updateContext(alignment.upcomingContextWords)
+                    }
                     if alignment.isFinished { finishScript() }
                 }
                 speech.onPower = { power in
@@ -921,7 +1049,9 @@ struct CueSurfaceView: View {
     private func jump(to index: Int) {
         guard isActive else { return }
         _ = alignment.jump(to: index)
+        transcriptGeneration = alignment.generation
         readPosition = index
+        lastContextPosition = index
         if mode != .classic {
             startSpeechSession()
         }
@@ -934,7 +1064,8 @@ struct CueSurfaceView: View {
         startTask?.cancel()
         isStarting = false
         speech.stop()
-        alignment = CueTextAlignment(script: script)
+        transcriptGeneration &+= 1
+        alignment = CueTextAlignment(script: script, generation: transcriptGeneration)
         readPosition = 0
         complete = false
         paused = false

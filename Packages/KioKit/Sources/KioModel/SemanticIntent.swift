@@ -2,6 +2,16 @@ import Foundation
 import KioCore
 
 public enum SemanticAction: String, Codable, Sendable { case convert, download }
+public enum SemanticActionPolarity: String, Codable, Sendable { case requested, prohibited }
+public struct SemanticActionIntent: Codable, Sendable, Equatable {
+    public let action: String
+    public let polarity: SemanticActionPolarity
+
+    public init(action: String, polarity: SemanticActionPolarity) {
+        self.action = action
+        self.polarity = polarity
+    }
+}
 public enum SemanticDomain: String, Codable, Sendable { case image, audio, video, table, remoteMedia }
 public enum SemanticFormat: String, Codable, CaseIterable, Sendable {
     case png, jpeg, jpg, heic, heif, tiff, tif, webp
@@ -177,10 +187,63 @@ public enum SemanticIntentParser {
     }
 
     public static func explicitlyNegatesAction(_ request: String) -> Bool {
-        request.lowercased().range(
-            of: #"\b(?:don['’]t|do not|never|must not|not)\s+(?:ever\s+)?(?:convert|turn|make|export|save|change|download|get|acquire|move|delete|remove|rename|extract|merge|copy|resize|compress|organize|rotate|trim|split|overwrite)\b"#,
-            options: .regularExpression
-        ) != nil
+        actionPolarities(in: request).contains { $0.polarity == .prohibited }
+    }
+
+    /// Reads action polarity from the grammatical relation instead of maintaining a
+    /// closed list of verbs. The captured action can then be compared with the
+    /// operation the planner is considering.
+    public static func actionPolarities(in request: String) -> [SemanticActionIntent] {
+        let pattern = #"\b(?:do\s+not|don['’]t|never|must\s+not|should\s+not|shouldn['’]t|cannot|can['’]t)\s+(?:(?:ever|please|just|also|really)\s+)*([a-z][a-z-]{1,30})\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
+        let source = request as NSString
+        var seen = Set<String>()
+        return regex.matches(in: request, range: NSRange(location: 0, length: source.length)).compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            let action = source.substring(with: match.range(at: 1)).lowercased()
+            guard seen.insert(action).inserted else { return nil }
+            return SemanticActionIntent(action: action, polarity: .prohibited)
+        }
+    }
+
+    /// Returns false when an operation family is explicitly negated, even if the
+    /// user used a common synonym rather than the tool's operation name.
+    public static func requestsAction(_ action: String, in request: String, synonyms: [String] = []) -> Bool {
+        let forms = Set(([action] + synonyms).flatMap(actionForms))
+        let normalized = request.lowercased()
+        let requested = forms.contains { form in
+            normalized.range(of: #"\b"# + NSRegularExpression.escapedPattern(for: form) + #"\b"#, options: .regularExpression) != nil
+        }
+        guard requested else { return false }
+        let prohibited = actionPolarities(in: request).contains { polarity in
+            forms.contains(normalizeAction(polarity.action))
+        }
+        return !prohibited
+    }
+
+    private static func actionForms(_ raw: String) -> [String] {
+        let base = normalizeAction(raw.lowercased())
+        if base.hasSuffix("y"), base.count > 1 {
+            let stem = String(base.dropLast())
+            return [base, stem + "ies", stem + "ied", base + "ing"]
+        }
+        return [base, base + "s", base + "es", base + "ed", base.hasSuffix("e") ? String(base.dropLast()) + "ing" : base + "ing"]
+    }
+
+    private static func normalizeAction(_ raw: String) -> String {
+        if raw.hasSuffix("ies"), raw.count > 3 { return String(raw.dropLast(3)) + "y" }
+        if raw.hasSuffix("ied"), raw.count > 3 { return String(raw.dropLast(3)) + "y" }
+        if raw.hasSuffix("ing"), raw.count > 4 {
+            let stem = String(raw.dropLast(3))
+            return stem.hasSuffix("v") ? stem + "e" : stem
+        }
+        if raw.hasSuffix("ed"), raw.count > 3 {
+            let stem = String(raw.dropLast(2))
+            return stem.hasSuffix("v") ? stem + "e" : stem
+        }
+        if raw.hasSuffix("es"), raw.count > 3 { return String(raw.dropLast(2)) }
+        if raw.hasSuffix("s"), raw.count > 2 { return String(raw.dropLast()) }
+        return raw
     }
 
     public static func parse(_ request: String, artifacts: [ArtifactRef] = []) -> SemanticIntentParseResult {
