@@ -19,10 +19,27 @@ public struct FastPathPlanner: Sendable {
     public init() {}
 
     public func plan(request: String, artifacts: [ArtifactRef], context: PlanningContext = .init()) -> TaskPlan {
-        let words = Self.words(in: request)
         let inputs = artifacts.isEmpty ? context.activeOutput.map { [$0] } ?? [] : artifacts
+        switch SemanticIntentParser.parse(request) {
+        case .clarify(let message):
+            return TaskPlan(request: request, steps: [], clarification: message)
+        case .resolved(let intent, let confidence) where confidence >= 0.9:
+            if let compiled = CapabilityCompiler.compile(intent, request: request, artifacts: inputs) { return compiled }
+            if intent.domain == .table, intent.sourceFormat == nil,
+               inputs.count == 1, inputs[0].kind == .image { break }
+            if inputs.isEmpty {
+                return TaskPlan(request: request, steps: [], clarification: "Add the file or public URL you want Kio to convert, then try again.")
+            } else {
+                return TaskPlan(request: request, steps: [], clarification: "I understood the requested output format, but it isn't supported for these selected files. Check the file types and destination format, then try again.")
+            }
+        case .resolved:
+            return TaskPlan(request: request, steps: [], clarification: "I couldn't determine the requested destination format safely. Which format should the output use?")
+        case .noMatch:
+            break
+        }
+        let words = Self.words(in: request)
         let ids = inputs.map(\.id)
-        let sizeTarget = Self.byteLimit(in: request)
+        let sizeTarget = SemanticValueParser.targetSizeBytes(in: request) ?? Self.byteLimit(in: request)
 
         if inputs.count == 1, let query = inputs.first,
            query.kind == .url, query.fileURL.pathExtension.lowercased() == "kio-query" {
@@ -171,11 +188,8 @@ public struct FastPathPlanner: Sendable {
                 return TaskPlan(request: request, steps: tableSteps)
             }
             if words.contains("merge"), tableInputs.count >= 2 { return TaskPlan(request: request, steps: tableSteps) }
-            if words.contains("convert"), words.contains("json"), tableInputs.count == 1 {
-                return TaskPlan(request: request, steps: [TaskStep(operation: .csvToJSON, source: .artifacts([tableIDs[0]]))])
-            }
-            if words.contains("convert"), words.contains("csv"), tableInputs.count == 1, tableInputs[0].fileURL.pathExtension.lowercased() == "json" {
-                return TaskPlan(request: request, steps: [TaskStep(operation: .jsonToCSV, source: .artifacts([tableIDs[0]]))])
+            if words.contains("convert"), tableInputs.count == 1 {
+                return TaskPlan(request: request, steps: [], clarification: "Should this table become CSV or JSON? State the destination format.")
             }
             if words.contains("normalize"), tableInputs.count == 1 {
                 return TaskPlan(request: request, steps: [TaskStep(operation: .normalizeData, source: .artifacts([tableIDs[0]]))])
@@ -252,7 +266,7 @@ public struct FastPathPlanner: Sendable {
            words.contains("mention") || words.contains("search") || (words.contains("find") && words.contains("pdf")) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .searchPDFText, source: .artifacts([pdf.id]), arguments: .textPrompt(request))])
         }
-        if words.contains("extract"), (words.contains("page") || words.contains("pages")),
+        if (words.contains("extract") || Self.requestsPageExtraction(in: request)), (words.contains("page") || words.contains("pages")),
            let pdf = inputs.first(where: { $0.kind == .pdf }), let pages = Self.pageRange(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .extractPDFPages, source: .artifacts([pdf.id]), arguments: .removePages(indices: pages))])
         }
@@ -279,7 +293,7 @@ public struct FastPathPlanner: Sendable {
            let pdf = inputs.first(where: { $0.kind == .pdf }), let order = Self.pageOrder(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .reorderPDFPages, source: .artifacts([pdf.id]), arguments: .pageOrder(indices: order))])
         }
-        if words.contains("remove"), (words.contains("page") || words.contains("pages")), let pdf = inputs.first(where: { $0.kind == .pdf }),
+        if Self.requestsPageRemoval(in: request), (words.contains("page") || words.contains("pages")), let pdf = inputs.first(where: { $0.kind == .pdf }),
            let range = Self.pageRange(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .removePDFPages, source: .artifacts([pdf.id]), arguments: .removePages(indices: range))])
         }
@@ -353,13 +367,7 @@ public struct FastPathPlanner: Sendable {
         if let image = inputs.first(where: { $0.kind == .image }), sizeTarget != nil || words.contains("compress") || words.contains("smaller") {
             return TaskPlan(request: request, steps: [TaskStep(operation: .compressImage, source: .artifacts([image.id]), arguments: .imageCompression(maxBytes: sizeTarget))])
         }
-        if !selectedImages.isEmpty,
-           (words.contains("convert") || words.contains("make") || words.contains("save") || words.contains("turn")),
-           let format = Self.requestedImageFormat(in: words) {
-            let operation: ToolOperation = selectedImages.count > 1 ? .batchConvertImages : .convertImage
-            return TaskPlan(request: request, steps: [TaskStep(operation: operation, source: .artifacts(selectedImages.map(\.id)), arguments: .imageConvert(format: format))])
-        }
-        if words.contains("rename"), inputs.count == 1, let name = Self.exactRenameName(in: request) {
+        if inputs.count == 1, let name = SemanticValueParser.renameTarget(in: request) {
             return TaskPlan(request: request, steps: [TaskStep(operation: .renameFile, source: .artifacts([inputs[0].id]), arguments: .exactRename(name: name))])
         }
         if words.contains("rename"), !inputs.isEmpty,
@@ -479,7 +487,7 @@ public struct FastPathPlanner: Sendable {
         }
         if let audio = inputs.first(where: { $0.kind == .audio }) {
             if words.contains("convert") || words.contains("transcode") {
-                return TaskPlan(request: request, steps: [TaskStep(operation: .convertAudio, source: .artifacts([audio.id]))])
+                return TaskPlan(request: request, steps: [], clarification: "Which audio format should Echo create: MP3, M4A, WAV, or FLAC?")
             }
             if words.contains("subtitle") || words.contains("subtitles") || words.contains("caption") || words.contains("captions") || words.contains("srt") || words.contains("vtt") {
                 return TaskPlan(request: request, steps: [TaskStep(operation: .generateSubtitles, source: .artifacts([audio.id]))])
@@ -492,14 +500,6 @@ public struct FastPathPlanner: Sendable {
         if inputs.isEmpty { clarification = "Add one or more files, then tell me what you want done." }
         else { clarification = "I don't have a reliable local workflow for that request yet. Try merging, splitting, inspecting, or editing PDF pages; converting or resizing images; renaming files; creating a ZIP; or extracting audio from a video." }
         return TaskPlan(request: request, steps: [], clarification: clarification)
-    }
-
-    private static func requestedImageFormat(in words: Set<String>) -> String? {
-        if words.contains("jpg") || words.contains("jpeg") { return "jpeg" }
-        for value in ["png", "heic", "heif", "tiff", "tif", "webp"] where words.contains(value) {
-            return value == "heif" ? "heic" : (value == "tif" ? "tiff" : value)
-        }
-        return nil
     }
 
     private static func words(in request: String) -> Set<String> {
@@ -572,7 +572,7 @@ public struct FastPathPlanner: Sendable {
         case .batchRename, .createArchive: !kinds.isEmpty
         case .inspectArchive, .extractZip: kinds.count == 1 && kinds[0] == .other
         case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
-        case .convertAudio: kinds.count == 1 && kinds[0] == .audio
+        case .convertAudio: kinds.count == 1 && (kinds[0] == .audio || kinds[0] == .video)
         case .transcribeAudio, .generateSubtitles: kinds.count == 1 && kinds[0] == .audio
         case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .explainText:
             kinds.count == 1 && kinds[0] == .text
@@ -590,7 +590,7 @@ public struct FastPathPlanner: Sendable {
         case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
         case .inspectRemoteMedia: kinds.count == 1 && kinds[0] == .url
         case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
-             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
             kinds.count == 1 && (kinds[0] == .url || kinds[0] == .text)
         case .ocrImage: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
@@ -659,82 +659,90 @@ public struct FastPathPlanner: Sendable {
     private static func validArguments(_ arguments: ToolArguments, for operation: ToolOperation) -> Bool {
         switch operation {
         case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
-             .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText, .convertAudio,
+             .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
              .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
-            arguments == .none
+            return arguments == .none
         case .findRecent, .findByName:
-            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+            if case .textPrompt(let request) = arguments { return !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000  } else { return false }
         case .removePDFPages, .extractPDFPages:
             if case .removePages(let indices) = arguments {
-                !indices.isEmpty && indices.allSatisfy { (1...100_000).contains($0) } && Set(indices).count == indices.count
-            } else { false }
+                return !indices.isEmpty && indices.allSatisfy { (1...100_000).contains($0) } && Set(indices).count == indices.count
+            } else { return false }
         case .reorderPDFPages:
             if case .pageOrder(let indices) = arguments {
-                (1...300).contains(indices.count) && indices.allSatisfy { (1...300).contains($0) } && Set(indices).count == indices.count
-            } else { false }
+                return (1...300).contains(indices.count) && indices.allSatisfy { (1...300).contains($0) } && Set(indices).count == indices.count
+            } else { return false }
         case .rotatePDFPages:
             if case .pdfRotation(let indices, let degrees) = arguments {
-                indices.count <= 200 && indices.allSatisfy { (1...100_000).contains($0) } && [90, 180, 270].contains(degrees)
-            } else { false }
+                return indices.count <= 200 && indices.allSatisfy { (1...100_000).contains($0) } && [90, 180, 270].contains(degrees)
+            } else { return false }
         case .resizeImage, .batchResizeImages:
-            if case .imageResize(let width) = arguments { (1...20_000).contains(width) } else { false }
+            if case .imageResize(let width) = arguments { return (1...20_000).contains(width)  } else { return false }
         case .convertImage, .batchConvertImages:
-            if case .imageConvert(let format) = arguments { ["png", "jpeg", "heic", "tiff", "webp"].contains(format) } else { false }
+            if case .imageConvert(let format) = arguments { return ["png", "jpeg", "jpg", "heic", "tiff", "webp"].contains(format)  } else { return false }
+        case .convertAudio:
+            if case .audioConvert = arguments { return true  } else { return false }
         case .rotateImage:
-            if case .imageRotation(let degrees) = arguments { [90, 180, 270].contains(degrees) } else { false }
+            if case .imageRotation(let degrees) = arguments { return [90, 180, 270].contains(degrees)  } else { return false }
         case .cropImage:
             if case .imageCrop(let x, let y, let width, let height) = arguments {
-                (0...20_000).contains(x) && (0...20_000).contains(y) && (1...20_000).contains(width) && (1...20_000).contains(height) && x + width <= 20_000 && y + height <= 20_000
-            } else { false }
+                return (0...20_000).contains(x) && (0...20_000).contains(y) && (1...20_000).contains(width) && (1...20_000).contains(height) && x + width <= 20_000 && y + height <= 20_000
+            } else { return false }
         case .compressImage:
-            if case .imageCompression(let maxBytes) = arguments { maxBytes.map { (1...1_000_000_000).contains($0) } ?? true } else { false }
+            if case .imageCompression(let maxBytes) = arguments { return maxBytes.map { (1...1_000_000_000).contains($0) } ?? true  } else { return false }
         case .thumbnailVideo:
-            if case .mediaThumbnail(let time) = arguments { (0...86_400_000).contains(time) } else { false }
+            if case .mediaThumbnail(let time) = arguments { return (0...86_400_000).contains(time)  } else { return false }
         case .trimVideo, .extractMediaClip:
-            if case .mediaTrim(let start, let duration) = arguments { (0...86_400_000).contains(start) && (1...86_400_000).contains(duration) && start + duration <= 86_400_000 } else { false }
+            if case .mediaTrim(let start, let duration) = arguments { return (0...86_400_000).contains(start) && (1...86_400_000).contains(duration) && start + duration <= 86_400_000  } else { return false }
         case .resizeVideo:
-            if case .mediaResize(let width) = arguments { [640, 960, 1280].contains(width) } else { false }
+            if case .mediaResize(let width) = arguments { return [640, 960, 1280].contains(width)  } else { return false }
         case .compressVideo:
-            if case .mediaCompression(let maxBytes) = arguments { maxBytes.map { (1...10_000_000_000).contains($0) } ?? true } else { false }
+            if case .mediaCompression(let maxBytes) = arguments { return maxBytes.map { (1...10_000_000_000).contains($0) } ?? true  } else { return false }
         case .renameFile:
-            if case .exactRename(let name) = arguments { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100 } else { false }
+            if case .exactRename(let name) = arguments { return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100  } else { return false }
         case .batchRename:
-            if case .rename(let prefix) = arguments { !prefix.isEmpty && prefix.count <= 64 } else { false }
+            if case .rename(let prefix) = arguments { return !prefix.isEmpty && prefix.count <= 64  } else { return false }
         case .copyFiles, .moveFiles:
-            arguments == .none
+            return arguments == .none
         case .createFolder:
-            if case .folderName(let name) = arguments { !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100 } else { false }
+            if case .folderName(let name) = arguments { return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 100  } else { return false }
         case .compressPDF:
-            if case .pdfCompression(let maxBytes) = arguments { maxBytes.map { $0 > 0 } ?? true } else { false }
+            if case .pdfCompression(let maxBytes) = arguments { return maxBytes.map { $0 > 0 } ?? true  } else { return false }
         case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .compareText, .explainText:
-            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+            if case .textPrompt(let request) = arguments { return !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000  } else { return false }
         case .inspectData, .mergeData, .deduplicateData, .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX:
-            arguments == .none
+            return arguments == .none
         case .fetchURL, .extractWebLinks, .researchOpenSources:
-            arguments == .none
-        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive, .downloadRemoteGallery,
-             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            return arguments == .none
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+            .downloadRemoteSubtitles, .downloadRemoteThumbnail:
             if case .remoteMedia(let quality, let format) = arguments {
-                (quality.map { ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains($0) } ?? true)
-                    && (format.map { ["mp4", "webm", "mkv", "mov", "mp3", "m4a", "wav", "flac"].contains($0) } ?? true)
-            } else { false }
+                let allowedFormats: Set<String> = switch operation {
+                case .downloadRemoteAudio: ["mp3", "m4a", "wav", "flac"]
+                case .downloadRemoteVideo, .downloadRemoteLive: ["mp4", "webm", "mkv", "mov"]
+                case .downloadRemoteSubtitles, .downloadRemoteThumbnail: []
+                default: []
+                }
+                return (quality.map { ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains($0) } ?? true)
+                    && (format.map { allowedFormats.contains($0) } ?? true)
+                    && (![.downloadRemoteSubtitles, .downloadRemoteThumbnail].contains(operation) || format == nil)
+            } else { return false }
         case .explainCode, .proposePatch:
-            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+            if case .textPrompt(let request) = arguments { return !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000  } else { return false }
         case .searchPDFText:
-            if case .textPrompt(let request) = arguments { !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000 } else { false }
+            if case .textPrompt(let request) = arguments { return !request.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && request.count <= 2_000  } else { return false }
         case .formatJSON:
-            arguments == .none
+            return arguments == .none
         case .sortData:
-            if case .tableSort(let column, _) = arguments { !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128 } else { false }
+            if case .tableSort(let column, _) = arguments { return !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128  } else { return false }
         case .filterData:
-            if case .tableFilter(let column, let value) = arguments { !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128 && value.count <= 1_000 } else { false }
+            if case .tableFilter(let column, let value) = arguments { return !column.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && column.count <= 128 && value.count <= 1_000  } else { return false }
         case .selectColumns, .reorderColumns:
-            if case .tableColumns(let columns) = arguments { !columns.isEmpty && columns.count <= 500 && Set(columns).count == columns.count && columns.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 128 } } else { false }
+            if case .tableColumns(let columns) = arguments { return !columns.isEmpty && columns.count <= 500 && Set(columns).count == columns.count && columns.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 128 }  } else { return false }
         case .renameColumns:
-            if case .tableRenameColumn(let from, let to) = arguments { !from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && from.count <= 128 && !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && to.count <= 128 } else { false }
+            if case .tableRenameColumn(let from, let to) = arguments { return !from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && from.count <= 128 && !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && to.count <= 128  } else { return false }
         }
     }
-
     private static func resultKinds(for operation: ToolOperation, inputKinds: [ArtifactKind]) -> [ArtifactKind] {
         switch operation {
         case .mergePDFs, .combineMixedPDFInputs, .removePDFPages, .removeBlankPDFPages, .splitPDF, .extractPDFPages, .reorderPDFPages, .rotatePDFPages, .imagesToPDF, .compressPDF: [.pdf]
@@ -768,10 +776,9 @@ public struct FastPathPlanner: Sendable {
         case .jsonToCSV: [.csv]
         case .fetchURL: Array(repeating: .text, count: inputKinds.count)
         case .extractWebLinks, .researchOpenSources: [.text]
-        case .inspectRemoteMedia: [.text]
+        case .inspectRemoteMedia: [.other]
         case .downloadRemoteVideo, .downloadRemoteLive: [.video]
         case .downloadRemoteAudio: [.audio]
-        case .downloadRemoteGallery: [.image]
         case .downloadRemoteSubtitles: [.text]
         case .downloadRemoteThumbnail: [.image]
         case .thumbnailVideo: [.image]
@@ -825,18 +832,15 @@ public struct FastPathPlanner: Sendable {
     }
 
     private static func pageRange(in request: String) -> [Int]? {
-        let pattern = #"(?i)\bpages?\s+(\d+(?:\s*(?:,|and|through|to|[-–])\s*\d+)*)"#
-        guard let selection = firstCapture(pattern, in: request)?.first else { return nil }
-        let numberCaptures = allCaptures(#"\d+"#, in: selection).compactMap(Int.init)
-        guard !numberCaptures.isEmpty, numberCaptures.allSatisfy({ (1...100_000).contains($0) }) else { return nil }
-        if numberCaptures.count == 2,
-           selection.range(of: #"(?i)\b(?:through|to)\b|[-–]"#, options: .regularExpression) != nil {
-            let first = numberCaptures[0]
-            let last = numberCaptures[1]
-            guard last >= first, last - first < 200 else { return nil }
-            return Array(first...last)
-        }
-        return Array(Set(numberCaptures)).sorted()
+        SemanticValueParser.pageSelection(in: request)
+    }
+
+    private static func requestsPageExtraction(in request: String) -> Bool {
+        request.range(of: #"(?i)\btake\s+pages?\b"#, options: .regularExpression) != nil
+    }
+
+    private static func requestsPageRemoval(in request: String) -> Bool {
+        request.range(of: #"(?i)\b(?:remove|delete)\s+pages?\b|\bget\s+rid\s+of\s+pages?\b"#, options: .regularExpression) != nil
     }
 
     private static func pageOrder(in request: String) -> [Int]? {
@@ -847,23 +851,12 @@ public struct FastPathPlanner: Sendable {
     }
 
     private static func videoTimeMilliseconds(in request: String) -> Int64? {
-        guard let value = firstCapture(#"(?i)\b(?:at|around)\s+(\d+(?:\.\d+)?)\s*(?:s|sec|seconds?)\b"#, in: request)?.first,
-              let seconds = Double(value), (0...86_400).contains(seconds) else { return nil }
-        return Int64((seconds * 1_000).rounded())
+        SemanticValueParser.videoTime(in: request)
     }
 
     private static func videoTrimRange(in request: String) -> (Int64, Int64)? {
-        if let values = firstCapture(#"(?i)\bfrom\s+(\d+(?:\.\d+)?)\s*(?:s|sec|seconds?)\s+to\s+(\d+(?:\.\d+)?)\s*(?:s|sec|seconds?)"#, in: request),
-           values.count == 2, let start = Double(values[0]), let end = Double(values[1]),
-           start >= 0, end > start, end <= 86_400 {
-            return (Int64((start * 1_000).rounded()), Int64(((end - start) * 1_000).rounded()))
-        }
-        if let values = firstCapture(#"(?i)\bstart(?:ing)?\s+(?:at\s+)?(\d+(?:\.\d+)?)\s*(?:s|sec|seconds?)\s+for\s+(\d+(?:\.\d+)?)\s*(?:s|sec|seconds?)"#, in: request),
-           values.count == 2, let start = Double(values[0]), let duration = Double(values[1]),
-           start >= 0, duration > 0, start + duration <= 86_400 {
-            return (Int64((start * 1_000).rounded()), Int64((duration * 1_000).rounded()))
-        }
-        return nil
+        guard let value = SemanticValueParser.videoRange(in: request) else { return nil }
+        return (value.startMilliseconds, value.durationMilliseconds)
     }
 
     private static func folderName(in request: String) -> String? {

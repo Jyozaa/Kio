@@ -81,7 +81,7 @@ public struct ToolExecutor: Sendable {
                   case .imageResize(let width) = step.arguments, (1...20_000).contains(width) else {
                 throw KioFailure.invalidInput("Choose 1 to 32 images and a width from 1 to 20,000 pixels.")
             }
-            return try inputs.map { try resizeImage($0, width: width) }
+            return try performAtomicBatch(inputs) { try resizeImage($0, width: width) }
         case .convertImage:
             guard let input = inputs.first, input.kind == .image,
                   case .imageConvert(let format) = step.arguments else {
@@ -93,7 +93,7 @@ public struct ToolExecutor: Sendable {
                   case .imageConvert(let format) = step.arguments else {
                 throw KioFailure.invalidInput("Choose 1 to 32 images and a supported output format.")
             }
-            return try inputs.map { try convertImage($0, format: format) }
+            return try performAtomicBatch(inputs) { try convertImage($0, format: format) }
         case .compareImages:
             guard inputs.count == 2, inputs.allSatisfy({ $0.kind == .image }) else { throw KioFailure.invalidInput("Choose two images to compare.") }
             return [try compareImages(inputs)]
@@ -107,11 +107,9 @@ public struct ToolExecutor: Sendable {
             guard (1...12).contains(inputs.count), inputs.allSatisfy({ $0.kind == .image }) else {
                 throw KioFailure.invalidInput("Choose 1 to 12 images for batch background removal.")
             }
-            var outputs: [ArtifactRef] = []
-            for input in inputs { try Task.checkCancellation(); outputs.append(try removeImageBackground(input)) }
-            return outputs
+            return try performAtomicBatch(inputs) { try removeImageBackground($0) }
         case .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
-             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
             return try await ReelWorkflow.execute(step.operation, inputs: inputs, arguments: step.arguments)
         case .rotateImage:
             guard inputs.count == 1, let input = inputs.first, input.kind == .image,
@@ -213,8 +211,10 @@ public struct ToolExecutor: Sendable {
         case .extractAudio:
             guard let input = inputs.first, input.kind == .video else { throw KioFailure.invalidInput("Add a video to extract its audio.") }
             return [try await extractAudio(input)]
-        case .transcribeAudio, .generateSubtitles, .convertAudio:
+        case .transcribeAudio, .generateSubtitles:
             return try await EchoWorkflow.execute(step.operation, inputs: inputs)
+        case .convertAudio:
+            return try await EchoWorkflow.execute(step.operation, inputs: inputs, arguments: step.arguments)
         case .inspectMedia:
             guard inputs.count == 1, let input = inputs.first, input.kind == .video else { throw KioFailure.invalidInput("Choose one video to inspect.") }
             return [try await inspectMedia(input)]
@@ -413,6 +413,7 @@ public struct ToolExecutor: Sendable {
         defer { try? FileManager.default.removeItem(at: temporary) }
         let combined = PDFDocument()
         var totalPages = 0
+        var firstFrameOnly = false
 
         for input in inputs {
             try Task.checkCancellation()
@@ -433,12 +434,13 @@ public struct ToolExecutor: Sendable {
             case .image:
                 guard input.sizeBytes > 0, input.sizeBytes <= 100 * 1_024 * 1_024,
                       let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                      let image = try? orientedImage(source, maximumPixel: 16_000),
                       image.width <= 16_000, image.height <= 16_000,
                       Int64(image.width) * Int64(image.height) <= 120_000_000,
                       let page = PDFPage(image: NSImage(cgImage: image, size: .zero)) else {
                     throw KioFailure.invalidInput("\(input.displayName) could not be opened safely as a still image.")
                 }
+                firstFrameOnly = firstFrameOnly || CGImageSourceGetCount(source) > 1
                 combined.insert(page, at: combined.pageCount)
                 totalPages += 1
             default:
@@ -453,8 +455,10 @@ public struct ToolExecutor: Sendable {
         let outputSize = ((try? temporary.resourceValues(forKeys: [.fileSizeKey]))?.fileSize) ?? 0
         guard outputSize > 0 else { throw KioFailure.verification("The combined PDF is empty.") }
         try OutputLocation.commit(temporary, to: output)
-        return try ArtifactRef.inspect(output, parentID: inputs.first?.id)
-            .withVerificationNote("PDF pages and images were kept in the order they were selected.")
+        let note = firstFrameOnly
+            ? "PDF pages and images were kept in the order selected. Animated image inputs contribute their first frame only."
+            : "PDF pages and images were kept in the order they were selected."
+        return try ArtifactRef.inspect(output, parentID: inputs.first?.id).withVerificationNote(note)
     }
 
     private func removePDFPages(_ input: ArtifactRef, indices: [Int]) throws -> ArtifactRef {
@@ -640,7 +644,8 @@ public struct ToolExecutor: Sendable {
             guard let page = document.page(at: index) else { throw KioFailure.processing("PDF page \(index + 1) could not be read.") }
             let bounds = page.bounds(for: .mediaBox)
             guard bounds.width > 0, bounds.height > 0 else { continue }
-            let scale = min(1, 2_400 / max(bounds.width, bounds.height))
+            let maxDimension = max(bounds.width, bounds.height)
+            let scale = min(4, 2_400 / maxDimension)
             let thumbnail = page.thumbnail(of: CGSize(width: max(1, bounds.width * scale), height: max(1, bounds.height * scale)), for: .mediaBox)
             var proposed = CGRect(origin: .zero, size: thumbnail.size)
             guard let image = thumbnail.cgImage(forProposedRect: &proposed, context: nil, hints: nil) else {
@@ -822,12 +827,14 @@ public struct ToolExecutor: Sendable {
         let temporary = OutputLocation.temporaryURL(beside: output)
         defer { try? FileManager.default.removeItem(at: temporary) }
         let document = PDFDocument()
+        var firstFrameOnly = false
         for input in inputs {
             guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                  let image = try? orientedImage(source, maximumPixel: 20_000),
                   let page = PDFPage(image: NSImage(cgImage: image, size: .zero)) else {
                 throw KioFailure.invalidInput("\(input.displayName) could not be opened as an image.")
             }
+            firstFrameOnly = firstFrameOnly || CGImageSourceGetCount(source) > 1
             document.insert(page, at: document.pageCount)
         }
         guard document.pageCount == inputs.count, document.write(to: temporary),
@@ -835,12 +842,12 @@ public struct ToolExecutor: Sendable {
             throw KioFailure.verification("The image PDF could not be verified.")
         }
         try OutputLocation.commit(temporary, to: output)
-        return try ArtifactRef.inspect(output, parentID: inputs.first?.id)
+        let note = firstFrameOnly ? "Animated image inputs contribute their first frame only. The original images remain unchanged." : nil
+        return try ArtifactRef.inspect(output, parentID: inputs.first?.id).withVerificationNote(note)
     }
 
     private func resizeImage(_ input: ArtifactRef, width: Int) throws -> ArtifactRef {
-        guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KioFailure.invalidInput("This image could not be opened.") }
+        guard let image = try? decodedStaticImage(input, maximumPixel: 20_000) else { throw KioFailure.invalidInput("This image could not be opened as a static image.") }
         let height = max(1, Int((Double(image.height) * Double(width) / Double(image.width)).rounded()))
         let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName) + "-Resized", fileExtension: "png")
         let temporary = OutputLocation.temporaryURL(beside: output)
@@ -963,11 +970,12 @@ public struct ToolExecutor: Sendable {
 
     private func convertImage(_ input: ArtifactRef, format: String) throws -> ArtifactRef {
         guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KioFailure.invalidInput("This image could not be opened.") }
-        let normalized = format.lowercased() == "jpg" ? "jpeg" : format.lowercased()
+              let image = try? orientedImage(source, maximumPixel: 20_000) else { throw KioFailure.invalidInput("This image could not be opened.") }
+        let requestedFormat = format.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        let normalized = requestedFormat == "jpg" || requestedFormat == "jpeg" ? "jpeg" : requestedFormat
         let (uti, ext): (String, String) = switch normalized {
         case "png": (UTType.png.identifier, "png")
-        case "jpeg": (UTType.jpeg.identifier, "jpg")
+        case "jpeg": (UTType.jpeg.identifier, requestedFormat == "jpeg" ? "jpeg" : "jpg")
         case "heic", "heif": (UTType.heic.identifier, "heic")
         case "tiff", "tif": (UTType.tiff.identifier, "tiff")
         case "webp": ("org.webmproject.webp", "webp")
@@ -986,8 +994,14 @@ public struct ToolExecutor: Sendable {
         CGImageDestinationAddImage(destination, outputImage, properties as CFDictionary)
         guard CGImageDestinationFinalize(destination),
               let check = CGImageSourceCreateWithURL(temporary as CFURL, nil),
-              CGImageSourceGetCount(check) == 1,
-              CGImageSourceGetType(check) as String? == uti else { throw KioFailure.verification("The converted image's encoded format did not match its file extension.") }
+                  CGImageSourceGetCount(check) == 1,
+              CGImageSourceGetType(check) as String? == uti,
+              let verifiedImage = CGImageSourceCreateThumbnailAtIndex(check, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 20_000
+              ] as CFDictionary), verifiedImage.width > 0, verifiedImage.height > 0,
+              output.pathExtension.lowercased() == ext else { throw KioFailure.verification("The converted image's encoded format, extension, or dimensions could not be verified.") }
         try OutputLocation.commit(temporary, to: output)
         let animatedInput = CGImageSourceGetCount(source) > 1
         let note = animatedInput ? "Converted the first frame only; this operation does not preserve animation. The original remains unchanged." : nil
@@ -1029,7 +1043,7 @@ public struct ToolExecutor: Sendable {
     private func rotateImage(_ input: ArtifactRef, degrees: Int) throws -> ArtifactRef {
         guard [90, 180, 270].contains(degrees),
               let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+              let image = try? orientedImage(source, maximumPixel: 20_000) else {
             throw KioFailure.invalidInput("This image couldn't be opened for rotation.")
         }
         let swapsAxes = degrees == 90 || degrees == 270
@@ -1062,7 +1076,7 @@ public struct ToolExecutor: Sendable {
 
     private func inspectImage(_ input: ArtifactRef) throws -> ArtifactRef {
         guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KioFailure.invalidInput("This image could not be opened.") }
+              let image = try? orientedImage(source, maximumPixel: 20_000) else { throw KioFailure.invalidInput("This image could not be opened.") }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
         let format = CGImageSourceGetType(source) as String? ?? input.fileURL.pathExtension.uppercased()
         let metadataKeys = properties.keys.map { String(describing: $0) }.sorted()
@@ -1240,6 +1254,16 @@ public struct ToolExecutor: Sendable {
 
     private func decodedStaticImage(_ input: ArtifactRef, maximumPixel: Int) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(input.fileURL as CFURL, nil), CGImageSourceGetCount(source) == 1,
+              let image = try? orientedImage(source, maximumPixel: maximumPixel) else {
+            throw KioFailure.unsupported("Choose one readable static image no larger than 20,000 pixels per side and 150 megapixels.")
+        }
+        return image
+    }
+
+    /// All source image decoding goes through ImageIO's orientation transform so EXIF
+    /// rotation is applied once and no output depends on raw sensor dimensions.
+    private func orientedImage(_ source: CGImageSource, maximumPixel: Int) throws -> CGImage {
+        guard maximumPixel > 0,
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Int,
               let height = properties[kCGImagePropertyPixelHeight] as? Int,
@@ -1249,8 +1273,8 @@ public struct ToolExecutor: Sendable {
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: maximumPixel
-              ] as CFDictionary) else {
-            throw KioFailure.unsupported("Choose one readable static image no larger than 20,000 pixels per side and 150 megapixels.")
+              ] as CFDictionary), image.width > 0, image.height > 0 else {
+            throw KioFailure.invalidInput("This image is unreadable or exceeds the 20,000 pixel/150 megapixel safety bound.")
         }
         return image
     }
@@ -1982,6 +2006,22 @@ public struct ToolExecutor: Sendable {
         }
         try OutputLocation.commit(temporary, to: output)
         return try ArtifactRef.inspect(output, parentID: input.id)
+    }
+
+    private func performAtomicBatch(_ inputs: [ArtifactRef], operation: (ArtifactRef) throws -> ArtifactRef) throws -> [ArtifactRef] {
+        var completed: [ArtifactRef] = []
+        do {
+            for input in inputs {
+                try Task.checkCancellation()
+                completed.append(try operation(input))
+            }
+            return completed
+        } catch {
+            for output in completed where output.role == .userResult {
+                try? FileManager.default.removeItem(at: output.fileURL)
+            }
+            throw error
+        }
     }
 
     private static func base(_ name: String) -> String { URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent }

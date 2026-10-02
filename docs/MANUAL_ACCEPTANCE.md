@@ -401,3 +401,97 @@ If a prompt repeats unexpectedly, record the exact prompt text, macOS version, K
 ## Optional phone roster check
 
 If you use the already-paired PWA, reload it manually and confirm Reel and Cue appear in the shared roster and their status messages decode. Do not re-pair or deploy as part of this code acceptance pass.
+
+## HARDENING PASS — format routing, media contracts, Reel, Cue, and phone isolation
+
+This section covers the release-hardening changes on top of the repository state inspected for this pass. Codex ran source-level and noninteractive checks only. **Kio was not launched or interactively tested by Codex.** Run these checks with copies of files you can safely use; do not use media you are not authorized to download.
+
+### 1. Install the build you are testing
+
+From Terminal, run:
+
+```sh
+cd /Users/joe/Desktop/Kio
+bash scripts/dev-run.sh
+```
+
+This builds, installs, and launches the canonical local app at `/Users/joe/Applications/Kio.app`. Confirm the version/build shown by Kio (or inspect `CFBundleShortVersionString` and `CFBundleVersion` in that app's `Contents/Info.plist`) before testing. This is a manual user step; Codex did not run it.
+
+### 2. Image destination format and preservation
+
+Use one PNG test image and keep the original available for comparison. Attach it and run these as separate requests:
+
+1. **“convert this png to a heic”** — expect a `.heic` output. Open it in Preview and confirm the image is legible; if Preview's Inspector reports the type, confirm HEIC. The attached PNG must remain unchanged.
+2. **“convert this into jpeg”** — expect JPEG content with the exact `.jpeg` extension.
+3. **“make this a jpg”** — expect JPEG content with the exact `.jpg` extension.
+4. **“convert this PNG to TIFF”** — expect `.tiff` and an image that opens in Preview.
+5. **“give me a webp version”** — if Kio reports success, expect a decodable `.webp`; if the installed ImageIO encoder does not support WebP, expect a clear unsupported-format result instead of a mislabeled file.
+6. Repeat with a JPEG source and ask **“convert JPEG to PNG”**. Expect `.png` content, a readable result, and an unchanged source.
+
+If available, use a JPEG with EXIF orientation (portrait pixels with a rotate-display tag). Convert it, resize it, and create a PDF from it. All three outputs should look upright as the original does. For an animated GIF or other animated input, confirm Kio says only the first frame was used.
+
+### 3. Audio conversion from audio and video
+
+Attach a small video fixture with an audible audio track. For each request below, start from the original video:
+
+1. **“convert this into mp3”**
+2. **“give me the audio as m4a”**
+3. **“turn this video into wav”**
+4. **“extract the audio as flac”**
+
+Each result should have the requested extension, play in a local audio player, and contain audio without a video stream. If Kio reports success, its result details should identify the requested format. Repeat MP3/M4A/WAV/FLAC from a small audio-only source. A source with no audio track should produce a specific no-audio error, not a blank successful file.
+
+### 4. Table direction and safe clarification
+
+Attach a small JSON object/array and ask **“convert this JSON to CSV”**. Expect a `.csv` result. Attach a CSV and ask **“turn this CSV into JSON”**; expect `.json`. Check that headers/values map correctly. Then ask **“don't convert this to PNG”** with an image attached; Kio must ask what you want or leave it unchanged and must not create a PNG conversion.
+
+With a disposable multi-page PDF, ask **“get rid of page seven”** and check that exactly that page is removed from a new copy. Repeat from the original with **“take pages five through twelve”**; expect a separate eight-page PDF in the original order. The source PDF should remain unchanged.
+
+### 5. Reel inspection, picker parity, and supported sources
+
+Use several different public media providers for media you own or are permitted to save. Do not use account-only, DRM-protected, or private material.
+
+For each source:
+
+1. Paste its URL and ask **“download this”**.
+2. Expect an inspection card that shows the media title and provider, with quality/format controls when that source exposes choices. No `.kio-reel-info` item should appear as a normal file result or “Done” output.
+3. Compare the Reel controls in the notch and History/full chat. Both should offer the same source, quality, and format choices.
+4. Select **720p MP4** where available and download. Expect a conflict-safe filename derived from the source title, a playable video, and a verified MP4 result. If 720p or a compatible MP4 stream is unavailable, Kio should state that clearly rather than claim it selected one.
+5. Repeat with **audio MP3**. Expect a playable `.mp3` with no video stream.
+
+Try one source that resolves through a generic extractor and, if available, one that resolves through Streamlink. A provider failure should be reported as unsupported, authentication-required, or DRM-protected when that is what the resolver can establish. Kio should not use browser cookies or bypass access controls.
+
+If you have a permitted direct-media URL that redirects, check that a normal public redirect can complete and a redirect to localhost/private-network space is rejected. For a live stream, stop it after a short sample; expect cancellation to stop the helper and remove incomplete output. Do not leave a live capture running unattended.
+
+### 6. Cue exact alignment regression
+
+In Cue, paste this exact script:
+
+> testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio
+
+Select **Word Tracking** or **Follow My Voice**. Speak one phrase at a time, pausing between phrases:
+
+1. “testing”
+2. “testing testing”
+3. “one”
+4. “two three”
+5. “my”
+6. “my name is joe”
+7. “and today i am testing cue”
+8. “in my productivity app kio”
+
+The first “testing” should select the first occurrence; the repeated phrase should advance to the second; speaking “one” or “my” alone must not teleport to a distant duplicate. Contextual phrases may make larger forward progress. Pause, then continue. Repeated or revised recognition callbacks must not independently confirm a distant jump. The recent-phrase display should show what was recognized even if the highlight holds position. Finally move the pointer away during Cue and confirm the session stays open; finish or press **Done** and confirm it exits and the notch collapses.
+
+### 7. Phone/local input isolation and task messages
+
+Leave an unrelated local file attached in the Mac composer—for example, a private PDF you do not intend to send. From the already-paired phone/PWA, submit a different request with a different test image. On the Mac, inspect the operation/result and confirm it uses only the phone image; the local PDF must not be processed, included, or sent to a provider. Then retry the same phone request after a staging failure if you can reproduce one; it should remain eligible for retry because it was not accepted.
+
+For a local request, confirm the intended composer attachments are used as usual. Drop the same file twice in one batch and confirm Kio does not create duplicate attachments. Submit a workflow/template list request and confirm the user message appears only once.
+
+### 8. Result and failure language
+
+Stop a running task with the Stop control. It should say **“Cancelled”** (or an equally clear cancellation message), clean temporary outputs, and leave the app usable. Trigger an ordinary unsupported format/source failure; it should state the actual issue and must not report **“Operation Stopped”** as if that were a cancellation. For successful image/audio/video/PDF tasks, check that **Done** appears only alongside the verified output.
+
+### Report a failure
+
+Record the exact request, source file type (or media provider/domain only), requested target, Kio version/build, and the visible error/result. For orientation/Cue issues, include a screenshot or short recording that does not reveal private documents, keys, speech content, or account-only media. Do not attach API keys, browser cookies, private URLs, or private recordings.

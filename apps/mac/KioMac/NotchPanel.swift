@@ -209,7 +209,6 @@ final class NotchPanelController: ObservableObject {
         hoverTask = nil
         cancelCollapse()
         cueSessionChanged(false)
-        clearInteractionReasons()
         setExpanded(false, force: true)
     }
 
@@ -321,8 +320,6 @@ private struct NotchContents: View {
     @State private var expansionProgress: CGFloat = 0
     @State private var cueSurface = false
     @State private var cueIsActive = false
-    @State private var selectedReelQuality = "best"
-    @State private var selectedReelFormat = "mp4"
     @State private var cueInitialText = ""
     @FocusState private var commandFocused: Bool
     @Environment(\.openWindow) private var openWindow
@@ -591,33 +588,9 @@ private struct NotchContents: View {
     @ViewBuilder
     private func reelPicker(_ artifact: ArtifactRef) -> some View {
         if let info = try? ReelInspectionStore.readInfo(from: artifact) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(info.title).font(.system(size: 9, weight: .semibold)).lineLimit(1)
-                HStack(spacing: 4) {
-                    Menu {
-                        ForEach(info.qualities, id: \.self) { quality in Button(quality) { selectedReelQuality = quality } }
-                    } label: { Label(selectedReelQuality, systemImage: "arrow.up.arrow.down") }
-                    Menu {
-                        ForEach(info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats, id: \.self) { format in Button(format.uppercased()) { selectedReelFormat = format } }
-                    } label: { Label(selectedReelFormat.uppercased(), systemImage: "film") }
-                    Button("Download") {
-                        command = selectedReelQuality == "best" ? "download this as \(selectedReelFormat)" : "download this in \(selectedReelQuality) \(selectedReelFormat)"
-                        sendCommand()
-                    }
-                    .buttonStyle(.borderedProminent).tint(Color(hex: AgentID.reel.colorHex)).controlSize(.mini)
-                    if info.audioAvailable {
-                        Button("MP3") { command = "download this as MP3"; sendCommand() }
-                            .buttonStyle(.plain).font(.system(size: 8, weight: .semibold))
-                    }
-                }
-                .font(.system(size: 8, weight: .medium))
-                .buttonStyle(.plain)
-            }
-            .foregroundStyle(.white.opacity(0.82))
-            .onAppear {
-                selectedReelQuality = info.qualities.contains("1080p") ? "1080p" : (info.qualities.first ?? "best")
-                selectedReelFormat = info.videoFormats.contains("mp4") ? "mp4" : (info.videoFormats.first ?? "mp4")
-            }
+            ReelDownloadCard(info: info, style: .compact,
+                             onDownloadVideo: { workspace.downloadInspectedReel(quality: $0, format: $1) },
+                             onDownloadAudio: { workspace.downloadInspectedReelAudio(format: $0) })
         } else {
             Text("Reel inspection is unavailable. Add the URL again.").font(.system(size: 9)).foregroundStyle(.orange)
         }
@@ -654,7 +627,9 @@ private struct NotchContents: View {
 
     @ViewBuilder
     private func resultCard(_ artifact: ArtifactRef) -> some View {
-        if artifact.refreshedFromDisk() != nil {
+        if artifact.role == .internalIntermediate {
+            EmptyView()
+        } else if artifact.refreshedFromDisk() != nil {
             HStack(spacing: 4) {
                 Image(systemName: artifact.kind == .pdf ? "doc.richtext" : "doc")
                     .font(.system(size: 8, weight: .medium))
@@ -723,9 +698,17 @@ private struct NotchContents: View {
             HStack(spacing: 5) {
                 ForEach(quickActions) { action in
                     Button(action.title) {
-                        command = action.prompt
-                        if action.requiresUserInput { commandFocused = true }
-                        else { sendCommand() }
+                        if action.requiresUserInput {
+                            command = action.prompt
+                            commandFocused = true
+                        } else if action.operation != nil {
+                            command = ""
+                            commandFocused = false
+                            workspace.submit(action)
+                        } else {
+                            command = action.prompt
+                            sendCommand()
+                        }
                     }
                     .font(.system(size: 8, weight: .medium))
                     .buttonStyle(.plain)
@@ -1127,5 +1110,98 @@ private struct LandingBurst: View {
     private func particleDistance(_ index: Int) -> CGFloat {
         let side: CGFloat = index.isMultiple(of: 2) ? -1 : 1
         return side * CGFloat(16 + index / 2 * 11)
+    }
+}
+
+struct ReelDownloadCard: View {
+    enum Style: Equatable { case compact, expanded }
+    let info: ReelInspectionInfo
+    let style: Style
+    let onDownloadVideo: (String, String) -> Void
+    let onDownloadAudio: (String) -> Void
+    @State private var quality = "best"
+    @State private var videoFormat = "mp4"
+    private var qualities: [String] { info.qualities.isEmpty ? ["best"] : info.qualities }
+    private var videoFormats: [String] { info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats }
+    private let audioFormats = ["mp3", "m4a", "wav", "flac"]
+
+    var body: some View {
+        Group {
+            if style == .compact { compactBody } else { expandedBody }
+        }
+        .foregroundStyle(.white.opacity(0.88))
+        .task(id: info.title) {
+            quality = qualities.contains("1080p") ? "1080p" : (qualities.first ?? "best")
+            videoFormat = videoFormats.contains("mp4") ? "mp4" : (videoFormats.first ?? "mp4")
+        }
+    }
+
+    private var compactBody: some View {
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(info.title).font(.system(size: 9, weight: .semibold)).lineLimit(1)
+                Text(info.source + durationSuffix).font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+            }
+            Spacer(minLength: 2)
+            qualityMenu
+            videoFormatMenu
+            videoButton
+            if info.audioAvailable { audioMenu }
+        }
+        .font(.system(size: 8, weight: .medium))
+        .buttonStyle(.plain)
+    }
+
+    private var expandedBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(info.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                Text(info.source + durationSuffix).font(.system(size: 11)).foregroundStyle(.white.opacity(0.58))
+            }
+            HStack(spacing: 8) {
+                qualityMenu
+                videoFormatMenu
+                videoButton
+                if info.audioAvailable { audioMenu }
+            }
+            .font(.system(size: 11, weight: .medium))
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var qualityMenu: some View {
+        Menu {
+            ForEach(qualities, id: \.self) { value in Button(value) { quality = value } }
+        } label: { Label(quality, systemImage: "arrow.up.arrow.down") }
+    }
+
+    private var videoFormatMenu: some View {
+        Menu {
+            ForEach(videoFormats, id: \.self) { value in Button(value.uppercased()) { videoFormat = value } }
+        } label: { Label(videoFormat.uppercased(), systemImage: "film") }
+    }
+
+    private var videoButton: some View {
+        Button("Download") { onDownloadVideo(quality, videoFormat) }
+            .buttonStyle(.borderedProminent)
+            .tint(Color(hex: AgentID.reel.colorHex))
+    }
+
+    private var audioMenu: some View {
+        Menu {
+            ForEach(audioFormats, id: \.self) { value in
+                Button("Audio · \(value.uppercased())") { onDownloadAudio(value) }
+            }
+        } label: { Label("Audio", systemImage: "waveform") }
+    }
+
+    private var durationSuffix: String {
+        guard let duration = info.durationSeconds, duration.isFinite, duration >= 0 else { return "" }
+        let seconds = Int(duration.rounded())
+        return " · \(seconds / 60):\(String(format: "%02d", seconds % 60))"
     }
 }

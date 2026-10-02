@@ -5,6 +5,14 @@ public enum ArtifactKind: String, Codable, CaseIterable, Sendable {
     case pdf, image, audio, video, text, csv, table, url, patch, folder, other
 }
 
+public enum ArtifactRole: String, Codable, Sendable {
+    case userInput, userResult, internalIntermediate
+}
+
+public enum AudioTargetFormat: String, Codable, CaseIterable, Sendable {
+    case mp3, m4a, wav, flac
+}
+
 public enum AgentID: String, Codable, CaseIterable, Sendable, Identifiable {
     case kio, pip, pixel, zip, echo, clerk, courier, scribe, table, lens, scout, patch, reel, cue
 
@@ -58,8 +66,9 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
     public let createdAt: Date
     public let parentID: UUID?
     public let verificationNote: String?
+    public let role: ArtifactRole
 
-    public init(id: UUID = UUID(), displayName: String, kind: ArtifactKind, fileURL: URL, sizeBytes: Int64, createdAt: Date = .now, parentID: UUID? = nil, verificationNote: String? = nil) {
+    public init(id: UUID = UUID(), displayName: String, kind: ArtifactKind, fileURL: URL, sizeBytes: Int64, createdAt: Date = .now, parentID: UUID? = nil, verificationNote: String? = nil, role: ArtifactRole? = nil) {
         self.id = id
         self.displayName = displayName
         self.kind = kind
@@ -68,6 +77,36 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
         self.createdAt = createdAt
         self.parentID = parentID
         self.verificationNote = verificationNote
+        self.role = role ?? (fileURL.pathExtension.lowercased() == "kio-reel-info" ? .internalIntermediate : (parentID == nil ? .userInput : .userResult))
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, displayName, kind, fileURL, sizeBytes, createdAt, parentID, verificationNote, role }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let fileURL = try values.decode(URL.self, forKey: .fileURL)
+        let parentID = try values.decodeIfPresent(UUID.self, forKey: .parentID)
+        let role = try values.decodeIfPresent(ArtifactRole.self, forKey: .role)
+            ?? (fileURL.pathExtension.lowercased() == "kio-reel-info" ? .internalIntermediate : (parentID == nil ? .userInput : .userResult))
+        self.init(id: try values.decode(UUID.self, forKey: .id),
+                  displayName: try values.decode(String.self, forKey: .displayName),
+                  kind: try values.decode(ArtifactKind.self, forKey: .kind), fileURL: fileURL,
+                  sizeBytes: try values.decode(Int64.self, forKey: .sizeBytes),
+                  createdAt: try values.decode(Date.self, forKey: .createdAt), parentID: parentID,
+                  verificationNote: try values.decodeIfPresent(String.self, forKey: .verificationNote), role: role)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(displayName, forKey: .displayName)
+        try values.encode(kind, forKey: .kind)
+        try values.encode(fileURL, forKey: .fileURL)
+        try values.encode(sizeBytes, forKey: .sizeBytes)
+        try values.encode(createdAt, forKey: .createdAt)
+        try values.encodeIfPresent(parentID, forKey: .parentID)
+        try values.encodeIfPresent(verificationNote, forKey: .verificationNote)
+        try values.encode(role, forKey: .role)
     }
 
     public static func inspect(_ url: URL, parentID: UUID? = nil) throws -> ArtifactRef {
@@ -83,10 +122,11 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
         else if ["patch", "srt", "vtt"].contains(url.pathExtension.lowercased()) { kind = url.pathExtension.lowercased() == "patch" ? .patch : .text }
         else if ["csv", "tsv"].contains(url.pathExtension.lowercased()) { kind = .csv }
         else if ["json", "xlsx"].contains(url.pathExtension.lowercased()) { kind = .table }
-        else if ["txt", "md", "markdown", "kio-reel-info", "swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"].contains(url.pathExtension.lowercased()) { kind = .text }
+        else if ["txt", "md", "markdown", "swift", "py", "js", "jsx", "ts", "tsx", "rs", "go", "java", "c", "h", "cc", "cpp", "cs", "rb", "php", "sh", "html", "css", "xml", "yaml", "yml", "toml", "sql", "kt", "kts", "dart", "vue", "svelte"].contains(url.pathExtension.lowercased()) { kind = .text }
         else if type?.conforms(to: .text) == true { kind = .text }
         else { kind = .other }
-        return ArtifactRef(displayName: url.lastPathComponent, kind: kind, fileURL: url, sizeBytes: Int64(values.fileSize ?? 0), parentID: parentID)
+        let role: ArtifactRole = url.pathExtension.lowercased() == "kio-reel-info" ? .internalIntermediate : (parentID == nil ? .userInput : .userResult)
+        return ArtifactRef(displayName: url.lastPathComponent, kind: kind, fileURL: url, sizeBytes: Int64(values.fileSize ?? 0), parentID: parentID, role: role)
     }
 
     public var isAvailableLocally: Bool {
@@ -99,7 +139,7 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
         guard current.kind == kind else { return nil }
         return ArtifactRef(id: id, displayName: current.displayName, kind: current.kind, fileURL: current.fileURL,
                            sizeBytes: current.sizeBytes, createdAt: createdAt, parentID: parentID,
-                           verificationNote: verificationNote)
+                           verificationNote: verificationNote, role: role)
     }
 
     /// Safe metadata used to construct planner context; the local path is excluded.
@@ -109,7 +149,7 @@ public struct ArtifactRef: Codable, Identifiable, Sendable, Hashable {
 
     public func withVerificationNote(_ note: String?) -> ArtifactRef {
         ArtifactRef(id: id, displayName: displayName, kind: kind, fileURL: fileURL, sizeBytes: sizeBytes,
-                    createdAt: createdAt, parentID: parentID, verificationNote: note)
+                    createdAt: createdAt, parentID: parentID, verificationNote: note, role: role)
     }
 }
 
@@ -118,6 +158,52 @@ public struct PlannerArtifact: Codable, Identifiable, Sendable, Hashable {
     public let name: String
     public let kind: ArtifactKind
     public let sizeBytes: Int64
+}
+
+public enum TaskInputSurface: String, Codable, Sendable {
+    case localComposer, phoneRemote, contextualAction, workflow
+}
+
+public struct ProviderContentConsentScope: Sendable, Hashable {
+    public let taskID: UUID
+    public let providerID: String
+    public let sourceArtifactIDs: [UUID]
+    public let sourceNames: [String]
+
+    public init(taskID: UUID, providerID: String, sourceArtifactIDs: [UUID], sourceNames: [String] = []) {
+        self.taskID = taskID
+        self.providerID = providerID
+        self.sourceArtifactIDs = Array(Set(sourceArtifactIDs)).sorted { $0.uuidString < $1.uuidString }
+        self.sourceNames = Array(Set(sourceNames)).sorted()
+    }
+}
+
+public enum TaskExecutionContext {
+    @TaskLocal public static var contentConsentScope: ProviderContentConsentScope?
+}
+
+@MainActor
+public final class ProviderContentConsentLedger {
+    public static let shared = ProviderContentConsentLedger()
+    private var approvedScopes: Set<ProviderContentConsentScope> = []
+
+    public func contains(_ scope: ProviderContentConsentScope) -> Bool { approvedScopes.contains(scope) }
+    public func approve(_ scope: ProviderContentConsentScope) { approvedScopes.insert(scope) }
+    public func clear(taskID: UUID) { approvedScopes = approvedScopes.filter { $0.taskID != taskID } }
+}
+
+/// Immutable request inputs captured at submission time. Separate remote and local
+/// submissions cannot be merged by later mutations to the shared composer.
+public struct TaskInputSnapshot: Sendable, Equatable {
+    public let request: String
+    public let artifacts: [ArtifactRef]
+    public let surface: TaskInputSurface
+
+    public init(request: String, artifacts: [ArtifactRef], surface: TaskInputSurface) {
+        self.request = request
+        self.artifacts = artifacts
+        self.surface = surface
+    }
 }
 
 public struct ReelInspectionInfo: Codable, Sendable, Equatable {
@@ -176,7 +262,6 @@ public enum ToolOperation: String, Codable, CaseIterable, Sendable {
     case downloadRemoteVideo = "remoteMedia.downloadVideo"
     case downloadRemoteAudio = "remoteMedia.downloadAudio"
     case downloadRemoteLive = "remoteMedia.downloadLive"
-    case downloadRemoteGallery = "remoteMedia.downloadGallery"
     case downloadRemoteSubtitles = "remoteMedia.downloadSubtitles"
     case downloadRemoteThumbnail = "remoteMedia.downloadThumbnail"
     case renameFile = "file.rename"
@@ -250,6 +335,7 @@ public enum ToolArguments: Codable, Sendable, Hashable {
     case none
     case imageResize(width: Int)
     case imageConvert(format: String)
+    case audioConvert(format: AudioTargetFormat)
     case remoteMedia(quality: String?, format: String?)
     case imageRotation(degrees: Int)
     case imageCrop(x: Int, y: Int, width: Int, height: Int)
@@ -304,7 +390,7 @@ public extension ToolOperation {
         case .inspectData, .mergeData, .deduplicateData, .sortData, .filterData, .selectColumns, .renameColumns, .reorderColumns,
              .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX: .table
         case .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
-             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail: .reel
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail: .reel
         }
     }
 }
@@ -373,6 +459,8 @@ public struct TaskDeduplicationLedger: Sendable, Equatable {
         if orderedIDs.count > maximumEntries { orderedIDs.removeFirst(orderedIDs.count - maximumEntries) }
         return true
     }
+
+    public func contains(_ id: String) -> Bool { orderedIDs.contains(id) }
 
     public var entries: [String] { orderedIDs }
 }

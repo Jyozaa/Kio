@@ -18,6 +18,7 @@ public struct CueTextAlignment: Sendable, Equatable {
     public private(set) var generation = 0
     private var pendingLargeJumpPosition: Int?
     private var pendingLargeJumpConfirmations = 0
+    private var pendingLargeJumpEvidence = ""
     private var recentTranscript = ""
 
     public init(script: String) {
@@ -33,6 +34,7 @@ public struct CueTextAlignment: Sendable, Equatable {
                                  policy: CueTrackingPolicy = .accurate) -> Int {
         if let callbackGeneration, callbackGeneration != generation { return confirmedReadPosition }
         guard confidence >= (policy == .accurate ? 0.30 : 0.16), !tokens.isEmpty else { return confirmedReadPosition }
+        recentTranscript = transcript
         let allHeard = Self.words(transcript)
         let heard = Array(allHeard.suffix(18))
         guard !heard.isEmpty else { return confirmedReadPosition }
@@ -50,7 +52,11 @@ public struct CueTextAlignment: Sendable, Equatable {
                     var matched = 0
                     while heardStart + matched < allHeard.count, start + matched < tokens.count,
                           tokens[start + matched].text == allHeard[heardStart + matched] { matched += 1 }
-                    if matched > bestScore { bestScore = matched; bestEnd = start + matched }
+                    let end = start + matched
+                    if matched > bestScore || (matched == bestScore && matched > 0 && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)) {
+                        bestScore = matched
+                        bestEnd = end
+                    }
                 }
             }
             bestMatchScore = bestScore > 0 ? 1 : 0
@@ -67,7 +73,9 @@ public struct CueTextAlignment: Sendable, Equatable {
                         let score = Self.sequenceMatch(scriptSlice, phrase)
                         let exact = zip(scriptSlice, phrase).filter { $0.0 == $0.1 }.count
                         let end = start + length
-                        if score > bestMatchScore || (score == bestMatchScore && end > bestEnd) {
+                        if score > bestMatchScore ||
+                            (score == bestMatchScore && score > 0 &&
+                             (exact > bestScore || (exact == bestScore && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)))) {
                             bestMatchScore = score
                             bestScore = exact
                             bestEnd = end
@@ -81,20 +89,32 @@ public struct CueTextAlignment: Sendable, Equatable {
               policy == .accurate || bestScore >= 1 else { return confirmedReadPosition }
         let target = max(confirmedReadPosition, bestEnd)
         let jump = target - confirmedReadPosition
+        if heard.count == 1 {
+            let weakTokens: Set<String> = ["a", "an", "the", "is", "and", "to", "my", "it", "of", "in", "on", "for"]
+            let maximumLocalAdvance = weakTokens.contains(heard[0]) ? 3 : 4
+            guard jump <= maximumLocalAdvance else { return confirmedReadPosition }
+        }
         let confirmationThreshold = policy == .accurate ? 8 : 12
         let mediumThreshold = 5
         if jump > confirmationThreshold || (policy == .responsive && jump > mediumThreshold && bestMatchScore < 0.76) {
-            if let pendingLargeJumpPosition, abs(pendingLargeJumpPosition - target) <= 3 {
+            let evidenceKey = Self.words(transcript).suffix(18).joined(separator: " ")
+            if let pendingLargeJumpPosition, abs(pendingLargeJumpPosition - target) <= 3,
+               !evidenceKey.isEmpty, evidenceKey != pendingLargeJumpEvidence {
                 pendingLargeJumpConfirmations += 1
                 self.pendingLargeJumpPosition = target
+                pendingLargeJumpEvidence = evidenceKey
             }
-            else { pendingLargeJumpPosition = target; pendingLargeJumpConfirmations = 1 }
+            else if pendingLargeJumpPosition == nil || evidenceKey != pendingLargeJumpEvidence {
+                pendingLargeJumpPosition = target
+                pendingLargeJumpConfirmations = 1
+                pendingLargeJumpEvidence = evidenceKey
+            }
             guard pendingLargeJumpConfirmations >= (policy == .accurate || jump > 12 ? 2 : 1) else { return confirmedReadPosition }
         }
         pendingLargeJumpPosition = nil
         pendingLargeJumpConfirmations = 0
+        pendingLargeJumpEvidence = ""
         confirmedReadPosition = target
-        recentTranscript = transcript
         return target
     }
 
@@ -104,6 +124,7 @@ public struct CueTextAlignment: Sendable, Equatable {
         generation &+= 1
         pendingLargeJumpPosition = nil
         pendingLargeJumpConfirmations = 0
+        pendingLargeJumpEvidence = ""
         recentTranscript = ""
         return confirmedReadPosition
     }
@@ -123,7 +144,8 @@ public struct CueTextAlignment: Sendable, Equatable {
     }
 
     public static func normalize(_ text: String) -> String {
-        text.lowercased().replacingOccurrences(of: "’", with: "'")
+        let value = text.lowercased().replacingOccurrences(of: "’", with: "'")
+        return numberWord(value) ?? value
     }
 
     public static func words(_ text: String) -> [String] {
@@ -133,6 +155,14 @@ public struct CueTextAlignment: Sendable, Equatable {
         return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
             .map { normalize(ns.substring(with: $0.range)) }
             .filter { !fillers.contains($0) }
+    }
+
+    private static func numberWord(_ value: String) -> String? {
+        let words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                     "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"]
+        if let number = Int(value), (0...20).contains(number) { return words[number] }
+        if let index = words.firstIndex(of: value) { return words[index] }
+        return nil
     }
 
     private static func sequenceMatch(_ lhs: [String], _ rhs: [String]) -> Double {

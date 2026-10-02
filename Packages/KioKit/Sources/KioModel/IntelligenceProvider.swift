@@ -238,12 +238,10 @@ public final class IntelligenceProviderClient: @unchecked Sendable {
     }
 
     static func metadataPlanningPrompt(request: String, artifacts: [ArtifactRef]) -> String {
-        let operationList = ToolOperation.allCases.map(\.rawValue).joined(separator: ", ")
         let artifactList = artifacts.enumerated().map { "\($0.offset): \($0.element.displayName) [\($0.element.kind.rawValue), \($0.element.sizeBytes) bytes]" }.joined(separator: "\n")
         return """
         Create one JSON object with {"steps":[{"operation":"registered-name","inputIndexes":[0],"arguments":{}}],"clarification":null}.
-        Only registered operations are allowed: \(operationList)
-        Each step has exactly one inputIndexes or previousStepIndex. Use no paths, commands, flags, or new operation names.
+        \(ModelPlanContract.instructions)
         If the request needs file contents or details not given, return an empty steps array and one clarification.
         Request: \(request)
         Available inputs (metadata only):\n\(artifactList)

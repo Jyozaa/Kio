@@ -4,6 +4,75 @@ import KioCore
 /// Converts model output into registered, typed tool steps. Model-provided names and
 /// indexes are treated as untrusted data and are rejected unless they map to known inputs.
 public enum ModelPlanDecoder {
+    public static func validationErrors(_ response: String, request: String, artifacts: [ArtifactRef]) -> [String] {
+        if decode(response, request: request, artifacts: artifacts) != nil { return [] }
+        guard response.utf8.count <= 32_000, let data = response.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ["response: expected a JSON object no larger than 32 KB"]
+        }
+        guard let rawSteps = object["steps"] as? [[String: Any]], rawSteps.count <= 8 else {
+            return ["steps: expected an array containing no more than 8 steps"]
+        }
+        var errors: [String] = []
+        var priorKinds: [[ArtifactKind]] = []
+        var priorOperations: [ToolOperation] = []
+        for (index, item) in rawSteps.enumerated() {
+            let prefix = "steps[\(index)]"
+            guard let name = item["operation"] as? String, let operation = ToolOperation(rawValue: name) else {
+                errors.append("\(prefix).operation: not a registered operation")
+                continue
+            }
+            if operation == .moveFiles, !hasExplicitMoveIntent(request) { errors.append("\(prefix).operation: move requires explicit user intent") }
+            if operation == .copyFiles, !hasExplicitCopyIntent(request) { errors.append("\(prefix).operation: copy requires explicit user intent") }
+            let indexes = item["inputIndexes"] as? [Int]
+            let previous = item["previousStepIndex"] as? Int
+            let kinds: [ArtifactKind]
+            let selectedArtifacts: [ArtifactRef]
+            switch (indexes, previous) {
+            case (.some(let values), .none):
+                guard !values.isEmpty, values.count <= 32, Set(values).count == values.count,
+                      values.allSatisfy(artifacts.indices.contains) else {
+                    errors.append("\(prefix).inputIndexes: indices must refer to distinct selected files")
+                    continue
+                }
+                selectedArtifacts = values.map { artifacts[$0] }
+                kinds = selectedArtifacts.map(\.kind)
+                if !subtypeAccepts(operation, artifacts: selectedArtifacts) {
+                    errors.append("\(prefix).inputIndexes: selected file subtype is not supported by \(operation.rawValue)")
+                }
+            case (.none, .some(let value)) where (0..<index).contains(value) && priorKinds.indices.contains(value):
+                kinds = priorKinds[value]
+                selectedArtifacts = []
+                if priorOperations[value] == .inspectRemoteMedia,
+                   ![.downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+                     .downloadRemoteSubtitles, .downloadRemoteThumbnail].contains(operation) {
+                    errors.append("\(prefix).previousStepIndex: Reel inspection state is only valid for a typed Reel download")
+                }
+            default:
+                errors.append("\(prefix).inputIndexes/previousStepIndex: provide exactly one valid source")
+                continue
+            }
+            guard accepts(operation, kinds: kinds) else {
+                errors.append("\(prefix).inputIndexes: input kind is incompatible with \(operation.rawValue)")
+                continue
+            }
+            if operation == .researchOpenSources,
+               selectedArtifacts.first?.fileURL.pathExtension.lowercased() != "kio-query" {
+                errors.append("\(prefix).inputIndexes: research requires an internal .kio-query input")
+            }
+            let argumentData = (try? JSONSerialization.data(withJSONObject: item["arguments"] ?? [:])) ?? Data("{}".utf8)
+            let wireArguments = try? JSONDecoder().decode(WireArguments.self, from: argumentData)
+            guard let typed = typedArguments(wireArguments, for: operation, request: request) else {
+                errors.append("\(prefix).arguments: required typed parameters are missing or invalid for \(operation.rawValue)")
+                continue
+            }
+            _ = typed
+            priorKinds.append(resultKinds(for: operation, inputKinds: kinds))
+            priorOperations.append(operation)
+        }
+        return Array(errors.prefix(8))
+    }
+
     public static func decode(_ response: String, request: String, artifacts: [ArtifactRef]) -> TaskPlan? {
         guard response.utf8.count <= 32_000, let data = response.data(using: .utf8) else { return nil }
         let wire: WirePlan
@@ -38,6 +107,17 @@ public enum ModelPlanDecoder {
             default:
                 return nil
             }
+            if case .artifacts(let ids) = source {
+                let selected = ids.compactMap { id in artifacts.first(where: { $0.id == id }) }
+                guard selected.count == ids.count, subtypeAccepts(operation, artifacts: selected) else { return nil }
+            } else if [.importXLSX, .formatJSON, .jsonToCSV, .csvToJSON].contains(operation) {
+                return nil
+            }
+            if case .previousStep(let previousID) = source,
+               let previousIndex = steps.firstIndex(where: { $0.id == previousID }),
+               steps[previousIndex].operation == .inspectRemoteMedia,
+               ![.downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+                 .downloadRemoteSubtitles, .downloadRemoteThumbnail].contains(operation) { return nil }
             if operation == .researchOpenSources {
                 guard case .artifacts(let ids) = source, ids.count == 1,
                       artifacts.first(where: { $0.id == ids[0] })?.fileURL.pathExtension.lowercased() == "kio-query" else { return nil }
@@ -82,7 +162,8 @@ public enum ModelPlanDecoder {
         case .batchRename, .createArchive: !kinds.isEmpty
         case .inspectArchive, .extractZip: kinds.count == 1 && kinds[0] == .other
         case .extractAudio, .inspectMedia, .thumbnailVideo, .trimVideo, .extractMediaClip, .resizeVideo, .transcodeVideo, .compressVideo: kinds.count == 1 && kinds[0] == .video
-        case .transcribeAudio, .generateSubtitles, .convertAudio: kinds.count == 1 && kinds[0] == .audio
+        case .transcribeAudio, .generateSubtitles: kinds.count == 1 && kinds[0] == .audio
+        case .convertAudio: kinds.count == 1 && (kinds[0] == .audio || kinds[0] == .video)
         case .summarizeText, .rewriteText, .proofreadText, .translateText, .keyPointsText, .actionItemsText, .toMarkdownText, .explainText:
             kinds.count == 1 && kinds[0] == .text
         case .compareText: kinds.count == 2 && kinds.allSatisfy { $0 == .text }
@@ -99,8 +180,8 @@ public enum ModelPlanDecoder {
         case .extractWebLinks, .researchOpenSources: kinds.count == 1 && kinds[0] == .url
         case .inspectRemoteMedia: kinds.count == 1 && kinds[0] == .url
         case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
-             .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
-            kinds.count == 1 && (kinds[0] == .url || kinds[0] == .text)
+             .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            kinds.count == 1 && (kinds[0] == .url || kinds[0] == .other)
         case .ocrImage, .extractStructuredText: (1...8).contains(kinds.count) && kinds.allSatisfy { $0 == .image }
         case .extractImageTable, .extractReceipt: kinds.count == 1 && kinds[0] == .image
         case .explainCode, .proposePatch: kinds.count == 1 && (kinds[0] == .text || kinds[0] == .patch)
@@ -110,12 +191,38 @@ public enum ModelPlanDecoder {
 
     private static func isTable(_ kind: ArtifactKind) -> Bool { kind == .csv || kind == .table }
 
+    private static func subtypeAccepts(_ operation: ToolOperation, artifacts: [ArtifactRef]) -> Bool {
+        if artifacts.contains(where: { $0.role == .internalIntermediate }) {
+            guard artifacts.count == 1, let artifact = artifacts.first,
+                  [.downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
+                   .downloadRemoteSubtitles, .downloadRemoteThumbnail].contains(operation) else { return false }
+            return artifact.kind == .other && artifact.fileURL.pathExtension.lowercased() == "kio-reel-info"
+        }
+        guard artifacts.count == 1 else { return true }
+        let artifact = artifacts[0]
+        let ext = artifact.fileURL.pathExtension.lowercased()
+        switch operation {
+        case .importXLSX: return artifact.kind == .table && ext == "xlsx"
+        case .formatJSON, .jsonToCSV: return artifact.kind == .table && ext == "json"
+        case .csvToJSON: return artifact.kind == .csv && ["csv", "tsv"].contains(ext)
+        case .inspectArchive, .extractZip: return artifact.kind == .other && ext == "zip"
+        case .inspectRemoteMedia: return artifact.kind == .url && ext == "kio-url"
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive, .downloadRemoteSubtitles, .downloadRemoteThumbnail:
+            return (artifact.kind == .url && ext == "kio-url")
+                || (artifact.kind == .other && ext == "kio-reel-info" && artifact.role == .internalIntermediate)
+        default: return true
+        }
+    }
+
     private static func typedArguments(_ wire: WireArguments?, for operation: ToolOperation, request: String) -> ToolArguments? {
         switch operation {
         case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
              .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
-             .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads, .convertAudio:
+             .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
             return ToolArguments.none
+        case .convertAudio:
+            guard let format = wire?.format.flatMap(AudioTargetFormat.init(rawValue:)) else { return nil }
+            return .audioConvert(format: format)
         case .findRecent, .findByName:
             return .textPrompt(request)
         case .inspectData, .mergeData, .deduplicateData, .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX:
@@ -167,13 +274,20 @@ public enum ModelPlanDecoder {
             return .imageResize(width: width)
         case .convertImage, .batchConvertImages:
             guard let format = wire?.format?.lowercased(), ["png", "jpg", "jpeg", "heic", "heif", "tiff", "tif", "webp"].contains(format) else { return nil }
-            return .imageConvert(format: format == "jpg" ? "jpeg" : format)
-        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive, .downloadRemoteGallery,
+            return .imageConvert(format: format)
+        case .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
              .downloadRemoteSubtitles, .downloadRemoteThumbnail:
             let quality = wire?.quality?.lowercased()
             let format = wire?.format?.lowercased()
+            let allowedFormats: Set<String> = switch operation {
+            case .downloadRemoteAudio: ["mp3", "m4a", "wav", "flac"]
+            case .downloadRemoteVideo, .downloadRemoteLive: ["mp4", "webm", "mkv", "mov"]
+            case .downloadRemoteSubtitles, .downloadRemoteThumbnail: []
+            default: []
+            }
             guard quality.map({ ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains($0) }) ?? true,
-                  format.map({ ["mp4", "webm", "mkv", "mov", "mp3", "m4a", "wav", "flac"].contains($0) }) ?? true else { return nil }
+                  format.map({ allowedFormats.contains($0) }) ?? true,
+                  (![.downloadRemoteSubtitles, .downloadRemoteThumbnail].contains(operation) || format == nil) else { return nil }
             return .remoteMedia(quality: quality, format: format)
         case .rotateImage:
             guard let degrees = wire?.degrees, [90, 180, 270].contains(degrees) else { return nil }
@@ -241,10 +355,9 @@ public enum ModelPlanDecoder {
         case .jsonToCSV: [.csv]
         case .fetchURL: Array(repeating: .text, count: inputKinds.count)
         case .extractWebLinks, .researchOpenSources: [.text]
-        case .inspectRemoteMedia: [.text]
+        case .inspectRemoteMedia: [.other]
         case .downloadRemoteVideo, .downloadRemoteLive: [.video]
         case .downloadRemoteAudio: [.audio]
-        case .downloadRemoteGallery: Array(repeating: .image, count: max(1, inputKinds.count))
         case .downloadRemoteSubtitles: [.text]
         case .downloadRemoteThumbnail: [.image]
         case .ocrImage, .extractStructuredText: Array(repeating: .text, count: inputKinds.count)

@@ -34,6 +34,11 @@ struct KioChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        if let info = workspace.activeReelInspection {
+                            ReelDownloadCard(info: info, style: .expanded,
+                                             onDownloadVideo: { workspace.downloadInspectedReel(quality: $0, format: $1) },
+                                             onDownloadAudio: { workspace.downloadInspectedReelAudio(format: $0) })
+                        }
                         ForEach(filteredConversation) { item in
                             ConversationRow(item: item)
                                 .id(item.id)
@@ -110,7 +115,7 @@ struct KioChatView: View {
         } message: { Text("Choose a name up to 60 characters.") }
         .confirmationDialog("Choose an action for \(agentDropAgent.name)", isPresented: $showAgentDropActions, titleVisibility: .visible) {
             ForEach(agentDropActions) { action in
-                Button(action.title) { workspace.submit(action.prompt) }
+                Button(action.title) { workspace.submit(action) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -237,9 +242,17 @@ struct KioChatView: View {
                     HStack(spacing: 7) {
                         ForEach(quickActions) { action in
                             Button(action.title) {
-                                message = action.prompt
-                                if action.requiresUserInput { messageFocused = true }
-                                else { send() }
+                                if action.requiresUserInput {
+                                    message = action.prompt
+                                    messageFocused = true
+                                } else if action.operation != nil {
+                                    message = ""
+                                    messageFocused = false
+                                    workspace.submit(action)
+                                } else {
+                                    message = action.prompt
+                                    send()
+                                }
                             }
                                 .font(.system(size: 10, weight: .medium))
                                 .buttonStyle(.plain)
@@ -526,7 +539,8 @@ private struct ConversationRow: View {
                     Text(item.speaker).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.primary.opacity(0.63))
                     Text(item.message).font(.system(size: 14)).foregroundStyle(Color.primary.opacity(0.88)).textSelection(.enabled)
                     if let artifact = item.artifact {
-                        if artifact.refreshedFromDisk() != nil { ArtifactCard(artifact: artifact) }
+                        if artifact.role == .internalIntermediate { EmptyView() }
+                        else if artifact.refreshedFromDisk() != nil { ArtifactCard(artifact: artifact) }
                         else {
                             Label("Historical result · \(artifact.displayName) is no longer available", systemImage: "doc.questionmark")
                                 .font(.system(size: 11)).foregroundStyle(Color.secondary)

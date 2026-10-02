@@ -6,21 +6,16 @@ import os
 import ZIPFoundation
 
 public enum ReelBackend: String, Sendable, Equatable {
-    case directHTTP, ytDlp, streamlink, galleryDL
+    case directHTTP, ytDlp, streamlink
 }
 
 public enum ReelMediaRouter {
     public static func backend(for url: URL, helperDirectory: URL = ReelHelperManager.directory, availableHelpers: Set<String>? = nil) -> ReelBackend {
         let ext = url.pathExtension.lowercased()
         if ["mp4", "m4v", "mov", "webm", "mp3", "m4a", "wav", "flac", "jpg", "jpeg", "png", "webp", "heic"].contains(ext) { return .directHTTP }
-        if ["m3u8", "mpd"].contains(ext) || (url.host ?? "").localizedCaseInsensitiveContains("twitch") {
+        if ["m3u8", "mpd"].contains(ext) {
             let prepared = availableHelpers?.contains("streamlink") ?? ReelHelperManager.isPrepared("streamlink")
             return prepared ? .streamlink : .ytDlp
-        }
-        if ["gallery", "album"].contains(where: url.path.lowercased().contains) || (url.host ?? "").contains("imgur.com") {
-            let prepared = availableHelpers?.contains("gallery-dl")
-                ?? FileManager.default.isExecutableFile(atPath: helperDirectory.appendingPathComponent("gallery-dl").path)
-            return prepared ? .galleryDL : .ytDlp
         }
         return .ytDlp
     }
@@ -43,8 +38,168 @@ public enum ReelMediaRouter {
     }
 
     public static func isPreparedBinary(_ name: String, in directory: URL) -> Bool {
-        guard ["yt-dlp", "gallery-dl", "ffmpeg", "ffprobe"].contains(name) else { return false }
+        guard ["yt-dlp", "ffmpeg", "ffprobe"].contains(name) else { return false }
         return FileManager.default.isExecutableFile(atPath: directory.appendingPathComponent(name).path)
+    }
+}
+
+public enum ReelRedirectPolicy {
+    public static let maximumRedirects = 5
+
+    public static func validateDestination(_ destination: URL?, redirectsFollowed: Int) throws -> URL {
+        guard redirectsFollowed < maximumRedirects, let destination,
+              ScoutURLPolicy.isHTTPURL(destination) else {
+            throw KioFailure.invalidInput("The media URL redirected to an unsafe destination.")
+        }
+        try ScoutURLPolicy.validatePublicHost(destination.host ?? "")
+        return destination
+    }
+}
+
+private final class ReelDownloadTaskHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDownloadTask?
+    private var cancelled = false
+
+    func install(_ task: URLSessionDownloadTask) {
+        lock.lock(); self.task = task; let shouldCancel = cancelled; lock.unlock()
+        if shouldCancel { task.cancel() }
+    }
+
+    func cancel() {
+        lock.lock(); cancelled = true; let task = task; lock.unlock()
+        task?.cancel()
+    }
+}
+
+/// Download delegate validates each redirect before following it and enforces the
+/// task byte cap while URLSession is still receiving data.
+private final class BoundedReelDownloader: NSObject, URLSessionDownloadDelegate, URLSessionTaskDelegate, @unchecked Sendable {
+    private var continuation: CheckedContinuation<(URL, HTTPURLResponse), Error>?
+    private var session: URLSession?
+    private var response: HTTPURLResponse?
+    private var downloadedURL: URL?
+    private var terminalError: Error?
+    private var redirectCount = 0
+    private let maximumBytes: Int64
+    private let handle = ReelDownloadTaskHandle()
+
+    init(maximumBytes: Int64) { self.maximumBytes = maximumBytes }
+
+    static func download(_ url: URL, maximumBytes: Int64) async throws -> (URL, HTTPURLResponse) {
+        let downloader = BoundedReelDownloader(maximumBytes: maximumBytes)
+        return try await withTaskCancellationHandler {
+            try await downloader.start(url)
+        } onCancel: {
+            downloader.handle.cancel()
+        }
+    }
+
+    private func start(_ url: URL) async throws -> (URL, HTTPURLResponse) {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpCookieStorage = nil
+            configuration.httpShouldSetCookies = false
+            configuration.urlCache = nil
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            configuration.timeoutIntervalForRequest = 60
+            configuration.timeoutIntervalForResource = 4 * 60 * 60
+            let queue = OperationQueue()
+            queue.maxConcurrentOperationCount = 1
+            session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
+            let task = session!.downloadTask(with: URLRequest(url: url))
+            handle.install(task)
+            task.resume()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        do {
+            let safe = try ReelRedirectPolicy.validateDestination(request.url, redirectsFollowed: redirectCount)
+            redirectCount += 1
+            var validated = request
+            validated.url = safe
+            completionHandler(validated)
+        } catch {
+            terminalError = error
+            completionHandler(nil)
+            task.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if response == nil, let http = downloadTask.response as? HTTPURLResponse {
+            guard (200..<300).contains(http.statusCode) else {
+                terminalError = KioFailure.processing("The media source returned an unsuccessful response.")
+                downloadTask.cancel()
+                return
+            }
+            do { try ScoutURLPolicy.validatePublicHost(http.url?.host ?? "") }
+            catch { terminalError = error; downloadTask.cancel(); return }
+            response = http
+        }
+        if let expected = downloadTask.response?.expectedContentLength, expected > maximumBytes {
+            terminalError = KioFailure.verification("The media source is larger than Reel's 8 GB limit.")
+            downloadTask.cancel()
+            return
+        }
+        guard totalBytesWritten <= maximumBytes else {
+            terminalError = KioFailure.verification("The media download exceeded Reel's 8 GB limit.")
+            downloadTask.cancel()
+            return
+        }
+        if totalBytesExpectedToWrite > maximumBytes {
+            terminalError = KioFailure.verification("The media source is larger than Reel's 8 GB limit.")
+            downloadTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        if response == nil, let http = downloadTask.response as? HTTPURLResponse {
+            guard (200..<300).contains(http.statusCode) else {
+                terminalError = KioFailure.processing("The media source returned an unsuccessful response.")
+                return
+            }
+            do { try ScoutURLPolicy.validatePublicHost(http.url?.host ?? "") }
+            catch { terminalError = error; return }
+            response = http
+        }
+        if let expected = downloadTask.response?.expectedContentLength, expected > maximumBytes {
+            terminalError = KioFailure.verification("The media source is larger than Reel's 8 GB limit.")
+            return
+        }
+        let stable = FileManager.default.temporaryDirectory.appendingPathComponent("Kio-Reel-\(UUID().uuidString).download")
+        do { try FileManager.default.copyItem(at: location, to: stable); downloadedURL = stable }
+        catch { terminalError = error }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let terminalError { finish(.failure(terminalError)); return }
+        if let error {
+            if (error as NSError).code == NSURLErrorCancelled { finish(.failure(CancellationError())) }
+            else { finish(.failure(error)) }
+            return
+        }
+        guard let downloadedURL, let response else {
+            finish(.failure(KioFailure.verification("The direct media download did not produce a complete file.")))
+            return
+        }
+        finish(.success((downloadedURL, response)))
+    }
+
+    private func finish(_ result: Result<(URL, HTTPURLResponse), Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        session?.finishTasksAndInvalidate()
+        switch result {
+        case .success(let value): continuation.resume(returning: value)
+        case .failure(let error):
+            if let downloadedURL { try? FileManager.default.removeItem(at: downloadedURL) }
+            continuation.resume(throwing: error)
+        }
     }
 }
 
@@ -78,6 +233,33 @@ public enum ReelInspectionDecoder {
                                   source: json["extractor_key"] as? String ?? remoteURL.host ?? "Unknown",
                                   isLive: liveValue == true,
                                   qualities: qualities, videoFormats: containers, audioAvailable: audioAvailable)
+    }
+}
+
+public enum ReelStreamlinkInspectionDecoder {
+    public static let maximumOutputBytes = 256 * 1_024
+    public static let maximumStreams = 128
+
+    public static func decode(_ data: Data, remoteURL: URL) throws -> ReelInspectionInfo {
+        guard !data.isEmpty, data.count <= maximumOutputBytes,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let streams = object["streams"] as? [String: Any], !streams.isEmpty,
+              streams.count <= maximumStreams else {
+            throw KioFailure.verification("Reel couldn't decode Streamlink's bounded media details.")
+        }
+        let metadata = object["metadata"] as? [String: Any] ?? [:]
+        let title = ReelMediaRouter.safeTitle(metadata["title"] as? String
+            ?? remoteURL.deletingPathExtension().lastPathComponent)
+        let qualities = streams.keys.compactMap { key -> Int? in
+            guard let match = key.range(of: #"(?i)(?:^|\D)(\d{3,4})p(?:$|\D)"#, options: .regularExpression) else { return nil }
+            let value = key[match].filter(\.isNumber)
+            return Int(value)
+        }
+        return ReelInspectionInfo(remoteURL: remoteURL.absoluteString, title: title, durationSeconds: nil,
+                                  source: (object["plugin"] as? String)?.split(separator: ".").last.map(String.init)
+                                    ?? remoteURL.host ?? "Unknown",
+                                  isLive: false, qualities: ReelMediaRouter.normalizedQualities(qualities),
+                                  videoFormats: ["mp4"], audioAvailable: true)
     }
 }
 
@@ -128,6 +310,27 @@ public enum ReelHelperFailureKind: Sendable, Equatable {
 }
 
 public enum ReelOutputPolicy {
+    public static func currentSize(root: URL, maximumBytes: Int64) throws -> Int64 {
+        guard maximumBytes > 0 else { throw KioFailure.invalidInput("Reel output limits must be positive.") }
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])?.compactMap { $0 as? URL } ?? []
+        var totalBytes: Int64 = 0
+        for file in files {
+            let resolvedPath = file.standardizedFileURL.resolvingSymlinksInPath().path
+            guard resolvedPath.hasPrefix(prefix) else { continue }
+            let values = try? file.resourceValues(forKeys: keys)
+            guard values?.isRegularFile == true, values?.isSymbolicLink != true, let size = values?.fileSize, size > 0 else { continue }
+            let next = totalBytes.addingReportingOverflow(Int64(size))
+            guard !next.overflow, next.partialValue <= maximumBytes else {
+                throw KioFailure.verification("Reel stopped the transfer because its task size limit was reached.")
+            }
+            totalBytes = next.partialValue
+        }
+        return totalBytes
+    }
+
     public static func scan(root: URL, maximumCount: Int, maximumBytes: Int64) throws -> [URL] {
         guard maximumCount > 0, maximumBytes > 0 else { throw KioFailure.invalidInput("Reel output limits must be positive.") }
         let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
@@ -180,6 +383,13 @@ public enum ReelCommandBuilder {
                 "--print", inspectionJSONTemplate, url.absoluteString]
     }
 
+    public static func streamlinkInspection(url: URL) throws -> [String] {
+        guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http" else {
+            throw KioFailure.invalidInput("Reel's media inspection URL must use HTTP or HTTPS.")
+        }
+        return ["--no-config", "--no-plugin-sideloading", "--json", url.absoluteString]
+    }
+
     public static func ytDlp(operation: ToolOperation, url: URL, outputTemplate: String, quality: String?, format: String?,
                              ffmpegDirectory: URL, denoURL: URL = ReelRuntime.denoURL) throws -> [String] {
         guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http",
@@ -215,7 +425,7 @@ public enum ReelCommandBuilder {
               outputPath.hasPrefix("/"), outputPath.count <= 2_000,
               qualities.contains(quality) else { throw KioFailure.invalidInput("Reel's live stream command contained an unsupported typed option.") }
         let normalized = quality == "best" ? "best" : "\(quality.dropLast())p"
-        return ["--force", "--output", outputPath, url.absoluteString, normalized]
+        return ["--no-config", "--no-plugin-sideloading", "--force", "--output", outputPath, url.absoluteString, normalized]
     }
 }
 
@@ -280,8 +490,8 @@ public enum ReelRuntime {
 
     public static var ytDlpURL: URL { url(for: "yt-dlp") ?? bundleURL.appendingPathComponent("yt-dlp") }
     public static var denoURL: URL { url(for: "deno") ?? bundleURL.appendingPathComponent("deno") }
-    public static var ffmpegURL: URL { url(for: "ffmpeg") ?? bundleURL.appendingPathComponent("ffmpeg/bin/ffmpeg") }
-    public static var ffprobeURL: URL { url(for: "ffprobe") ?? bundleURL.appendingPathComponent("ffmpeg/bin/ffprobe") }
+    public static var ffmpegURL: URL { BundledMediaRuntime.ffmpegURL }
+    public static var ffprobeURL: URL { BundledMediaRuntime.ffprobeURL }
     public static var pythonURL: URL { url(for: "python") ?? bundleURL.appendingPathComponent("streamlink/python/bin/python3.12") }
     public static var streamlinkPackagesURL: URL { url(for: "streamlink") ?? bundleURL.appendingPathComponent("streamlink/site-packages") }
 
@@ -334,7 +544,6 @@ public enum ReelHelperManager {
     }
 
     public static func isPrepared(_ name: String) -> Bool {
-        if name == "gallery-dl" { return false }
         switch name {
         case "yt-dlp": return FileManager.default.isExecutableFile(atPath: ReelRuntime.ytDlpURL.path)
         case "deno": return FileManager.default.isExecutableFile(atPath: ReelRuntime.denoURL.path)
@@ -370,6 +579,27 @@ public enum ReelInspectionStore {
         }
         return info
     }
+
+    public static func removeInfoIfInternal(_ artifact: ArtifactRef) {
+        guard artifact.role == .internalIntermediate,
+              artifact.fileURL.pathExtension.lowercased() == "kio-reel-info",
+              artifact.fileURL.deletingLastPathComponent().standardizedFileURL == directory else { return }
+        try? FileManager.default.removeItem(at: artifact.fileURL)
+    }
+
+    public static func prune(now: Date = .now, ttl: TimeInterval = 7 * 24 * 60 * 60, maximumCount: Int = 50) {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey]) else { return }
+        let inspections = files.filter { $0.pathExtension.lowercased() == "kio-reel-info" }
+            .compactMap { url -> (URL, Date)? in
+                guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
+                let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return (url, modified)
+            }.sorted { $0.1 > $1.1 }
+        for (index, entry) in inspections.enumerated() where now.timeIntervalSince(entry.1) > ttl || index >= max(1, maximumCount) {
+            try? FileManager.default.removeItem(at: entry.0)
+        }
+    }
 }
 
 enum ReelWorkflow {
@@ -399,32 +629,37 @@ enum ReelWorkflow {
                                                          audioAvailable: ["mp3", "m4a", "wav", "flac"].contains(ext)), input: input)
         }
         guard ReelHelperManager.isPrepared("yt-dlp") else { throw KioFailure.verification("Reel's bundled media runtime is missing or damaged. Reinstall Kio to restore it.") }
-        let output = try await runHelper(name: "yt-dlp", arguments: ReelCommandBuilder.inspection(url: url),
-                                         maximumStdoutBytes: ReelInspectionDecoder.maximumOutputBytes)
-        guard !output.truncated else {
-            throw KioFailure.verification("Reel received too much media metadata to inspect safely.")
+        do {
+            let output = try await runHelper(name: "yt-dlp", arguments: ReelCommandBuilder.inspection(url: url),
+                                             maximumStdoutBytes: ReelInspectionDecoder.maximumOutputBytes,
+                                             maximumDurationSeconds: 180)
+            guard !output.truncated else { throw KioFailure.verification("Reel received too much media metadata to inspect safely.") }
+            let info = try ReelInspectionDecoder.decode(output.data, remoteURL: url)
+            return try writeInspection(info, input: input)
+        } catch {
+            guard ReelHelperManager.isPrepared("streamlink"), !(error is CancellationError) else { throw error }
+            let fallback = try await runHelper(name: "streamlink", arguments: ReelCommandBuilder.streamlinkInspection(url: url),
+                                               maximumStdoutBytes: ReelStreamlinkInspectionDecoder.maximumOutputBytes,
+                                               maximumDurationSeconds: 180)
+            guard !fallback.truncated else { throw KioFailure.verification("Reel received too much Streamlink metadata to inspect safely.") }
+            return try writeInspection(ReelStreamlinkInspectionDecoder.decode(fallback.data, remoteURL: url), input: input)
         }
-        guard !output.data.isEmpty else {
-            throw KioFailure.verification("Reel didn't receive media details from this source.")
-        }
-        let info = try ReelInspectionDecoder.decode(output.data, remoteURL: url)
-        return try writeInspection(info, input: input)
     }
 
     private static func download(_ operation: ToolOperation, url: URL, input: ArtifactRef, quality: String?, format: String?) async throws -> [ArtifactRef] {
         let backend = ReelMediaRouter.backend(for: url)
         let sourceFormat = url.pathExtension.lowercased()
-        let requestedFormatMatchesSource = format == nil || format == sourceFormat || (format == "jpeg" && sourceFormat == "jpg")
         let sourceIsAudio = ["mp3", "m4a", "wav", "flac"].contains(sourceFormat)
-        if backend == .directHTTP && requestedFormatMatchesSource
-            && ((operation == .downloadRemoteVideo && !sourceIsAudio) || (operation == .downloadRemoteAudio && sourceIsAudio)) {
-            return [try await downloadDirect(url, input: input, requestedFormat: format)]
+        let sourceIsVideo = ["mp4", "m4v", "mov", "webm", "mkv"].contains(sourceFormat)
+        let canUseDirect = backend == .directHTTP
+            && ((operation == .downloadRemoteVideo && sourceIsVideo) || (operation == .downloadRemoteAudio && (sourceIsAudio || sourceIsVideo)))
+        if canUseDirect {
+            let output = try await downloadDirect(url, input: input, operation: operation, requestedFormat: format, quality: quality)
+            ReelInspectionStore.removeInfoIfInternal(input)
+            return [output]
         }
         let helper: String
-        if operation == .downloadRemoteGallery {
-            throw KioFailure.unsupported("Gallery downloads are unavailable in this build. The optional gallery-dl component is GPL-2.0-only and the Kio repository does not currently declare a compatible redistribution license. Video and direct-media downloads remain bundled and ready.")
-        }
-        else if operation == .downloadRemoteLive && ReelHelperManager.isPrepared("streamlink") { helper = "streamlink" }
+        if operation == .downloadRemoteLive && ReelHelperManager.isPrepared("streamlink") { helper = "streamlink" }
         else if backend == .streamlink && ReelHelperManager.isPrepared("streamlink") { helper = "streamlink" }
         else { helper = "yt-dlp" }
         guard ReelHelperManager.isPrepared(helper) else {
@@ -433,44 +668,63 @@ enum ReelWorkflow {
         let parent = try OutputLocation.makeDirectoryURL(for: [input], baseName: "Kio-Reel-Tmp-\(UUID().uuidString)")
         return try await ReelTemporaryWorkspace.withDirectory(at: parent) { parent in
             let outputTemplate = parent.appendingPathComponent("media.%(ext)s").path
-            let args: [String]
-            if helper == "gallery-dl" {
-                args = ["--no-mtime", "--directory", parent.path, "--filename", "{filename}", url.absoluteString]
-            } else if helper == "streamlink" {
-                args = try ReelCommandBuilder.streamlink(url: url, outputPath: parent.appendingPathComponent("media.ts").path)
-            } else {
-                args = try ReelCommandBuilder.ytDlp(operation: operation, url: url, outputTemplate: outputTemplate,
+            func arguments(for helper: String) throws -> [String] {
+                if helper == "streamlink" {
+                    return try ReelCommandBuilder.streamlink(url: url, outputPath: parent.appendingPathComponent("media.ts").path,
+                                                             quality: quality ?? "best")
+                }
+                return try ReelCommandBuilder.ytDlp(operation: operation, url: url, outputTemplate: outputTemplate,
                                                     quality: quality, format: format,
                                                     ffmpegDirectory: ReelRuntime.ffmpegURL.deletingLastPathComponent())
             }
-            let helperOutput = try await runHelper(name: helper, arguments: args, maximumStdoutBytes: 64 * 1_024)
+            var helperOutput: ReelBoundedProcessOutput
+            do {
+                helperOutput = try await runHelper(name: helper, arguments: arguments(for: helper), maximumStdoutBytes: 64 * 1_024,
+                                                   monitorOutputDirectory: parent, maximumOutputBytes: BundledMediaRuntime.maximumMediaBytes)
+            } catch {
+                let canFallback = helper == "yt-dlp" && [ToolOperation.downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive].contains(operation)
+                    && ReelHelperManager.isPrepared("streamlink") && !(error is CancellationError)
+                guard canFallback else { throw error }
+                for partial in try outputFiles(in: parent, maximumCount: 8) { try? FileManager.default.removeItem(at: partial) }
+                helperOutput = try await runHelper(name: "streamlink", arguments: arguments(for: "streamlink"), maximumStdoutBytes: 64 * 1_024,
+                                                   monitorOutputDirectory: parent, maximumOutputBytes: BundledMediaRuntime.maximumMediaBytes)
+            }
             if helperOutput.truncated {
                 Self.logger.info("Download helper output truncated after \(helperOutput.byteCount, privacy: .public) bytes; completed files remain authoritative.")
             }
             try Task.checkCancellation()
-            let produced = try outputFiles(in: parent, maximumCount: operation == .downloadRemoteGallery ? 100 : 8)
-            guard let first = produced.first else { throw KioFailure.verification("Reel finished without a usable output file.") }
-            if operation == .downloadRemoteGallery {
-                let images = produced.filter { ["jpg", "jpeg", "png", "webp", "heic", "tif", "tiff", "bmp"].contains($0.pathExtension.lowercased()) }
-                guard !images.isEmpty else { throw KioFailure.verification("Reel did not find any usable image files in that gallery.") }
-                var outputs: [ArtifactRef] = []
+            let produced = try outputFiles(in: parent, maximumCount: 8)
+            if operation == .downloadRemoteSubtitles {
+                let subtitleFiles = produced.filter { ["vtt", "srt"].contains($0.pathExtension.lowercased()) }
+                guard !subtitleFiles.isEmpty else { throw KioFailure.verification("Reel finished without a subtitle file.") }
+                let sourceTitle = (try? ReelInspectionStore.readInfo(from: input).title)
+                    ?? ReelMediaRouter.safeTitle(url.deletingPathExtension().lastPathComponent)
+                var artifacts: [ArtifactRef] = []
                 do {
-                    for (index, file) in images.enumerated() {
+                    for (index, file) in subtitleFiles.enumerated() {
                         try Task.checkCancellation()
-                        let base = ReelMediaRouter.safeTitle(file.deletingPathExtension().lastPathComponent)
-                        let output = try OutputLocation.makeURL(for: [input], baseName: String(format: "%03d-%@", index + 1, base), fileExtension: file.pathExtension)
+                        let output = try OutputLocation.makeURL(for: [input], baseName: "\(sourceTitle)-Subtitles-\(index + 1)", fileExtension: file.pathExtension.lowercased())
                         try FileManager.default.moveItem(at: file, to: output)
-                        outputs.append(try ArtifactRef.inspect(output, parentID: input.id))
+                        artifacts.append(try ArtifactRef.inspect(output, parentID: input.id)
+                            .withVerificationNote("Downloaded subtitle track \(index + 1) from \(subtitleFiles.count)."))
                     }
-                    return outputs
+                    ReelInspectionStore.removeInfoIfInternal(input)
+                    return artifacts
                 } catch {
-                    for output in outputs { try? FileManager.default.removeItem(at: output.fileURL) }
+                    for artifact in artifacts { try? FileManager.default.removeItem(at: artifact.fileURL) }
                     throw error
                 }
             }
-            let output = try OutputLocation.makeURL(for: [input], baseName: ReelMediaRouter.safeTitle(first.deletingPathExtension().lastPathComponent), fileExtension: first.pathExtension)
-            try FileManager.default.moveItem(at: first, to: output)
-            return [try ArtifactRef.inspect(output, parentID: input.id)]
+            guard let first = produced.first else { throw KioFailure.verification("Reel finished without a usable output file.") }
+            let sourceTitle = (try? ReelInspectionStore.readInfo(from: input).title)
+                ?? ReelMediaRouter.safeTitle(url.deletingPathExtension().lastPathComponent)
+            let normalized = try await normalizeDownloadedMedia(first, operation: operation, requestedFormat: format,
+                                                                quality: quality, workspace: parent)
+            let output = try OutputLocation.makeURL(for: [input], baseName: sourceTitle, fileExtension: normalized.fileExtension)
+            try FileManager.default.moveItem(at: normalized.url, to: output)
+            let artifact = try ArtifactRef.inspect(output, parentID: input.id).withVerificationNote(normalized.note)
+            ReelInspectionStore.removeInfoIfInternal(input)
+            return [artifact]
         }
     }
 
@@ -478,26 +732,124 @@ enum ReelWorkflow {
         try ReelOutputPolicy.scan(root: root, maximumCount: maximumCount, maximumBytes: 8 * 1_024 * 1_024 * 1_024)
     }
 
-    private static func downloadDirect(_ url: URL, input: ArtifactRef, requestedFormat: String?) async throws -> ArtifactRef {
-        let (temporary, response) = try await URLSession.shared.download(from: url)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let finalURL = http.url, (try? ReelMediaRouter.safeURL(finalURL)) != nil else {
+    private static func downloadDirect(_ url: URL, input: ArtifactRef, operation: ToolOperation,
+                                       requestedFormat: String?, quality: String?) async throws -> ArtifactRef {
+        let (downloaded, http) = try await BoundedReelDownloader.download(url, maximumBytes: 8 * 1_024 * 1_024 * 1_024)
+        defer { try? FileManager.default.removeItem(at: downloaded) }
+        guard (200..<300).contains(http.statusCode), let finalURL = http.url,
+              (try? ReelMediaRouter.safeURL(finalURL)) != nil else {
             throw KioFailure.processing("The direct media URL didn't return a safe public media response.")
         }
-        let size = (try? temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let size = (try? downloaded.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         guard size > 0, size <= 8 * 1_024 * 1_024 * 1_024 else { throw KioFailure.verification("The direct media download was empty or exceeded the 8 GB limit.") }
-        let ext = requestedFormat ?? url.pathExtension.lowercased()
-        guard ["mp4", "m4v", "mov", "webm", "mp3", "m4a", "wav", "flac", "jpg", "jpeg", "png", "webp", "heic"].contains(ext) else {
+        let sourceExtension = url.pathExtension.lowercased()
+        let ext = requestedFormat ?? (sourceExtension == "m4v" ? "mp4" : sourceExtension)
+        guard ["mp4", "m4v", "mov", "webm", "mkv", "mp3", "m4a", "wav", "flac", "jpg", "jpeg", "png", "webp", "heic"].contains(ext) else {
             throw KioFailure.unsupported("Reel couldn't determine a safe file extension for this direct media URL.")
         }
-        let output = try OutputLocation.makeURL(for: [input], baseName: ReelMediaRouter.safeTitle(url.deletingPathExtension().lastPathComponent), fileExtension: ext)
-        try FileManager.default.copyItem(at: temporary, to: output)
-        return try ArtifactRef.inspect(output, parentID: input.id)
+        let title = (try? ReelInspectionStore.readInfo(from: input).title)
+            ?? ReelMediaRouter.safeTitle(url.deletingPathExtension().lastPathComponent)
+        let output = try OutputLocation.makeURL(for: [input], baseName: title, fileExtension: ext)
+        let staging = OutputLocation.temporaryURL(beside: output)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try FileManager.default.copyItem(at: downloaded, to: staging)
+        let stagedSize = (try? staging.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard stagedSize == size, stagedSize > 0, stagedSize <= 8 * 1_024 * 1_024 * 1_024 else {
+            throw KioFailure.verification("The direct media copy did not pass its size check.")
+        }
+        let normalized = try await normalizeDownloadedMedia(staging, operation: operation, requestedFormat: requestedFormat,
+                                                            quality: quality, workspace: staging.deletingLastPathComponent())
+        guard normalized.fileExtension == ext || (ext == "m4v" && normalized.fileExtension == "mp4") else {
+            throw KioFailure.verification("The direct response did not match the selected media format.")
+        }
+        if normalized.url != staging {
+            try FileManager.default.removeItem(at: staging)
+            try FileManager.default.moveItem(at: normalized.url, to: staging)
+        }
+        try OutputLocation.commit(staging, to: output)
+        return try ArtifactRef.inspect(output, parentID: input.id).withVerificationNote(normalized.note)
+    }
+
+    private static func normalizeDownloadedMedia(_ source: URL, operation: ToolOperation, requestedFormat: String?,
+                                                 quality: String?, workspace: URL) async throws -> (url: URL, fileExtension: String, note: String?) {
+        guard [.downloadRemoteAudio, .downloadRemoteVideo, .downloadRemoteLive].contains(operation) else {
+            return (source, source.pathExtension.lowercased(), nil)
+        }
+        let probe = try await BundledMediaRuntime.probe(source)
+        let duration = probe.duration
+        guard let duration, duration.isFinite, duration > 0 else {
+            throw KioFailure.verification("Reel couldn't verify a finite media duration.")
+        }
+        let intermediate = workspace.appendingPathComponent("Kio-Reel-normalized-\(UUID().uuidString).tmp")
+        defer { try? FileManager.default.removeItem(at: intermediate) }
+
+        if operation == .downloadRemoteAudio {
+            guard probe.hasAudio else { throw KioFailure.verification("The downloaded source does not contain an audio stream.") }
+            guard let target = AudioTargetFormat(rawValue: requestedFormat ?? source.pathExtension.lowercased()) else {
+                throw KioFailure.invalidInput("Choose MP3, M4A, WAV, or FLAC for audio output.")
+            }
+            let matches = probe.isCompatibleAudio(with: target)
+            var final = source
+            if !matches || source.pathExtension.lowercased() != target.rawValue {
+                try await BundledMediaRuntime.transcodeAudio(source, to: intermediate, format: target)
+                final = intermediate
+            }
+            let verified = try await BundledMediaRuntime.probe(final)
+            let size = Int64((try? final.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            guard verified.isCompatibleAudio(with: target), verified.duration.map({ $0.isFinite && abs($0 - duration) <= max(1, duration * 0.02) }) == true,
+                  size > 0, size <= BundledMediaRuntime.maximumMediaBytes,
+                  final.pathExtension.lowercased() == target.rawValue else {
+                throw KioFailure.verification("Reel's audio output failed its format, stream, duration, or size checks.")
+            }
+            return (final, target.rawValue, "Verified \(target.rawValue.uppercased()) audio-only media. Original source remains unchanged.")
+        }
+
+        guard probe.hasVideo,
+              let video = probe.streams.first(where: { $0.codec_type == "video" }),
+              let height = video.height, height > 0, let width = video.width, width > 0 else {
+            throw KioFailure.verification("The downloaded source does not contain a readable video stream.")
+        }
+        let rawFormat = requestedFormat ?? source.pathExtension.lowercased()
+        let normalizedFormat = rawFormat == "m4v" ? "mp4" : rawFormat
+        guard let target = ReelVideoContainer(rawValue: normalizedFormat) else {
+            throw KioFailure.invalidInput("Choose MP4, WebM, MKV, or MOV for the video output.")
+        }
+        let requestedHeight = quality.flatMap { $0 == "best" ? nil : Int($0.dropLast()) }
+        if let requestedHeight, ![360, 480, 720, 1080, 1440, 2160].contains(requestedHeight) {
+            throw KioFailure.invalidInput("Reel received an unsupported video quality selection.")
+        }
+        let needsResize = requestedHeight.map { height > $0 } ?? false
+        var final = source
+        if !probe.isCompatible(with: target) || needsResize {
+            try await BundledMediaRuntime.transcodeVideo(source, to: intermediate, container: target, maximumHeight: requestedHeight)
+            final = intermediate
+        }
+        let verified = try await BundledMediaRuntime.probe(final)
+        let resultVideo = verified.streams.first(where: { $0.codec_type == "video" })
+        let resultSize = Int64((try? final.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        let heightWithinChoice = requestedHeight.map { (resultVideo?.height ?? Int.max) <= $0 } ?? true
+        guard verified.hasVideo, (!probe.hasAudio || verified.hasAudio), verified.isCompatible(with: target),
+              resultVideo?.width.map({ $0 > 0 }) == true, resultVideo?.height.map({ $0 > 0 }) == true,
+              verified.duration.map({ $0.isFinite && abs($0 - duration) <= max(1, duration * 0.02) }) == true,
+              heightWithinChoice, resultSize > 0, resultSize <= BundledMediaRuntime.maximumMediaBytes else {
+            throw KioFailure.verification("Reel's video output failed its container, codec, stream, duration, resolution, or size checks.")
+        }
+        let actualHeight = resultVideo?.height ?? height
+        let note: String
+        if let requestedHeight, actualHeight < requestedHeight {
+            note = "Verified \(normalizedFormat.uppercased()) video at \(actualHeight)p; this source has no variant at the selected \(requestedHeight)p."
+        } else {
+            note = "Verified \(normalizedFormat.uppercased()) video at \(actualHeight)p with compatible streams."
+        }
+        return (final, normalizedFormat, note)
     }
 
     private static let logger = Logger(subsystem: "app.kio.mac", category: "Reel")
 
-    private static func runHelper(name: String, arguments: [String], maximumStdoutBytes: Int) async throws -> ReelBoundedProcessOutput {
+    private static func runHelper(name: String, arguments: [String], maximumStdoutBytes: Int,
+                                  monitorOutputDirectory: URL? = nil,
+                                  maximumOutputBytes: Int64 = BundledMediaRuntime.maximumMediaBytes,
+                                  maximumDurationSeconds: TimeInterval = 4 * 60 * 60) async throws -> ReelBoundedProcessOutput {
         try Task.checkCancellation()
         let executable: URL
         let processArguments: [String]
@@ -528,23 +880,48 @@ enum ReelWorkflow {
         do { try process.run() } catch { throw KioFailure.processing("Reel couldn't start its verified helper: \(error.localizedDescription)") }
         let outputTask = Task.detached { Self.readBounded(outputPipe.fileHandleForReading, maximumBytes: maximumStdoutBytes) }
         let errorTask = Task.detached { Self.readBounded(errorPipe.fileHandleForReading, maximumBytes: 2_000) }
+        var limitFailure: KioFailure?
+        var lastSizeCheck = Date.distantPast
+        let startedAt = Date()
         do {
             while process.isRunning {
                 try Task.checkCancellation()
+                if Date().timeIntervalSince(startedAt) > maximumDurationSeconds {
+                    limitFailure = .verification("Reel stopped the helper after its four-hour task limit.")
+                    process.terminate()
+                    break
+                }
+                if let monitorOutputDirectory, Date().timeIntervalSince(lastSizeCheck) >= 0.5 {
+                    lastSizeCheck = Date()
+                    do { _ = try ReelOutputPolicy.currentSize(root: monitorOutputDirectory, maximumBytes: maximumOutputBytes) }
+                    catch let failure as KioFailure {
+                        limitFailure = failure
+                        process.terminate()
+                        break
+                    }
+                }
                 try await Task.sleep(for: .milliseconds(120))
             }
-        } catch {
+        } catch is CancellationError {
             if process.isRunning { process.terminate() }
             try? await Task.sleep(for: .milliseconds(250))
             if process.isRunning { process.interrupt() }
             _ = await outputTask.value
             _ = await errorTask.value
             throw CancellationError()
+        } catch {
+            if process.isRunning { process.terminate() }
+            try? await Task.sleep(for: .milliseconds(250))
+            if process.isRunning { process.interrupt() }
+            _ = await outputTask.value
+            _ = await errorTask.value
+            throw error
         }
         let errorOutput = await errorTask.value
         let output = await outputTask.value
         logger.info("Helper \(name, privacy: .public) exited with status \(process.terminationStatus, privacy: .public); stdout bytes=\(output.byteCount, privacy: .public), truncated=\(output.truncated, privacy: .public), stderr bytes=\(errorOutput.byteCount, privacy: .public), stderr truncated=\(errorOutput.truncated, privacy: .public).")
         let detail = String(data: errorOutput.data, encoding: .utf8) ?? ""
+        if let limitFailure { throw limitFailure }
         guard process.terminationStatus == 0 else {
             switch ReelHelperFailureKind.classify(detail) {
             case .drmProtected: throw KioFailure.unsupported("This source is DRM-protected; Reel doesn't bypass DRM.")
@@ -567,6 +944,7 @@ enum ReelWorkflow {
 
     private static func writeInspection(_ info: ReelInspectionInfo, input: ArtifactRef) throws -> ArtifactRef {
         try FileManager.default.createDirectory(at: ReelInspectionStore.directory, withIntermediateDirectories: true)
+        ReelInspectionStore.prune()
         let name = ReelMediaRouter.safeTitle(info.title) + "-inspection"
         let url = try OutputLocation.makeURL(in: ReelInspectionStore.directory, baseName: name, fileExtension: "kio-reel-info")
         try JSONEncoder().encode(info).write(to: url, options: .atomic)

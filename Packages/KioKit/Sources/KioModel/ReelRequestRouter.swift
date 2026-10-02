@@ -11,7 +11,9 @@ public enum ReelRequestRouter {
         let operation: ToolOperation
         if lower.contains("subtitle") || lower.contains("captions") { operation = .downloadRemoteSubtitles }
         else if lower.contains("thumbnail") || lower.contains("cover image") { operation = .downloadRemoteThumbnail }
-        else if lower.contains("gallery") || lower.contains("album") { operation = .downloadRemoteGallery }
+        else if lower.contains("gallery") || lower.contains("album") {
+            return TaskPlan(request: request, steps: [], clarification: "Reel cannot download image galleries in this build. Choose a direct media URL instead.")
+        }
         else if lower.contains("live") || lower.contains("livestream") || lower.contains("live stream") { operation = .downloadRemoteLive }
         else if lower.contains("audio") || lower.contains(" mp3") || lower.contains(" m4a") || lower.contains(" wav") || lower.contains(" flac") { operation = .downloadRemoteAudio }
         else { operation = .downloadRemoteVideo }

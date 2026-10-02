@@ -254,7 +254,21 @@ import KioCore
     var cue = CueTextAlignment(script: script)
     let farPhrase = (30..<38).map { "unique\($0)" }.joined(separator: " ")
     #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) == 0)
-    #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) >= 35)
+    #expect(cue.consume(farPhrase, confidence: 0.9, policy: .responsive) == 0)
+    #expect(cue.consume((31..<39).map { "unique\($0)" }.joined(separator: " "), confidence: 0.9, policy: .responsive) == 39)
+}
+
+@Test func cueAlignmentFollowsTheExactJoeRegressionWithoutWeakWordTeleporting() {
+    var cue = CueTextAlignment(script: "testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio")
+    #expect(cue.consume("testing", confidence: 0.95, policy: .responsive) == 1)
+    #expect(cue.consume("testing testing", confidence: 0.95, policy: .responsive) == 2)
+    #expect(cue.consume("testing testing 1", confidence: 0.95, policy: .responsive) == 3)
+    #expect(cue.consume("one", confidence: 0.95, policy: .responsive) == 3)
+    #expect(cue.recentSpokenWords == "one")
+    #expect(cue.consume("my", confidence: 0.95, policy: .responsive) == 6)
+    #expect(cue.consume("testing testing one two three my", confidence: 0.95, policy: .responsive) == 6)
+    #expect(cue.consume("my name is joe", confidence: 0.95, policy: .responsive) == 9)
+    #expect(cue.consume("my productivity app kio", confidence: 0.95, policy: .responsive) == cue.tokens.count)
 }
 
 @Test func cueWaveformSmoothingBoundsAndThrottlesSamples() {

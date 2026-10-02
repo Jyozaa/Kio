@@ -3,6 +3,170 @@ import Testing
 import KioCore
 @testable import KioModel
 
+@Test func destinationFormatsCompileFromStructuredSemanticIntent() throws {
+    let png = try makeArtifact(name: "source.png", kind: .image)
+    let cases: [(String, String)] = [
+        ("convert this png to a heic", "heic"),
+        ("turn this PNG into HEIC", "heic"),
+        ("convert this into jpeg", "jpeg"),
+        ("make this a jpg", "jpg"),
+        ("export this as .tiff", "tiff"),
+        ("give me a webp version", "webp")
+    ]
+    for (request, format) in cases {
+        let plan = FastPathPlanner().plan(request: request, artifacts: [png])
+        #expect(plan.steps.first?.operation == .convertImage)
+        #expect(plan.steps.first?.arguments == .imageConvert(format: format))
+    }
+}
+
+@Test func explicitNeedAndBareJpegRequestPreserveTheRequestedFormat() throws {
+    let image = try makeArtifact(name: "photo.png", kind: .image)
+    let need = FastPathPlanner().plan(request: "I need this as a .jpeg file", artifacts: [image])
+    #expect(need.steps.first?.operation == .convertImage)
+    #expect(need.steps.first?.arguments == .imageConvert(format: "jpeg"))
+
+    let bare = FastPathPlanner().plan(request: "JPEG, please", artifacts: [image])
+    #expect(bare.steps.first?.operation == .convertImage)
+    #expect(bare.steps.first?.arguments == .imageConvert(format: "jpeg"))
+}
+
+@Test func semanticCompilerRejectsAnExplicitSourceSubtypeThatDoesNotMatchTheInput() throws {
+    let image = try makeArtifact(name: "actual.jpg", kind: .image)
+    let imagePlan = FastPathPlanner().plan(request: "convert this PNG to HEIC", artifacts: [image])
+    #expect(imagePlan.steps.isEmpty)
+    #expect(imagePlan.clarification != nil)
+
+    let video = try makeArtifact(name: "actual.webm", kind: .video)
+    let audioPlan = FastPathPlanner().plan(request: "convert this MP4 to MP3", artifacts: [video])
+    #expect(audioPlan.steps.isEmpty)
+    #expect(audioPlan.clarification != nil)
+}
+
+@Test func semanticFormatRelationshipsAlwaysChooseTheDestinationAcrossPhrasing() throws {
+    let imageFormats = ["png", "jpeg", "jpg", "heic", "tiff", "webp"]
+    let input = try makeArtifact(name: "source.png", kind: .image)
+    let templates = [
+        "convert this png to %@",
+        "convert this png into %@",
+        "turn this png into %@",
+        "export this as %@",
+        "save this as %@",
+        "make this %@",
+        "give me a %@ version"
+    ]
+    for target in imageFormats {
+        for template in templates {
+            let request = String(format: template, target.uppercased())
+            let plan = FastPathPlanner().plan(request: request, artifacts: [input])
+            #expect(plan.steps.first?.arguments == .imageConvert(format: target), "\(request)")
+        }
+    }
+    let arrow = FastPathPlanner().plan(request: "PNG -> HEIC", artifacts: [input])
+    #expect(arrow.steps.first?.arguments == .imageConvert(format: "heic"))
+    let unicodeArrow = FastPathPlanner().plan(request: "png→heic", artifacts: [input])
+    #expect(unicodeArrow.steps.first?.arguments == .imageConvert(format: "heic"))
+
+    let unsupportedSizeContract = FastPathPlanner().plan(request: "convert this to jpeg under 3 megs", artifacts: [input])
+    #expect(unsupportedSizeContract.steps.isEmpty)
+    #expect(unsupportedSizeContract.clarification != nil)
+
+    let video = try makeArtifact(name: "clip.mp4", kind: .video)
+    for target in ["mp3", "m4a", "wav", "flac"] {
+        let plan = FastPathPlanner().plan(request: "convert this video to \(target)", artifacts: [video])
+        #expect(plan.steps.first?.arguments == .audioConvert(format: AudioTargetFormat(rawValue: target)!))
+    }
+}
+
+@Test func semanticIntentCapturesTypedQualityAndTargetSize() {
+    guard case .resolved(let intent, let confidence) = SemanticIntentParser.parse("download this video as mp4 at 1080p below 3 megs") else {
+        Issue.record("A structured media request should parse deterministically")
+        return
+    }
+    #expect(confidence >= 0.9)
+    #expect(intent.domain == .remoteMedia)
+    #expect(intent.targetFormat == .mp4)
+    #expect(intent.quality == "1080p")
+    #expect(intent.targetSizeBytes == 3_000_000)
+}
+
+@Test func semanticValueParserResolvesSpokenPagesTimeTargetsAndRenameNames() throws {
+    #expect(SemanticValueParser.pageSelection(in: "take pages five through twelve") == Array(5...12))
+    #expect(SemanticValueParser.pageSelection(in: "remove page seven") == [7])
+    #expect(SemanticValueParser.pageSelection(in: "extract the first three pages") == [1, 2, 3])
+    #expect(SemanticValueParser.pageSelection(in: "pages 4, 8 and 10") == [4, 8, 10])
+    #expect(SemanticValueParser.targetSizeBytes(in: "compress below 3 megs") == 3_000_000)
+
+    let clockRange = try #require(SemanticValueParser.videoRange(in: "from 1:20 to 2:45"))
+    #expect(clockRange.startMilliseconds == 80_000)
+    #expect(clockRange.durationMilliseconds == 85_000)
+    let firstHalfMinute = try #require(SemanticValueParser.videoRange(in: "take the first 30 seconds"))
+    #expect(firstHalfMinute.startMilliseconds == 0)
+    #expect(firstHalfMinute.durationMilliseconds == 30_000)
+    let spokenMinute = try #require(SemanticValueParser.videoRange(in: "starting at 30 seconds for one minute"))
+    #expect(spokenMinute.startMilliseconds == 30_000)
+    #expect(spokenMinute.durationMilliseconds == 60_000)
+    #expect(SemanticValueParser.renameTarget(in: "rename this \"final submission\"") == "final submission")
+    #expect(SemanticValueParser.renameTarget(in: "call this final") == "final")
+    #expect(SemanticValueParser.renameTarget(in: "name it report-v2.pdf") == "report-v2.pdf")
+}
+
+@Test func pageActionsCompileNaturalTakeAndGetRidOfPhrasesDirectionally() throws {
+    let pdf = try makeArtifact(name: "pages.pdf", kind: .pdf)
+    let extracted = FastPathPlanner().plan(request: "take pages five through twelve", artifacts: [pdf])
+    #expect(extracted.steps.first?.operation == .extractPDFPages)
+    #expect(extracted.steps.first?.arguments == .removePages(indices: Array(5...12)))
+
+    let removed = FastPathPlanner().plan(request: "get rid of page seven", artifacts: [pdf])
+    #expect(removed.steps.first?.operation == .removePDFPages)
+    #expect(removed.steps.first?.arguments == .removePages(indices: [7]))
+}
+
+@Test func tableDirectionAndAudioTargetRemainTyped() throws {
+    let json = try makeArtifact(name: "data.json", kind: .table)
+    let jsonToCSV = FastPathPlanner().plan(request: "convert this JSON to CSV", artifacts: [json])
+    #expect(jsonToCSV.steps.map(\.operation) == [.jsonToCSV])
+    let csv = try makeArtifact(name: "data.csv", kind: .csv)
+    let csvToJSON = FastPathPlanner().plan(request: "turn this CSV into JSON", artifacts: [csv])
+    #expect(csvToJSON.steps.map(\.operation) == [.csvToJSON])
+
+    let video = try makeArtifact(name: "clip.mp4", kind: .video)
+    for (request, format) in [("convert this video to mp3", AudioTargetFormat.mp3),
+                              ("give me the audio as m4a", AudioTargetFormat.m4a),
+                              ("turn this video into wav", AudioTargetFormat.wav),
+                              ("extract the audio as flac", AudioTargetFormat.flac)] {
+        let plan = FastPathPlanner().plan(request: request, artifacts: [video])
+        #expect(plan.steps.map(\.operation) == [.convertAudio])
+        #expect(plan.steps.first?.arguments == .audioConvert(format: format))
+    }
+}
+
+@Test func negatedFormatRequestDoesNotCompileAConversion() throws {
+    let image = try makeArtifact(name: "source.jpg", kind: .image)
+    let plan = FastPathPlanner().plan(request: "don't convert this to PNG", artifacts: [image])
+    #expect(plan.steps.isEmpty)
+    #expect(plan.clarification != nil)
+    #expect(SemanticIntentParser.explicitlyNegatesTransformation("don't convert this to PNG"))
+    #expect(!SemanticIntentParser.explicitlyNegatesTransformation("convert this to PNG"))
+}
+
+@Test func modelPlanDecoderKeepsTypedAudioFormatsAndInternalReelStatePrivate() throws {
+    let video = try makeArtifact(name: "clip.webm", kind: .video)
+    let audioPlan = #"{"steps":[{"operation":"audio.convert","inputIndexes":[0],"arguments":{"format":"mp3"}}]}"#
+    #expect(ModelPlanDecoder.decode(audioPlan, request: "convert this video to mp3", artifacts: [video])?.steps.first?.arguments == .audioConvert(format: .mp3))
+
+    let infoURL = FileManager.default.temporaryDirectory.appendingPathComponent("Kio-Internal-\(UUID().uuidString).kio-reel-info")
+    try Data("{}".utf8).write(to: infoURL)
+    defer { try? FileManager.default.removeItem(at: infoURL) }
+    let internalInfo = try ArtifactRef.inspect(infoURL)
+    #expect(internalInfo.kind == .other)
+    #expect(internalInfo.role == .internalIntermediate)
+    let summarize = #"{"steps":[{"operation":"text.summarize","inputIndexes":[0],"arguments":{"request":"summarize this"}}]}"#
+    #expect(ModelPlanDecoder.decode(summarize, request: "summarize this", artifacts: [internalInfo]) == nil)
+    let download = #"{"steps":[{"operation":"remoteMedia.downloadAudio","inputIndexes":[0],"arguments":{"format":"mp3"}}]}"#
+    #expect(ModelPlanDecoder.decode(download, request: "download audio as mp3", artifacts: [internalInfo])?.steps.first?.operation == .downloadRemoteAudio)
+}
+
 @Test func mergeRequestSelectsRegisteredPDFOperation() throws {
     let a = try makeArtifact(name: "report.pdf", kind: .pdf)
     let b = try makeArtifact(name: "appendix.pdf", kind: .pdf)
@@ -69,7 +233,8 @@ import KioCore
 
     let audio = try makeArtifact(name: "voice.wav", kind: .audio)
     let convert = FastPathPlanner().plan(request: "Convert this audio", artifacts: [audio])
-    #expect(convert.steps.map(\.operation) == [.convertAudio])
+    #expect(convert.steps.isEmpty)
+    #expect(convert.clarification?.contains("MP3, M4A, WAV, or FLAC") == true)
     #expect(FastPathPlanner.outputKinds(for: .convertAudio, inputKinds: [.audio]) == [.audio])
 }
 
@@ -757,7 +922,9 @@ import KioCore
 
     #expect(plan?.steps.first?.operation == .resizeImage)
     #expect(await responses.prompts.count == 2)
-    #expect(await responses.prompts.last?.contains("strict typed-plan validation") == true)
+    #expect(await responses.prompts.last?.contains("failed validation") == true)
+    #expect(await responses.prompts.last?.contains("steps[0].inputIndexes") == true)
+    #expect(await responses.prompts.last?.contains("Prior response (sanitized") == true)
 }
 
 @Test @MainActor func modelPlanRepairStopsAfterOneInvalidRepair() async throws {
@@ -944,6 +1111,29 @@ import KioCore
     let acceptedAfterExpiry = ledger.insertIfNew("already-seen")
     #expect(acceptedAfterExpiry)
     #expect(ledger.entries.count == 2)
+}
+
+@Test @MainActor func taskInputSnapshotsAndProviderConsentRemainRequestScoped() throws {
+    let local = try makeArtifact(name: "private-local.pdf", kind: .pdf)
+    let phone = try makeArtifact(name: "phone-image.png", kind: .image)
+    let snapshot = TaskInputSnapshot(request: "read the phone image", artifacts: [phone], surface: .phoneRemote)
+    #expect(snapshot.artifacts.map(\.displayName) == ["phone-image.png"])
+    #expect(snapshot.surface == .phoneRemote)
+    #expect(!snapshot.artifacts.contains(local))
+
+    let taskID = UUID()
+    let approved = ProviderContentConsentScope(taskID: taskID, providerID: "openAI",
+        sourceArtifactIDs: [phone.id, phone.id], sourceNames: [phone.displayName])
+    let otherTask = ProviderContentConsentScope(taskID: UUID(), providerID: "openAI",
+        sourceArtifactIDs: [phone.id], sourceNames: [phone.displayName])
+    let otherProvider = ProviderContentConsentScope(taskID: taskID, providerID: "anthropic",
+        sourceArtifactIDs: [phone.id], sourceNames: [phone.displayName])
+    ProviderContentConsentLedger.shared.approve(approved)
+    #expect(ProviderContentConsentLedger.shared.contains(approved))
+    #expect(!ProviderContentConsentLedger.shared.contains(otherTask))
+    #expect(!ProviderContentConsentLedger.shared.contains(otherProvider))
+    ProviderContentConsentLedger.shared.clear(taskID: taskID)
+    #expect(!ProviderContentConsentLedger.shared.contains(approved))
 }
 
 private func makeArtifact(name: String, kind: ArtifactKind) throws -> ArtifactRef {

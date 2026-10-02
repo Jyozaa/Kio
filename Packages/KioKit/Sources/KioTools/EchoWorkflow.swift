@@ -14,44 +14,43 @@ public enum EchoWorkflow {
         let segments: [Segment]
     }
 
-    public static func execute(_ operation: ToolOperation, inputs: [ArtifactRef]) async throws -> [ArtifactRef] {
+    public static func execute(_ operation: ToolOperation, inputs: [ArtifactRef], arguments: ToolArguments = .none,
+                               mediaRuntimeRoot: URL? = nil) async throws -> [ArtifactRef] {
         if operation == .convertAudio {
-            guard inputs.count == 1, let input = inputs.first, input.kind == .audio,
+            guard inputs.count == 1, let input = inputs.first, input.kind == .audio || input.kind == .video,
                   input.sizeBytes <= 1_000_000_000 else {
-                throw KioFailure.invalidInput("Echo's audio conversion needs one audio file up to 1 GB.")
+                throw KioFailure.invalidInput("Echo's audio conversion needs one audio or video file up to 1 GB.")
             }
-            let output = try OutputLocation.makeURL(for: [input], baseName: base(input.displayName) + "-Converted", fileExtension: "m4a")
+            guard case .audioConvert(let format) = arguments else {
+                throw KioFailure.invalidInput("Choose MP3, M4A, WAV, or FLAC as the audio output format.")
+            }
+            let output = try OutputLocation.makeURL(for: [input], baseName: base(input.displayName) + "-Converted", fileExtension: format.rawValue)
             let temporary = OutputLocation.temporaryURL(beside: output)
             defer { try? FileManager.default.removeItem(at: temporary) }
-            do {
-                let source = try AVAudioFile(forReading: input.fileURL)
-                let sourceFormat = source.processingFormat
-                guard sourceFormat.sampleRate > 0, sourceFormat.channelCount > 0 else {
-                    throw KioFailure.invalidInput("This file does not contain a readable audio track.")
-                }
-                let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC,
-                                               AVSampleRateKey: sourceFormat.sampleRate,
-                                               AVNumberOfChannelsKey: Int(sourceFormat.channelCount),
-                                               AVEncoderBitRateKey: 128_000]
-                let destination = try AVAudioFile(forWriting: temporary, settings: settings)
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: 8_192) else {
-                    throw KioFailure.processing("Kio couldn't prepare a bounded audio conversion buffer.")
-                }
-                while source.framePosition < source.length {
-                    try Task.checkCancellation()
-                    try source.read(into: buffer, frameCount: min(buffer.frameCapacity, AVAudioFrameCount(source.length - source.framePosition)))
-                    guard buffer.frameLength > 0 else { break }
-                    try destination.write(from: buffer)
-                }
+            let inputInfo = try await BundledMediaRuntime.probe(input.fileURL, runtimeRoot: mediaRuntimeRoot)
+            guard inputInfo.hasAudio else { throw KioFailure.invalidInput("This source does not contain an audio track.") }
+            if format == .m4a, !(await tryNativeM4A(input.fileURL, to: temporary)) {
+                try await BundledMediaRuntime.transcodeAudio(input.fileURL, to: temporary, format: format, runtimeRoot: mediaRuntimeRoot)
+            } else if format != .m4a {
+                try await BundledMediaRuntime.transcodeAudio(input.fileURL, to: temporary, format: format, runtimeRoot: mediaRuntimeRoot)
             }
             try Task.checkCancellation()
-            guard FileManager.default.fileExists(atPath: temporary.path),
-                  try await AVURLAsset(url: temporary).load(.tracks).contains(where: { $0.mediaType == .audio }) else {
-                throw KioFailure.verification("The converted M4A file could not be verified.")
+            let outputInfo = try await BundledMediaRuntime.probe(temporary, runtimeRoot: mediaRuntimeRoot)
+            let outputSize = Int64((try? temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            let inputDuration = inputInfo.duration
+            let outputDuration = outputInfo.duration
+            let durationMatches = inputDuration.flatMap { source in
+                outputDuration.map { abs($0 - source) <= max(1.0, source * 0.02) }
+            } ?? true
+            guard output.pathExtension.lowercased() == format.rawValue,
+                  outputInfo.isCompatibleAudio(with: format),
+                  outputDuration.map({ $0.isFinite && $0 > 0 }) == true,
+                  durationMatches, outputSize > 0, outputSize <= BundledMediaRuntime.maximumMediaBytes else {
+                throw KioFailure.verification("The converted \(format.rawValue.uppercased()) output failed its extension, audio-stream, duration, or size checks.")
             }
             try OutputLocation.commit(temporary, to: output)
             return [try ArtifactRef.inspect(output, parentID: input.id)
-                .withVerificationNote("Converted to M4A with native Apple media tools. The original remains unchanged.")]
+                .withVerificationNote("Converted to \(format.rawValue.uppercased()) and verified with the bundled media probe. The output contains audio only; the original remains unchanged.")]
         }
         guard [.transcribeAudio, .generateSubtitles].contains(operation), inputs.count == 1,
               let input = inputs.first, input.kind == .audio, input.sizeBytes <= 1_000_000_000 else {
@@ -82,6 +81,19 @@ public enum EchoWorkflow {
         let note = "Generated from Apple's on-device speech recognition. Audio stayed on this Mac."
         return [try ArtifactRef.inspect(srtURL, parentID: input.id).withVerificationNote(note),
                 try ArtifactRef.inspect(vttURL, parentID: input.id).withVerificationNote(note)]
+    }
+
+    private static func tryNativeM4A(_ input: URL, to output: URL) async -> Bool {
+        do {
+            let asset = AVURLAsset(url: input)
+            guard try await !asset.load(.tracks).filter({ $0.mediaType == .audio }).isEmpty,
+                  let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else { return false }
+            try await session.export(to: output, as: .m4a)
+            return FileManager.default.fileExists(atPath: output.path)
+        } catch {
+            try? FileManager.default.removeItem(at: output)
+            return false
+        }
     }
 
     private static func recognize(_ url: URL) async throws -> Transcript {

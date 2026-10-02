@@ -55,7 +55,11 @@ final class KioWorkspace: ObservableObject {
     private let artifactContextResolver = ArtifactContextResolver()
     private let fastResponseResolver = FastPathResponseResolver()
     private let executor = ToolExecutor(localTextTransform: { systemInstruction, userPrompt, maxTokens in
-        let (provider, privacy) = await MainActor.run { (IntelligenceSettings.shared.provider, IntelligenceSettings.shared.privacyMode) }
+        let scope = TaskExecutionContext.contentConsentScope
+        let (provider, privacy) = await MainActor.run {
+            (scope.flatMap { IntelligenceProviderID(rawValue: $0.providerID) } ?? IntelligenceSettings.shared.provider,
+             IntelligenceSettings.shared.privacyMode)
+        }
         if provider == .localQwen {
             return try await LocalModelManager.shared.generateText(systemInstruction: systemInstruction,
                                                                    userPrompt: userPrompt, maxTokens: maxTokens)
@@ -67,14 +71,18 @@ final class KioWorkspace: ObservableObject {
         case .deny:
             throw KioFailure.unsupported("Metadata only is enabled. This task needs document text; choose Local Qwen or change Content privacy in Settings → Intelligence.")
         case .requiresConfirmation:
-            let approved = await MainActor.run {
+            let approved = await MainActor.run { () -> Bool in
+                if let scope, ProviderContentConsentLedger.shared.contains(scope) { return true }
                 let alert = NSAlert()
                 alert.alertStyle = .informational
                 alert.messageText = "Send selected text to \(provider.title)?"
-                alert.informativeText = "The requested text operation needs the document contents. Kio will send them directly to the selected provider over HTTPS."
+                let sources = scope?.sourceNames.isEmpty == false ? "\n\nFiles: \(scope!.sourceNames.joined(separator: ", "))" : ""
+                alert.informativeText = "The requested text operation needs the document contents. Kio will send them directly to the selected provider over HTTPS for this task only.\(sources)"
                 alert.addButton(withTitle: "Send contents")
                 alert.addButton(withTitle: "Cancel")
-                return alert.runModal() == .alertFirstButtonReturn
+                let allow = alert.runModal() == .alertFirstButtonReturn
+                if allow, let scope { ProviderContentConsentLedger.shared.approve(scope) }
+                return allow
             }
             guard approved else { throw CancellationError() }
         case .allow: break
@@ -99,9 +107,10 @@ final class KioWorkspace: ObservableObject {
     }
 
     func addURLs(_ urls: [URL]) {
-        let known = Set(attachments.map { $0.fileURL.standardizedFileURL })
+        var known = Set(attachments.map { $0.fileURL.standardizedFileURL })
         var added: [ArtifactRef] = []
-        for url in urls where url.isFileURL && !known.contains(url.standardizedFileURL) {
+        for url in urls where url.isFileURL {
+            guard known.insert(url.standardizedFileURL).inserted else { continue }
             do { added.append(try ArtifactRef.inspect(url)) }
             catch { append("Kio", "I couldn't read \(url.lastPathComponent): \(error.localizedDescription)") }
         }
@@ -238,6 +247,32 @@ final class KioWorkspace: ObservableObject {
 
     var canSaveWorkflow: Bool { lastPlan != nil && !lastSuccessfulInputs.isEmpty }
 
+    var activeReelInspection: ReelInspectionInfo? {
+        guard let activeOutput, activeOutput.role == .internalIntermediate else { return nil }
+        return try? ReelInspectionStore.readInfo(from: activeOutput)
+    }
+
+    func downloadInspectedReel(quality: String, format: String) {
+        guard let artifact = activeOutput, artifact.role == .internalIntermediate,
+              let info = try? ReelInspectionStore.readInfo(from: artifact),
+              ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains(quality),
+              ["mp4", "webm", "mkv", "mov"].contains(format) else { return }
+        let request = "Download \(info.title) as \(quality) \(format.uppercased())"
+        let plan = TaskPlan(request: request, steps: [TaskStep(operation: .downloadRemoteVideo,
+            source: .artifacts([artifact.id]), arguments: .remoteMedia(quality: quality, format: format))])
+        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan)
+    }
+
+    func downloadInspectedReelAudio(format: String) {
+        guard let artifact = activeOutput, artifact.role == .internalIntermediate,
+              let info = try? ReelInspectionStore.readInfo(from: artifact), info.audioAvailable,
+              let target = AudioTargetFormat(rawValue: format) else { return }
+        let request = "Download audio from \(info.title) as \(format.uppercased())"
+        let plan = TaskPlan(request: request, steps: [TaskStep(operation: .downloadRemoteAudio,
+            source: .artifacts([artifact.id]), arguments: .remoteMedia(quality: nil, format: target.rawValue))])
+        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan)
+    }
+
     func saveWorkflowTemplate(named name: String) throws {
         guard let lastPlan, !lastSuccessfulInputs.isEmpty else { throw KioFailure.invalidInput("Finish a successful workflow before saving it.") }
         workflowTemplates = try templateStore.save(name: name, plan: lastPlan, inputs: lastSuccessfulInputs)
@@ -259,19 +294,31 @@ final class KioWorkspace: ObservableObject {
         submit(submission.request, remote: nil, pastedText: submission.pastedText)
     }
 
+    func submit(_ action: ContextualQuickAction) {
+        guard !action.requiresUserInput, let operation = action.operation else {
+            submit(action.prompt)
+            return
+        }
+        let selected = attachments.isEmpty ? activeOutput.map { [$0] } ?? [] : attachments
+        guard !selected.isEmpty else { return }
+        let step = TaskStep(operation: operation, source: .artifacts(selected.map(\.id)), arguments: action.arguments)
+        submit(action.prompt, remote: nil, pastedText: nil,
+               prebuiltPlan: TaskPlan(request: action.prompt, steps: [step]))
+    }
+
     func receiveRemoteRequest(from phoneID: String, payload: RelayPayload, attachmentData: [Data]?) {
         guard payload.type == "request", let taskID = payload.taskID else { return }
         guard payload.text.count <= 2_000, !payload.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             Task { await LocalRelayManager.shared.sendReply(type: "error", text: "That request is empty or too long to send safely.", taskID: taskID, artifactURL: nil, to: phoneID) }
             return
         }
-        guard remoteTaskLedger.insertIfNew(taskID) else {
+        guard !remoteTaskLedger.contains(taskID) else {
             Task { await LocalRelayManager.shared.sendReply(type: "progress", text: "This request was already accepted and won't run twice.", taskID: taskID, artifactURL: nil, to: phoneID, speaker: "Kio", agent: AgentID.kio.rawValue) }
             return
         }
-        UserDefaults.standard.set(remoteTaskLedger.entries, forKey: "kio.processedRemoteTaskIDs")
         let hasAttachments = payload.attachments?.isEmpty == false || payload.attachmentID != nil
         if !hasAttachments, let answer = fastResponseResolver.response(to: payload.text) {
+            markRemoteTaskAccepted(taskID)
             append("Phone", payload.text)
             append("Kio", answer)
             Task { await LocalRelayManager.shared.sendReply(type: "result", text: answer, taskID: taskID, artifactURL: nil, to: phoneID) }
@@ -308,11 +355,13 @@ final class KioWorkspace: ObservableObject {
             if isWorking {
                 guard pendingRemoteRequests.count < 3 else { throw KioFailure.invalidInput("The Mac already has three phone requests waiting. Try again when one finishes.") }
                 pendingRemoteRequests.append(PendingRemoteRequest(phoneID: phoneID, payload: payload, stagedAttachmentURLs: stagedAttachmentURLs))
+                markRemoteTaskAccepted(taskID)
                 append("Kio", "Added your phone request to the Mac queue.")
                 Task { await LocalRelayManager.shared.sendReply(type: "progress", text: "Added to the Mac queue. It will start after the current task.", taskID: taskID, artifactURL: nil, to: phoneID) }
                 return
             }
-            startRemoteRequest(from: phoneID, payload: payload, stagedAttachmentURLs: stagedAttachmentURLs)
+            guard startRemoteRequest(from: phoneID, payload: payload, stagedAttachmentURLs: stagedAttachmentURLs) else { return }
+            markRemoteTaskAccepted(taskID)
         } catch {
             for url in stagedAttachmentURLs { try? FileManager.default.removeItem(at: url) }
             append("Kio", "I couldn't receive that phone attachment: \(error.localizedDescription)")
@@ -320,8 +369,13 @@ final class KioWorkspace: ObservableObject {
         }
     }
 
-    private func startRemoteRequest(from phoneID: String, payload: RelayPayload, stagedAttachmentURLs: [URL]) {
-        guard let taskID = payload.taskID else { return }
+    private func markRemoteTaskAccepted(_ taskID: String) {
+        guard remoteTaskLedger.insertIfNew(taskID) else { return }
+        UserDefaults.standard.set(remoteTaskLedger.entries, forKey: "kio.processedRemoteTaskIDs")
+    }
+
+    private func startRemoteRequest(from phoneID: String, payload: RelayPayload, stagedAttachmentURLs: [URL]) -> Bool {
+        guard let taskID = payload.taskID else { return false }
         var inputURLs: [URL] = []
         do {
             let names = payload.attachments?.map(\.name) ?? (payload.artifactName.map { [$0] } ?? [])
@@ -332,40 +386,67 @@ final class KioWorkspace: ObservableObject {
                 let displayName = index < names.count ? names[index] : fallbackName
                 let destination = downloads.appendingPathComponent("Phone-\(UUID().uuidString)-\(Self.safeFileName(displayName))")
                 try FileManager.default.copyItem(at: stagedAttachmentURL, to: destination)
-                attachments.append(try ArtifactRef.inspect(destination))
                 inputURLs.append(destination)
                 try? FileManager.default.removeItem(at: stagedAttachmentURL)
             }
             let inlineText = inputURLs.isEmpty ? InlineTextSubmissionResolver.resolve(message: payload.text) : nil
             submit(inlineText?.request ?? payload.text, remote: (phoneID, taskID, inputURLs), pastedText: inlineText?.pastedText)
+            return true
         } catch {
             for url in inputURLs { try? FileManager.default.removeItem(at: url) }
             for url in stagedAttachmentURLs { try? FileManager.default.removeItem(at: url) }
             append("Kio", "I couldn't prepare the phone request: \(error.localizedDescription)")
             Task { await LocalRelayManager.shared.sendReply(type: "error", text: error.localizedDescription, taskID: taskID, artifactURL: nil, to: phoneID) }
+            return false
         }
     }
 
-    private func submit(_ rawRequest: String, remote: (phoneID: String, taskID: String, inputURLs: [URL])?, pastedText: String? = nil) {
+    private func submit(_ rawRequest: String, remote: (phoneID: String, taskID: String, inputURLs: [URL])?, pastedText: String? = nil,
+                        prebuiltPlan: TaskPlan? = nil) {
+        var remoteInputURLs = remote?.inputURLs ?? []
         let embeddedURLs = Self.webURLs(in: rawRequest)
         let cleanedRequest = Self.removingWebURLs(from: rawRequest)
         let request = (cleanedRequest.isEmpty && !embeddedURLs.isEmpty ? "Summarize this page." : cleanedRequest)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !isWorking else { return }
         if request.isEmpty, let pastedText {
+            if remote != nil {
+                append("Phone", "Pasted text (\(pastedText.count) characters)")
+                append("Kio", "I received the text. What would you like me to do with it?")
+                return
+            }
             guard addClipboardText(pastedText) else { return }
             append("You", "Pasted text (\(pastedText.count) characters)")
             append("Kio", "I added the pasted text. What would you like me to do with it? You can ask me to summarize, rewrite, proofread, translate, or extract key points.")
             return
         }
         guard !request.isEmpty else { return }
-        if let pastedText, !addClipboardText(pastedText) { return }
+        if let pastedText {
+            if remote == nil {
+                if !addClipboardText(pastedText) { return }
+            } else {
+                do {
+                    let inbox = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                        .appendingPathComponent("Kio/RelayInbox", isDirectory: true)
+                    try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+                    let file = inbox.appendingPathComponent("Inline-\(UUID().uuidString).txt")
+                    try Data(pastedText.utf8).write(to: file, options: .atomic)
+                    remoteInputURLs.append(file)
+                } catch {
+                    append("Kio", "I couldn't prepare the phone text safely: \(error.localizedDescription)")
+                    return
+                }
+            }
+        }
+        var isolatedRemoteArtifacts = remoteInputURLs.compactMap { try? ArtifactRef.inspect($0) }
         if !embeddedURLs.isEmpty {
             guard embeddedURLs.count <= 8 else { append("Kio", "Add up to eight URLs per request."); return }
             do {
                 let references = try embeddedURLs.map { try ScoutInputStore.makeArtifact(from: $0) }
-                var known = Set(attachments.filter { $0.kind == .url }.map { $0.fileURL.standardizedFileURL })
-                attachments.append(contentsOf: references.filter { known.insert($0.fileURL.standardizedFileURL).inserted })
+                var known = Set((remote == nil ? attachments : isolatedRemoteArtifacts).filter { $0.kind == .url }.map { $0.fileURL.standardizedFileURL })
+                let unique = references.filter { known.insert($0.fileURL.standardizedFileURL).inserted }
+                if remote == nil { attachments.append(contentsOf: unique) }
+                else { isolatedRemoteArtifacts.append(contentsOf: unique) }
             } catch {
                 append("Kio", "I couldn't use that URL. Scout accepts public http:// and https:// pages only.")
                 return
@@ -384,38 +465,43 @@ final class KioWorkspace: ObservableObject {
             return
         }
         let researchQueryArtifact: ArtifactRef?
-        if attachments.isEmpty, let topic = Self.researchTopic(in: request) {
+        if remote == nil, attachments.isEmpty, let topic = Self.researchTopic(in: request) {
             do { researchQueryArtifact = try ScoutInputStore.makeResearchQuery(topic) }
             catch { append("Kio", "I couldn't prepare that research topic safely: \(error.localizedDescription)"); return }
         } else {
             researchQueryArtifact = nil
         }
-        if activeOutput != nil, activeOutput?.refreshedFromDisk() == nil {
+        if remote == nil, activeOutput != nil, activeOutput?.refreshedFromDisk() == nil {
             activeOutput = nil
             ConversationPersistence.saveActiveOutput(nil)
             lastOperation = nil
             lastPlan = nil
             ConversationPersistence.saveLastPlan(nil)
             append("Kio", "The previous result file is no longer available. Add it again before asking me to work with it.")
-        } else if let current = activeOutput?.refreshedFromDisk() {
+        } else if remote == nil, let current = activeOutput?.refreshedFromDisk() {
             activeOutput = current
         }
-        let attachedWebNames = attachments.filter { $0.kind == .url }.map(\.displayName)
+        let submissionArtifacts = remote == nil ? attachments : isolatedRemoteArtifacts
+        let attachedWebNames = submissionArtifacts.filter { $0.kind == .url }.map(\.displayName)
         var message = attachedWebNames.isEmpty ? request : "\(request)\n\(attachedWebNames.joined(separator: "\n"))"
         if let pastedText { message += "\nPasted text attached (\(pastedText.count) characters)." }
         let historyArtifacts = conversation.compactMap { item -> ArtifactContextEntry? in
-            guard let artifact = item.artifact else { return nil }
+            guard let artifact = item.artifact, artifact.role != .internalIntermediate else { return nil }
             return ArtifactContextEntry(artifact: artifact, operation: item.operation, speaker: item.speaker, createdAt: item.createdAt)
         }
-        let mostRecentTaskArtifacts = recentTaskArtifactEntries()
+        let mostRecentTaskArtifacts = remote == nil ? recentTaskArtifactEntries() : []
         append(remote == nil ? "You" : "Phone", message)
         latestError = nil
         var contextClarification: String?
         let planningArtifacts: [ArtifactRef]
-        if let researchQueryArtifact {
+        if remote != nil {
+            planningArtifacts = isolatedRemoteArtifacts
+        } else if let researchQueryArtifact {
             planningArtifacts = [researchQueryArtifact]
         } else if !attachments.isEmpty {
             planningArtifacts = attachments
+        } else if prebuiltPlan != nil, let activeOutput {
+            planningArtifacts = [activeOutput]
         } else {
             switch artifactContextResolver.resolve(request: request, history: historyArtifacts, mostRecentTaskResults: mostRecentTaskArtifacts) {
             case .notReferenced:
@@ -427,11 +513,10 @@ final class KioWorkspace: ObservableObject {
                 contextClarification = question
             }
         }
-        let submittedAttachmentIDs = Set(attachments.map(\.id))
-        let context = PlanningContext(activeOutput: activeOutput, previousOperation: lastOperation, previousPlan: lastPlan)
-        if attachments.isEmpty, WorkflowTemplateStore.isListingRequest(request) {
+        let submittedAttachmentIDs = remote == nil ? Set(attachments.map(\.id)) : []
+        let context = remote == nil ? PlanningContext(activeOutput: activeOutput, previousOperation: lastOperation, previousPlan: lastPlan) : PlanningContext()
+        if prebuiltPlan == nil, remote == nil, attachments.isEmpty, WorkflowTemplateStore.isListingRequest(request) {
             let reply = templateStore.listingReply()
-            append(remote == nil ? "You" : "Phone", request)
             append("Kio", reply)
             if let remote {
                 Task {
@@ -445,7 +530,9 @@ final class KioWorkspace: ObservableObject {
         }
         let templateName = WorkflowTemplateStore.requestedName(in: request)
         let fastPlan: TaskPlan
-        if let templateName {
+        if let prebuiltPlan {
+            fastPlan = prebuiltPlan
+        } else if let templateName {
             if let template = workflowTemplates.first(where: { $0.name.localizedCaseInsensitiveCompare(templateName) == .orderedSame }) {
                 do { fastPlan = try templateStore.instantiate(template, request: request, inputs: planningArtifacts) }
                 catch { fastPlan = TaskPlan(request: request, steps: [], clarification: error.localizedDescription) }
@@ -455,24 +542,33 @@ final class KioWorkspace: ObservableObject {
         } else {
             fastPlan = planner.plan(request: request, artifacts: planningArtifacts, context: context)
         }
+        let immutableInputs = TaskInputSnapshot(request: request, artifacts: planningArtifacts,
+            surface: remote != nil ? .phoneRemote : (prebuiltPlan != nil ? .contextualAction : (templateName != nil ? .workflow : .localComposer)))
         publishExecution(for: fastPlan, status: .planning, text: "Planning your task…")
         isWorking = true
         runningTask = Task {
             defer {
                 isWorking = false
                 runningTask = nil
-                for inputURL in remote?.inputURLs ?? [] {
+                for inputURL in remoteInputURLs {
                     try? FileManager.default.removeItem(at: inputURL)
-                    attachments.removeAll { $0.fileURL.standardizedFileURL == inputURL.standardizedFileURL }
                 }
                 if let researchQueryArtifact { try? FileManager.default.removeItem(at: researchQueryArtifact.fileURL) }
                 if !pendingRemoteRequests.isEmpty {
                     let next = pendingRemoteRequests.removeFirst()
-                    startRemoteRequest(from: next.phoneID, payload: next.payload, stagedAttachmentURLs: next.stagedAttachmentURLs)
+                    if startRemoteRequest(from: next.phoneID, payload: next.payload, stagedAttachmentURLs: next.stagedAttachmentURLs),
+                       let taskID = next.payload.taskID { markRemoteTaskAccepted(taskID) }
                 }
             }
             var plan = fastPlan
             if plan.steps.isEmpty {
+                if SemanticIntentParser.explicitlyNegatesTransformation(request) {
+                    let message = plan.clarification ?? "You said not to perform that conversion. What would you like Kio to do instead?"
+                    publishExecution(for: plan, status: .waitingForUser, text: message)
+                    append("Kio", message)
+                    if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
+                    return
+                }
                 if templateName != nil {
                     let message = plan.clarification ?? "That saved workflow can't use these inputs."
                     publishExecution(for: plan, status: .waitingForUser, text: message)
@@ -518,9 +614,9 @@ final class KioWorkspace: ObservableObject {
                     }
                     plan = modelPlan
                 } catch is CancellationError {
-                    publishExecution(for: plan, status: .cancelled, text: "Stopped before making changes.")
-                    append("Kio", "Stopped before making changes.")
-                    if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "Stopped before making changes.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
+                    publishExecution(for: plan, status: .cancelled, text: "Cancelled before making changes.")
+                    append("Kio", "Cancelled before making changes.")
+                    if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: "Cancelled before making changes.", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }
                     return
                 } catch {
                     latestError = error.localizedDescription
@@ -538,7 +634,7 @@ final class KioWorkspace: ObservableObject {
                 return
             }
             publishExecution(for: plan, status: .running, text: "Starting \(plan.steps[0].owner.name)'s step.", total: plan.steps.count)
-            let result = await execute(plan, inputSnapshot: planningArtifacts, remote: remote.map { ($0.phoneID, $0.taskID) })
+            let result = await execute(plan, inputSnapshot: immutableInputs.artifacts, remote: remote.map { ($0.phoneID, $0.taskID) })
             if result != nil {
                 removeTemporaryClipboardArtifacts(withIDs: submittedAttachmentIDs)
                 attachments.removeAll { submittedAttachmentIDs.contains($0.id) }
@@ -563,6 +659,7 @@ final class KioWorkspace: ObservableObject {
     func cancelCurrentTask() { runningTask?.cancel() }
 
     private func execute(_ plan: TaskPlan, inputSnapshot: [ArtifactRef], remote: (phoneID: String, taskID: String)?) async -> [ArtifactRef]? {
+        defer { Task { @MainActor in ProviderContentConsentLedger.shared.clear(taskID: plan.id) } }
         var artifactSnapshot = PlanArtifactSnapshot(originals: inputSnapshot)
         var finalOutputs: [ArtifactRef] = []
         for (stepIndex, step) in plan.steps.enumerated() {
@@ -578,7 +675,7 @@ final class KioWorkspace: ObservableObject {
                 let status = Self.status(for: step.operation, inputCount: inputs.count)
                 publishExecution(for: plan, status: .running, stepIndex: stepIndex, operation: step.operation,
                                  agent: step.owner, text: status, completed: stepIndex, total: plan.steps.count)
-                append(step.owner.name, status)
+                append(step.owner.name, status, operation: step.operation)
                 if let remote {
                     if stepIndex > 0, plan.steps[stepIndex - 1].owner != step.owner {
                         await LocalRelayManager.shared.sendReply(type: "progress", text: "I'll hand this to \(step.owner.name).", taskID: remote.taskID, artifactURL: nil, to: remote.phoneID, speaker: "Kio", agent: AgentID.kio.rawValue)
@@ -592,7 +689,12 @@ final class KioWorkspace: ObservableObject {
                     append("Kio", "Move canceled. No files were moved.")
                     return nil
                 }
-                let outputs = try await executor.execute(step, inputs: inputs)
+                let provider = IntelligenceSettings.shared.provider
+                let consentScope = ProviderContentConsentScope(taskID: plan.id, providerID: provider.rawValue,
+                    sourceArtifactIDs: inputSnapshot.map(\.id), sourceNames: inputSnapshot.map(\.displayName))
+                let outputs = try await TaskExecutionContext.$contentConsentScope.withValue(consentScope) {
+                    try await executor.execute(step, inputs: inputs)
+                }
                 guard !outputs.isEmpty, outputs.allSatisfy({ FileManager.default.fileExists(atPath: $0.fileURL.path) && $0.sizeBytes > 0 }) else {
                     throw KioFailure.verification("Kio could not verify the result file.")
                 }
@@ -605,14 +707,19 @@ final class KioWorkspace: ObservableObject {
                                  agent: step.owner, text: "Finished step \(stepIndex + 1) of \(plan.steps.count).",
                                  completed: stepIndex + 1, total: plan.steps.count, output: outputs.last)
                 for output in outputs {
-                    let message = output.verificationNote.map { "\($0)\n\(output.displayName)" } ?? "Done. \(output.displayName)"
-                    append("Kio", message, artifact: output)
+                    if output.role == .internalIntermediate {
+                        let title = (try? ReelInspectionStore.readInfo(from: output).title) ?? "media URL"
+                        append("Reel", "I found media options for \(title). Choose a quality and format to download.", artifact: output, operation: step.operation)
+                    } else {
+                        let message = output.verificationNote.map { "\($0)\n\(output.displayName)" } ?? "Done. \(output.displayName)"
+                        append("Kio", message, artifact: output, operation: step.operation)
+                    }
                 }
             } catch is CancellationError {
                 publishExecution(for: plan, status: .cancelled, stepIndex: stepIndex, operation: step.operation,
-                                 agent: step.owner, text: "Stopped.", completed: stepIndex, total: plan.steps.count,
+                                 agent: step.owner, text: "Cancelled.", completed: stepIndex, total: plan.steps.count,
                                  output: activeOutput)
-                append("Kio", "Stopped. Any completed copies remain available; original files are unchanged.")
+                append("Kio", "Cancelled. Any already completed copies remain available; original files are unchanged.", operation: step.operation)
                 return nil
             } catch {
                 let message = error.localizedDescription
@@ -620,7 +727,7 @@ final class KioWorkspace: ObservableObject {
                 publishExecution(for: plan, status: .failed, stepIndex: stepIndex, operation: step.operation,
                                  agent: step.owner, text: message, completed: stepIndex, total: plan.steps.count,
                                  output: activeOutput, failure: message)
-                append(step.owner.name, "I couldn't finish that: \(message)")
+                append(step.owner.name, "I couldn't finish that: \(message)", operation: step.operation)
                 return nil
             }
         }
@@ -641,6 +748,14 @@ final class KioWorkspace: ObservableObject {
     }
 
     func clearHistory() {
+        for pending in pendingRemoteRequests {
+            for url in pending.stagedAttachmentURLs { try? FileManager.default.removeItem(at: url) }
+        }
+        pendingRemoteRequests.removeAll()
+        cancelCurrentTask()
+        clearKioOwnedInternalState()
+        remoteTaskLedger = TaskDeduplicationLedger()
+        UserDefaults.standard.removeObject(forKey: "kio.processedRemoteTaskIDs")
         attachments = []
         activeOutput = nil
         lastOperation = nil
@@ -652,8 +767,17 @@ final class KioWorkspace: ObservableObject {
         ConversationPersistence.append(conversation[0], operation: nil)
     }
 
-    private func append(_ speaker: String, _ message: String, artifact: ArtifactRef? = nil) {
-        let operation = (speaker == "You" || speaker == "Phone") ? nil : lastOperation
+    private func clearKioOwnedInternalState() {
+        let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Kio", isDirectory: true).standardizedFileURL
+        for name in ["ClipboardInbox", "RelayInbox", "URLInbox", "ResearchQueries", "ReelInspection"] {
+            let directory = root.appendingPathComponent(name, isDirectory: true).standardizedFileURL
+            guard directory.deletingLastPathComponent() == root else { continue }
+            try? FileManager.default.removeItem(at: directory)
+        }
+    }
+
+    private func append(_ speaker: String, _ message: String, artifact: ArtifactRef? = nil, operation: ToolOperation? = nil) {
         let item = ConversationItem(speaker: speaker, message: message, artifact: artifact, operation: operation)
         conversation.append(item)
         ConversationPersistence.append(item, operation: operation)
@@ -693,7 +817,6 @@ final class KioWorkspace: ObservableObject {
         case .downloadRemoteVideo: "Reel is downloading the selected public video format."
         case .downloadRemoteAudio: "Reel is preparing the requested audio from the public media URL."
         case .downloadRemoteLive: "Reel is connecting to the selected live stream."
-        case .downloadRemoteGallery: "Reel is saving the available public gallery images."
         case .downloadRemoteSubtitles: "Reel is retrieving available captions."
         case .downloadRemoteThumbnail: "Reel is saving the available thumbnail."
         case .renameFile: "Making a conflict-safe copy with the requested name."
@@ -719,7 +842,7 @@ final class KioWorkspace: ObservableObject {
         case .thumbnailVideo: "Capturing a frame from the video."
         case .trimVideo: "Trimming a copy of the video."
         case .extractMediaClip: "Echo is extracting the requested video clip."
-        case .convertAudio: "Echo is converting a copy to M4A with native Apple media tools."
+        case .convertAudio: "Echo is converting a copy to the requested audio format."
         case .resizeVideo: "Resizing the video with a native MP4 preset."
         case .transcodeVideo: "Converting a copy to MP4."
         case .compressVideo: "Checking smaller native MP4 export presets."

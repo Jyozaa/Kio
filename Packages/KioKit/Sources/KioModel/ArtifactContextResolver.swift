@@ -57,7 +57,7 @@ public struct ArtifactContextResolver: Sendable {
         guard hasReference else { return .notReferenced }
 
         var candidates = history.filter { entry in
-            entry.artifact.isAvailableLocally &&
+            entry.artifact.role != .internalIntermediate && entry.artifact.isAvailableLocally &&
                 (kindMention == nil || Self.matches(kindMention!, entry.artifact.kind)) &&
                 (agentMention == nil || entry.producingAgent == agentMention) &&
                 (operationFilter == nil || operationFilter!(entry.operation)) &&
@@ -74,7 +74,7 @@ public struct ArtifactContextResolver: Sendable {
 
         if hasOrdinal {
             let recent = mostRecentTaskResults.filter { entry in
-                entry.artifact.isAvailableLocally &&
+                entry.artifact.role != .internalIntermediate && entry.artifact.isAvailableLocally &&
                     (kindMention == nil || Self.matches(kindMention!, entry.artifact.kind)) &&
                     (agentMention == nil || entry.producingAgent == agentMention) &&
                     (operationFilter == nil || operationFilter!(entry.operation)) &&

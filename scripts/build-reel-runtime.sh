@@ -171,7 +171,7 @@ export PKG_CONFIG_PATH="$STAGE/lame/lib/pkgconfig"
 (
   cd "$ffmpeg_source"
   ./configure --prefix="$STAGE/ffmpeg" --enable-shared --disable-static --disable-gpl --disable-version3 \
-    --disable-nonfree --disable-autodetect --disable-doc --disable-debug --disable-ffplay --enable-libmp3lame \
+    --disable-nonfree --disable-autodetect --enable-videotoolbox --disable-doc --disable-debug --disable-ffplay --enable-libmp3lame \
     --extra-cflags="-I$STAGE/lame/include" --extra-ldflags="-L$STAGE/lame/lib"
   make -j"$(sysctl -n hw.ncpu)"
   make install
@@ -219,6 +219,7 @@ EOF
 "$STAGE/yt-dlp" --version | grep -F "$(manifest_value yt-dlp version)" >/dev/null
 "$STAGE/deno" --version | grep -F "$(manifest_value deno version)" >/dev/null
 "$STAGE/ffmpeg/bin/ffmpeg" -version | grep -F "$(manifest_value ffmpeg version)" >/dev/null
+"$STAGE/ffmpeg/bin/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -F 'h264_videotoolbox' >/dev/null
 "$STAGE/streamlink/python/bin/python3.12" -B -I -c 'import sys; sys.path.insert(0,sys.argv[1]); from streamlink_cli.main import main; raise SystemExit(main())' "$STAGE/streamlink/site-packages" --version | grep -F "$(manifest_value streamlink version)" >/dev/null
 "$STAGE/ffmpeg/bin/ffprobe" -version | grep -F "$(manifest_value ffprobe version)" >/dev/null
 printf '%s\n' "$manifest_digest" > "$STAGE/.manifest-sha256"

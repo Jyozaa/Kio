@@ -5,13 +5,18 @@ public struct ContextualQuickAction: Identifiable, Sendable, Equatable {
     public let title: String
     public let prompt: String
     public let requiresUserInput: Bool
+    public let operation: ToolOperation?
+    public let arguments: ToolArguments
 
     public var id: String { title + "\u{0}" + prompt }
 
-    public init(title: String, prompt: String, requiresUserInput: Bool = false) {
+    public init(title: String, prompt: String, requiresUserInput: Bool = false,
+                operation: ToolOperation? = nil, arguments: ToolArguments = .none) {
         self.title = title
         self.prompt = prompt
         self.requiresUserInput = requiresUserInput
+        self.operation = operation
+        self.arguments = arguments
     }
 }
 
@@ -26,14 +31,14 @@ public enum ContextualQuickActionCatalog {
         var actions: [ContextualQuickAction] = []
 
         if pdfs > 0 && images > 0 && artifacts.allSatisfy({ $0.kind == .pdf || $0.kind == .image }) {
-            actions.append(.init(title: "Combine PDF + images", prompt: "Combine these PDFs and images into one PDF"))
+            actions.append(.init(title: "Combine PDF + images", prompt: "Combine these PDFs and images into one PDF", operation: .combineMixedPDFInputs))
         } else if pdfs > 1 && artifacts.allSatisfy({ $0.kind == .pdf }) {
-            actions.append(.init(title: "Merge", prompt: "Merge these PDFs"))
+            actions.append(.init(title: "Merge", prompt: "Merge these PDFs", operation: .mergePDFs))
         }
         if pdfs == 1 && artifacts.count == 1 {
             actions += [
-                .init(title: "Compress", prompt: "Compress this PDF"),
-                .init(title: "OCR", prompt: "OCR this PDF"),
+                .init(title: "Compress", prompt: "Compress this PDF", operation: .compressPDF, arguments: .pdfCompression(maxBytes: nil)),
+                .init(title: "OCR", prompt: "OCR this PDF", operation: .ocrPDFText),
                 .init(title: "Pages…", prompt: "Extract pages from this PDF: ", requiresUserInput: true),
                 .init(title: "Summarize", prompt: "Summarize this PDF")
             ]
@@ -42,30 +47,32 @@ public enum ContextualQuickActionCatalog {
         if images > 0 && artifacts.allSatisfy({ $0.kind == .image }) {
             let plural = images > 1
             actions += [
-                .init(title: "Resize 1200 px", prompt: plural ? "Resize these images to 1200 pixels wide" : "Resize this image to 1200 pixels wide"),
-                .init(title: "PNG", prompt: plural ? "Convert these images to PNG" : "Convert this image to PNG"),
-                .init(title: "OCR", prompt: plural ? "Extract text from these images" : "Extract the text from this image"),
-                .init(title: "Make PDF", prompt: "Make a PDF from these images")
+                .init(title: "Resize 1200 px", prompt: plural ? "Resize these images to 1200 pixels wide" : "Resize this image to 1200 pixels wide",
+                      operation: plural ? .batchResizeImages : .resizeImage, arguments: .imageResize(width: 1_200)),
+                .init(title: "PNG", prompt: plural ? "Convert these images to PNG" : "Convert this image to PNG",
+                      operation: plural ? .batchConvertImages : .convertImage, arguments: .imageConvert(format: "png")),
+                .init(title: "OCR", prompt: plural ? "Extract text from these images" : "Extract the text from this image", operation: .ocrImage),
+                .init(title: "Make PDF", prompt: "Make a PDF from these images", operation: .imagesToPDF)
             ]
             if images == 1 {
                 actions += [
-                    .init(title: "Compress", prompt: "Compress this image"),
+                    .init(title: "Compress", prompt: "Compress this image", operation: .compressImage, arguments: .imageCompression(maxBytes: nil)),
                     .init(title: "Receipt", prompt: "Extract the fields from this receipt"),
-                    .init(title: "Remove background", prompt: "Remove the background from this image")
+                    .init(title: "Remove background", prompt: "Remove the background from this image", operation: .removeImageBackground)
                 ]
             }
-            if images == 2 { actions.append(.init(title: "Compare", prompt: "Compare these images")) }
+            if images == 2 { actions.append(.init(title: "Compare", prompt: "Compare these images", operation: .compareImages)) }
         }
 
         if tables > 0 && artifacts.allSatisfy({ $0.kind == .csv || $0.kind == .table }) {
             if tables == 1 {
                 actions += [
-                    .init(title: "Inspect", prompt: "Inspect this table"),
-                    .init(title: "Clean", prompt: "Normalize this table"),
+                    .init(title: "Inspect", prompt: "Inspect this table", operation: .inspectData),
+                    .init(title: "Clean", prompt: "Normalize this table", operation: .normalizeData),
                     .init(title: "Summarize", prompt: "Summarize this table")
                 ]
             }
-            actions.append(.init(title: "Deduplicate", prompt: "Remove duplicate rows"))
+            actions.append(.init(title: "Deduplicate", prompt: "Remove duplicate rows", operation: .deduplicateData))
         }
 
         if artifacts.count == 1, let artifact = artifacts.first {
@@ -77,14 +84,14 @@ public enum ContextualQuickActionCatalog {
                 ]
             case .video:
                 actions += [
-                    .init(title: "Compress", prompt: "Compress this video"),
-                    .init(title: "Extract audio", prompt: "Extract audio from this video"),
+                    .init(title: "Compress", prompt: "Compress this video", operation: .compressVideo, arguments: .mediaCompression(maxBytes: nil)),
+                    .init(title: "Extract audio", prompt: "Extract audio from this video", operation: .extractAudio),
                     .init(title: "Transcribe", prompt: "Transcribe this video")
                 ]
             case .audio:
                 actions += [
-                    .init(title: "Transcribe", prompt: "Transcribe this audio"),
-                    .init(title: "Subtitles", prompt: "Generate subtitles for this audio")
+                    .init(title: "Transcribe", prompt: "Transcribe this audio", operation: .transcribeAudio),
+                    .init(title: "Subtitles", prompt: "Generate subtitles for this audio", operation: .generateSubtitles)
                 ]
             case .text:
                 actions += [

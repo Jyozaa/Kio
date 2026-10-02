@@ -14,7 +14,7 @@ import KioCore
     #expect(ReelMediaRouter.backend(for: hls, availableHelpers: []).rawValue == "ytDlp")
     #expect(ReelMediaRouter.backend(for: hls, availableHelpers: ["streamlink"]).rawValue == "streamlink")
     let gallery = URL(string: "https://imgur.com/gallery/demo")!
-    #expect(ReelMediaRouter.backend(for: gallery, availableHelpers: ["gallery-dl"]).rawValue == "galleryDL")
+    #expect(ReelMediaRouter.backend(for: gallery, availableHelpers: ["gallery-dl"]) == .ytDlp)
     #expect(ReelMediaRouter.normalizedQualities([nil, 2160, 1080, 1080, 721, 480]) == ["best", "2160p", "1080p", "480p"])
     #expect(ReelMediaRouter.safeTitle("../A: unsafe/title?.mp4") == "A- unsafe-title-.mp4")
 }
@@ -237,7 +237,7 @@ private actor ScribePromptRecorder {
 
     let converted = try await executor.execute(TaskStep(operation: .batchConvertImages, source: .artifacts(inputs.map(\.id)), arguments: .imageConvert(format: "jpeg")), inputs: inputs)
     #expect(converted.count == 2)
-    #expect(converted.allSatisfy { $0.kind == .image && $0.fileURL.pathExtension == "jpg" })
+    #expect(converted.allSatisfy { $0.kind == .image && $0.fileURL.pathExtension == "jpeg" })
 
     let comparison = try await executor.execute(TaskStep(operation: .compareImages, source: .artifacts(inputs.map(\.id))), inputs: inputs)[0]
     let comparisonText = try String(contentsOf: comparison.fileURL, encoding: .utf8)
@@ -567,6 +567,11 @@ private actor ScribePromptRecorder {
 }
 
 @Test func audioConversionWritesVerifiedM4ACopyAndPreservesSource() async throws {
+    guard let runtimePath = ProcessInfo.processInfo.environment["KIO_REEL_RUNTIME_ROOT"] else {
+        Issue.record("CI must prepare the pinned Reel runtime before running audio conversion integration tests.")
+        return
+    }
+    let runtimeRoot = URL(fileURLWithPath: runtimePath, isDirectory: true)
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioAudioConvert-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -583,7 +588,8 @@ private actor ScribePromptRecorder {
     let source = try ArtifactRef.inspect(sourceURL)
     let original = try Data(contentsOf: sourceURL)
 
-    let output = try await ToolExecutor().execute(TaskStep(operation: .convertAudio, source: .artifacts([source.id])), inputs: [source])[0]
+    let output = try #require(try await EchoWorkflow.execute(.convertAudio, inputs: [source], arguments: .audioConvert(format: .m4a),
+                                                             mediaRuntimeRoot: runtimeRoot).first)
     let converted = AVURLAsset(url: output.fileURL)
 
     #expect(output.fileURL.pathExtension == "m4a")
@@ -1130,7 +1136,7 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
     #expect(!video.contains("-c"))
 
     let live = try ReelCommandBuilder.streamlink(url: url, outputPath: "/tmp/kio/live.ts", quality: "1080p")
-    #expect(live == ["--force", "--output", "/tmp/kio/live.ts", url.absoluteString, "1080p"])
+    #expect(live == ["--no-config", "--no-plugin-sideloading", "--force", "--output", "/tmp/kio/live.ts", url.absoluteString, "1080p"])
     do {
         _ = try ReelCommandBuilder.ytDlp(operation: .downloadRemoteVideo, url: url,
                                           outputTemplate: "/tmp/kio/out", quality: "9999p", format: "mp4",
@@ -1151,7 +1157,7 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
     let executor = ToolExecutor()
     let jpg = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
                                                                arguments: .imageConvert(format: "jpeg")), inputs: [png]).first)
-    #expect(jpg.fileURL.pathExtension == "jpg")
+    #expect(jpg.fileURL.pathExtension == "jpeg")
     let jpgSource = try #require(CGImageSourceCreateWithURL(jpg.fileURL as CFURL, nil))
     #expect(CGImageSourceGetType(jpgSource) as String? == UTType.jpeg.identifier)
 
@@ -1167,7 +1173,7 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
     #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(tiff.fileURL as CFURL, nil))) as String? == UTType.tiff.identifier)
     let jpegFromTIFF = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([tiff.id]),
                                                                         arguments: .imageConvert(format: "jpeg")), inputs: [tiff]).first)
-    #expect(jpegFromTIFF.fileURL.pathExtension == "jpg")
+    #expect(jpegFromTIFF.fileURL.pathExtension == "jpeg")
     #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(jpegFromTIFF.fileURL as CFURL, nil))) as String? == UTType.jpeg.identifier)
 
     let imageDestinations = Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
@@ -1181,7 +1187,7 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
         #expect(fromHeic.fileURL.pathExtension == "png")
         let heicJPEG = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([heic.id]),
                                                                         arguments: .imageConvert(format: "jpeg")), inputs: [heic]).first)
-        #expect(heicJPEG.fileURL.pathExtension == "jpg")
+        #expect(heicJPEG.fileURL.pathExtension == "jpeg")
         #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(heicJPEG.fileURL as CFURL, nil))) as String? == UTType.jpeg.identifier)
     } else {
         #expect(!imageDestinations.contains(UTType.heic.identifier), "HEIC encoder-specific conversion skipped: this ImageIO runtime has no HEIC encoder.")
@@ -1196,18 +1202,142 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
                                                      source: .artifacts(batchInputs.map(\.id)),
                                                      arguments: .imageConvert(format: "jpeg")), inputs: batchInputs)
     #expect(batch.count == 3)
-    #expect(batch.allSatisfy { $0.fileURL.pathExtension == "jpg" })
+    #expect(batch.allSatisfy { $0.fileURL.pathExtension == "jpeg" })
     #expect(batch.allSatisfy { output in
         guard let source = CGImageSourceCreateWithURL(output.fileURL as CFURL, nil) else { return false }
         return CGImageSourceGetType(source) as String? == UTType.jpeg.identifier
     })
     #expect(FileManager.default.fileExists(atPath: pngURL.path))
 
+    let jpgNamed = try #require(try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
+                                                                       arguments: .imageConvert(format: "jpg")), inputs: [png]).first)
+    #expect(jpgNamed.fileURL.pathExtension == "jpg")
+    #expect(CGImageSourceGetType(try #require(CGImageSourceCreateWithURL(jpgNamed.fileURL as CFURL, nil))) as String? == UTType.jpeg.identifier)
+    #expect(try Data(contentsOf: pngURL) == makePNG(width: 36, height: 24))
+
     do {
         _ = try await executor.execute(TaskStep(operation: .convertImage, source: .artifacts([png.id]),
                                                 arguments: .imageConvert(format: "exe")), inputs: [png])
         Issue.record("Pixel must reject an unsupported image output type.")
     } catch { #expect(error.localizedDescription.contains("supports PNG, JPEG")) }
+}
+
+@Test func echoProducesAndVerifiesEveryTypedAudioTargetFromAudioAndVideoFixtures() async throws {
+    guard let rootPath = ProcessInfo.processInfo.environment["KIO_REEL_RUNTIME_ROOT"] else {
+        Issue.record("CI must prepare the pinned Reel runtime before running conversion integration tests.")
+        return
+    }
+    let runtimeRoot = URL(fileURLWithPath: rootPath, isDirectory: true)
+    let ffmpeg = try #require(ReelRuntime.url(for: "ffmpeg", in: runtimeRoot))
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KioEchoFormatTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let audioURL = folder.appendingPathComponent("tone.wav")
+    try runFixtureProcess(ffmpeg, ["-nostdin", "-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-f", "wav", audioURL.path])
+    let audio = try ArtifactRef.inspect(audioURL)
+    for format in AudioTargetFormat.allCases {
+        let output = try #require(try await EchoWorkflow.execute(.convertAudio, inputs: [audio], arguments: .audioConvert(format: format),
+                                                                 mediaRuntimeRoot: runtimeRoot).first)
+        #expect(output.fileURL.pathExtension == format.rawValue)
+        let probe = try await BundledMediaRuntime.probe(output.fileURL, runtimeRoot: runtimeRoot)
+        #expect(probe.isCompatibleAudio(with: format))
+        #expect(probe.duration.map { abs($0 - 1) < 0.3 } == true)
+        #expect(output.verificationNote?.contains("audio only") == true)
+    }
+
+    let videoURL = folder.appendingPathComponent("tone-video.mp4")
+    try runFixtureProcess(ffmpeg, ["-nostdin", "-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=64x48:r=10:d=1",
+                                  "-f", "lavfi", "-i", "sine=frequency=220:duration=1", "-shortest", "-c:v", "mpeg4", "-q:v", "5",
+                                  "-c:a", "aac", "-f", "mp4", videoURL.path])
+    let video = try ArtifactRef.inspect(videoURL)
+    #expect(video.kind == .video)
+    let extracted = try #require(try await EchoWorkflow.execute(.convertAudio, inputs: [video], arguments: .audioConvert(format: .mp3),
+                                                                 mediaRuntimeRoot: runtimeRoot).first)
+    let extractedProbe = try await BundledMediaRuntime.probe(extracted.fileURL, runtimeRoot: runtimeRoot)
+    #expect(extracted.fileURL.pathExtension == "mp3")
+    #expect(extractedProbe.isCompatibleAudio(with: .mp3))
+    #expect(!extractedProbe.hasVideo)
+
+    let mp4Output = folder.appendingPathComponent("normalized.tmp")
+    try await BundledMediaRuntime.transcodeVideo(videoURL, to: mp4Output, container: .mp4, runtimeRoot: runtimeRoot)
+    let mp4Probe = try await BundledMediaRuntime.probe(mp4Output, runtimeRoot: runtimeRoot)
+    #expect(mp4Probe.isCompatible(with: .mp4))
+    #expect(mp4Probe.hasAudio)
+    #expect(mp4Probe.hasVideo)
+
+    let resizedOutput = folder.appendingPathComponent("normalized-small.tmp")
+    try await BundledMediaRuntime.transcodeVideo(videoURL, to: resizedOutput, container: .mp4, maximumHeight: 24,
+                                                 runtimeRoot: runtimeRoot)
+    let resizedProbe = try await BundledMediaRuntime.probe(resizedOutput, runtimeRoot: runtimeRoot)
+    #expect(resizedProbe.isCompatible(with: .mp4))
+    #expect((resizedProbe.streams.first(where: { $0.codec_type == "video" })?.height ?? Int.max) <= 24)
+}
+
+private func runFixtureProcess(_ executable: URL, _ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = executable
+    process.arguments = arguments
+    let error = Pipe()
+    process.standardError = error
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        let detail = String(data: error.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        throw NSError(domain: "KioTestMediaFixture", code: Int(process.terminationStatus),
+                      userInfo: [NSLocalizedDescriptionKey: detail.isEmpty ? "Fixture helper failed." : detail])
+    }
+}
+
+@Test func imageBatchFailureRollsBackEarlierOutputsAndExifOrientationIsAppliedOnce() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("KioImageAtomicOrientation-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let inputs = try (0..<3).map { index -> ArtifactRef in
+        let url = root.appendingPathComponent("atomic-\(index).png")
+        try (index == 2 ? Data("not an image".utf8) : makePNG(width: 24, height: 18)).write(to: url)
+        return try ArtifactRef.inspect(url)
+    }
+    do {
+        _ = try await ToolExecutor().execute(TaskStep(operation: .batchConvertImages,
+                                                       source: .artifacts(inputs.map(\.id)),
+                                                       arguments: .imageConvert(format: "jpeg")), inputs: inputs)
+        Issue.record("The corrupt third image must fail the whole batch.")
+    } catch { #expect(error.localizedDescription.contains("image") || error.localizedDescription.contains("Image")) }
+    let leftoverJPEGs = (try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil))
+        .filter { $0.pathExtension.lowercased() == "jpeg" }
+    #expect(leftoverJPEGs.isEmpty)
+    #expect(inputs.allSatisfy { FileManager.default.fileExists(atPath: $0.fileURL.path) })
+
+    let pixels = makeCGImage(width: 40, height: 20)
+    let source = root.appendingPathComponent("oriented.jpg")
+    let destination = CGImageDestinationCreateWithURL(source as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, pixels, [kCGImagePropertyOrientation: 6] as CFDictionary)
+    #expect(CGImageDestinationFinalize(destination))
+    let oriented = try ArtifactRef.inspect(source)
+    let upright = try #require(try await ToolExecutor().execute(TaskStep(operation: .convertImage,
+                                                                          source: .artifacts([oriented.id]),
+                                                                          arguments: .imageConvert(format: "png")), inputs: [oriented]).first)
+    let uprightSource = try #require(CGImageSourceCreateWithURL(upright.fileURL as CFURL, nil))
+    let uprightImage = try #require(CGImageSourceCreateImageAtIndex(uprightSource, 0, nil))
+    #expect(uprightImage.width == 20)
+    #expect(uprightImage.height == 40)
+    #expect(CGImageSourceGetType(uprightSource) as String? == UTType.png.identifier)
+
+    let resized = try #require(try await ToolExecutor().execute(TaskStep(operation: .resizeImage,
+                                                                          source: .artifacts([oriented.id]),
+                                                                          arguments: .imageResize(width: 10)), inputs: [oriented]).first)
+    let resizedSource = try #require(CGImageSourceCreateWithURL(resized.fileURL as CFURL, nil))
+    let resizedImage = try #require(CGImageSourceCreateImageAtIndex(resizedSource, 0, nil))
+    #expect(resizedImage.width == 10)
+    #expect(resizedImage.height == 20)
+
+    let pdf = try #require(try await ToolExecutor().execute(TaskStep(operation: .imagesToPDF,
+                                                                       source: .artifacts([oriented.id])), inputs: [oriented]).first)
+    let pdfDocument = try #require(PDFDocument(url: pdf.fileURL))
+    let pdfBounds = try #require(pdfDocument.page(at: 0)).bounds(for: .mediaBox)
+    #expect(pdfBounds.height > pdfBounds.width)
 }
 
 @Test func backgroundRemovalRejectsInvalidInputsBeforeVisionAndPreservesSourceFiles() async throws {

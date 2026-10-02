@@ -9,7 +9,7 @@ import KioCore
     #expect(ReelMediaRouter.backend(for: URL(string: "https://media.example/live.m3u8" )!, availableHelpers: []) == .ytDlp)
     #expect(ReelMediaRouter.backend(for: URL(string: "https://media.example/live.m3u8")!, availableHelpers: ["streamlink"]) == .streamlink)
     #expect(ReelMediaRouter.backend(for: URL(string: "https://imgur.com/gallery/set")!, availableHelpers: []) == .ytDlp)
-    #expect(ReelMediaRouter.backend(for: URL(string: "https://imgur.com/gallery/set")!, availableHelpers: ["gallery-dl"]) == .galleryDL)
+    #expect(ReelMediaRouter.backend(for: URL(string: "https://imgur.com/gallery/set")!, availableHelpers: ["gallery-dl"]) == .ytDlp)
 
     for raw in ["file:///etc/passwd", "ftp://media.example/video.mp4", "http://127.0.0.1/secret", "http://[::1]/secret", "http://localhost/private"] {
         do {
@@ -53,6 +53,25 @@ import KioCore
             Issue.record("Invalid inspection output must be rejected: \(message)")
         } catch { #expect(error.localizedDescription.contains(message)) }
     }
+}
+
+@Test func streamlinkInspectionIsProviderNeutralAndItsSelectedQualityIsPreserved() throws {
+    let url = URL(string: "https://media.example/watch/123")!
+    let fixture = Data(#"{"plugin":"plugins.generic","metadata":{"title":"A live title"},"streams":{"best":{"type":"HLSStream"},"720p":{"type":"HLSStream"},"720p_alt":{"type":"HLSStream"},"480p":{"type":"HLSStream"}}}"#.utf8)
+    let info = try ReelStreamlinkInspectionDecoder.decode(fixture, remoteURL: url)
+    #expect(info.title == "A live title")
+    #expect(info.source == "generic")
+    #expect(info.qualities == ["best", "720p", "480p"])
+    #expect(info.videoFormats == ["mp4"])
+
+    let inspect = try ReelCommandBuilder.streamlinkInspection(url: url)
+    #expect(inspect.contains("--json"))
+    #expect(inspect.contains("--no-config"))
+    #expect(inspect.contains("--no-plugin-sideloading"))
+    #expect(inspect.last == url.absoluteString)
+    let download = try ReelCommandBuilder.streamlink(url: url, outputPath: "/tmp/kio-selected.ts", quality: "720p")
+    #expect(download.last == "720p")
+    #expect(!download.contains("best"))
 }
 
 @Test func reelInspectionCommandRequestsOnlyCompactJSONAndKeepsHelperIsolation() throws {
@@ -136,6 +155,11 @@ import KioCore
 
     let outputs = try ReelOutputPolicy.scan(root: root, maximumCount: 2, maximumBytes: 9)
     #expect(outputs.map(\.lastPathComponent) == ["a.mp4", "b.mp4"])
+    #expect(try ReelOutputPolicy.currentSize(root: root, maximumBytes: 9) == 9)
+    do {
+        _ = try ReelOutputPolicy.currentSize(root: root, maximumBytes: 8)
+        Issue.record("The live output monitor must enforce the byte cap while the helper is still running.")
+    } catch { #expect(error.localizedDescription.contains("size limit")) }
     do {
         _ = try ReelOutputPolicy.scan(root: root, maximumCount: 1, maximumBytes: 100)
         Issue.record("Reel must refuse output sets over its count limit.")

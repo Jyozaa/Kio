@@ -104,7 +104,12 @@ derived=""
 while [[ $# -gt 0 ]]; do
   if [[ "$1" == "-derivedDataPath" ]]; then derived="$2"; shift 2; else shift; fi
 done
-mkdir -p "$derived/Build/Products/${CONFIGURATION:-Release}/Kio.app/Contents"
+app="$derived/Build/Products/${CONFIGURATION:-Release}/Kio.app"
+mkdir -p "$app/Contents/Resources/Reel/ffmpeg/bin" "$app/Contents/Resources/Reel/streamlink/python/bin"
+for helper in yt-dlp deno ffmpeg/bin/ffmpeg streamlink/python/bin/python3.12; do
+  : > "$app/Contents/Resources/Reel/$helper"
+  chmod +x "$app/Contents/Resources/Reel/$helper"
+done
 ''',
                 "codesign": '''#!/bin/bash
 printf 'codesign %s\\n' "$*" >> "$KIO_TEST_LOG"

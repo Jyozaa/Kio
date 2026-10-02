@@ -55,7 +55,7 @@ public struct WorkflowTemplateStore {
         .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
         .explainCode, .proposePatch, .formatJSON,
         .inspectRemoteMedia, .downloadRemoteVideo, .downloadRemoteAudio, .downloadRemoteLive,
-        .downloadRemoteGallery, .downloadRemoteSubtitles, .downloadRemoteThumbnail
+        .downloadRemoteSubtitles, .downloadRemoteThumbnail
     ]
 
     public init(key: String = "kio.workflowTemplates.v1", defaults: UserDefaults = .standard) {
