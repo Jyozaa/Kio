@@ -216,13 +216,17 @@ public enum ModelPlanDecoder {
 
     private static func typedArguments(_ wire: WireArguments?, for operation: ToolOperation, request: String) -> ToolArguments? {
         switch operation {
-        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .inspectRemoteMedia,
              .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
              .copyFiles, .moveFiles, .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
             return ToolArguments.none
         case .convertAudio:
             guard let format = wire?.format.flatMap(AudioTargetFormat.init(rawValue:)) else { return nil }
             return .audioConvert(format: format)
+        case .transcodeVideo:
+            guard let rawFormat = wire?.format?.lowercased() else { return ToolArguments.none }
+            guard let format = VideoTargetFormat(rawValue: rawFormat) else { return nil }
+            return .videoConvert(format: format)
         case .findRecent, .findByName:
             return .textPrompt(request)
         case .inspectData, .mergeData, .deduplicateData, .dataStatistics, .csvToJSON, .jsonToCSV, .normalizeData, .compareData, .importXLSX:

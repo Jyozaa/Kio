@@ -271,6 +271,39 @@ import KioCore
     #expect(cue.consume("my productivity app kio", confidence: 0.95, policy: .responsive) == cue.tokens.count)
 }
 
+@Test func cueNumberExpansionsMatchOnlyTheNearbyScriptInterpretation() {
+    let script = "testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio"
+    var digits = CueTextAlignment(script: script)
+    #expect(digits.consume("testing", confidence: 0.9, policy: .responsive) == 1)
+    #expect(digits.consume("testing testing", confidence: 0.9, policy: .responsive) == 2)
+    #expect(digits.consume("testing testing 1", confidence: 0.9, policy: .responsive) == 3)
+    #expect(digits.consume("testing testing 123", confidence: 0.9, policy: .responsive) == 5)
+    #expect(digits.confirmedReadPosition == 5)
+
+    var cardinal = CueTextAlignment(script: "one hundred twenty three people attended")
+    #expect(cardinal.consume("123", confidence: 0.9, policy: .responsive) == 4)
+
+    var distant = CueTextAlignment(script: "start " + Array(repeating: "different", count: 20).joined(separator: " ") + " one two three")
+    #expect(distant.consume("123", confidence: 0.9, policy: .responsive) == 0)
+    #expect(distant.consume("123", confidence: 0.9, policy: .responsive) == 0)
+}
+
+@Test func cueKioPhoneticVariantsAreDistinctiveAndNearOnly() {
+    for variant in ["kyo", "keo"] {
+        var singleNearby = CueTextAlignment(script: "kio")
+        #expect(singleNearby.consume(variant, confidence: 0.9, policy: .responsive) == 1)
+
+        var nearby = CueTextAlignment(script: "my productivity app kio")
+        #expect(nearby.consume("my productivity app \(variant)", confidence: 0.9, policy: .responsive) == nearby.tokens.count)
+
+        var distant = CueTextAlignment(script: Array(repeating: "different", count: 16).joined(separator: " ") + " kio")
+        #expect(distant.consume(variant, confidence: 0.9, policy: .responsive) == 0)
+    }
+
+    var commonShortWord = CueTextAlignment(script: "the end")
+    #expect(commonShortWord.consume("they", confidence: 0.9, policy: .responsive) == 0)
+}
+
 @Test func cueWaveformSmoothingBoundsAndThrottlesSamples() {
     var waveform = CueWaveformState(capacity: 4, smoothing: 0.5, minimumInterval: 0.04)
     #expect(waveform.levels.count == 4)

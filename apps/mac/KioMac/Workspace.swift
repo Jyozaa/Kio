@@ -253,24 +253,34 @@ final class KioWorkspace: ObservableObject {
     }
 
     func downloadInspectedReel(quality: String, format: String) {
-        guard let artifact = activeOutput, artifact.role == .internalIntermediate,
+        guard let artifact = activeOutput else { return }
+        downloadInspectedReel(artifact: artifact, quality: quality, format: format)
+    }
+
+    func downloadInspectedReel(artifact: ArtifactRef, quality: String, format: String) {
+        guard artifact.role == .internalIntermediate,
               let info = try? ReelInspectionStore.readInfo(from: artifact),
               ["best", "2160p", "1440p", "1080p", "720p", "480p", "360p"].contains(quality),
               ["mp4", "webm", "mkv", "mov"].contains(format) else { return }
         let request = "Download \(info.title) as \(quality) \(format.uppercased())"
         let plan = TaskPlan(request: request, steps: [TaskStep(operation: .downloadRemoteVideo,
             source: .artifacts([artifact.id]), arguments: .remoteMedia(quality: quality, format: format))])
-        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan)
+        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan, prebuiltInputs: [artifact])
     }
 
     func downloadInspectedReelAudio(format: String) {
-        guard let artifact = activeOutput, artifact.role == .internalIntermediate,
-              let info = try? ReelInspectionStore.readInfo(from: artifact), info.audioAvailable,
+        guard let artifact = activeOutput else { return }
+        downloadInspectedReelAudio(artifact: artifact, format: format)
+    }
+
+    func downloadInspectedReelAudio(artifact: ArtifactRef, format: String) {
+        guard artifact.role == .internalIntermediate,
+              let info = try? ReelInspectionStore.readInfo(from: artifact), info.audioAvailable == true,
               let target = AudioTargetFormat(rawValue: format) else { return }
         let request = "Download audio from \(info.title) as \(format.uppercased())"
         let plan = TaskPlan(request: request, steps: [TaskStep(operation: .downloadRemoteAudio,
             source: .artifacts([artifact.id]), arguments: .remoteMedia(quality: nil, format: target.rawValue))])
-        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan)
+        submit(request, remote: nil, pastedText: nil, prebuiltPlan: plan, prebuiltInputs: [artifact])
     }
 
     func saveWorkflowTemplate(named name: String) throws {
@@ -402,7 +412,7 @@ final class KioWorkspace: ObservableObject {
     }
 
     private func submit(_ rawRequest: String, remote: (phoneID: String, taskID: String, inputURLs: [URL])?, pastedText: String? = nil,
-                        prebuiltPlan: TaskPlan? = nil) {
+                        prebuiltPlan: TaskPlan? = nil, prebuiltInputs: [ArtifactRef]? = nil) {
         var remoteInputURLs = remote?.inputURLs ?? []
         let embeddedURLs = Self.webURLs(in: rawRequest)
         let cleanedRequest = Self.removingWebURLs(from: rawRequest)
@@ -500,6 +510,8 @@ final class KioWorkspace: ObservableObject {
             planningArtifacts = [researchQueryArtifact]
         } else if !attachments.isEmpty {
             planningArtifacts = attachments
+        } else if prebuiltPlan != nil, let prebuiltInputs {
+            planningArtifacts = prebuiltInputs
         } else if prebuiltPlan != nil, let activeOutput {
             planningArtifacts = [activeOutput]
         } else {
@@ -562,8 +574,8 @@ final class KioWorkspace: ObservableObject {
             }
             var plan = fastPlan
             if plan.steps.isEmpty {
-                if SemanticIntentParser.explicitlyNegatesTransformation(request) {
-                    let message = plan.clarification ?? "You said not to perform that conversion. What would you like Kio to do instead?"
+                if SemanticIntentParser.explicitlyNegatesAction(request) {
+                    let message = plan.clarification ?? "Understood. I won't perform that operation. What would you like me to do instead?"
                     publishExecution(for: plan, status: .waitingForUser, text: message)
                     append("Kio", message)
                     if let remote { await LocalRelayManager.shared.sendReply(type: "error", text: message, taskID: remote.taskID, artifactURL: nil, to: remote.phoneID) }

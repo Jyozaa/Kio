@@ -1259,6 +1259,20 @@ private func makeTextPDF(_ text: String) -> PDFDocument {
     #expect(extractedProbe.isCompatibleAudio(with: .mp3))
     #expect(!extractedProbe.hasVideo)
 
+    for format in AudioTargetFormat.allCases {
+        let normalized = try await ReelWorkflow.normalizeDownloadedMedia(videoURL, operation: .downloadRemoteAudio,
+            requestedFormat: format.rawValue, quality: nil, workspace: folder, runtimeRoot: runtimeRoot)
+        #expect(normalized.fileExtension == format.rawValue)
+        #expect(normalized.url.pathExtension == "tmp")
+        let finalURL = folder.appendingPathComponent("reel-audio-\(format.rawValue).\(format.rawValue)")
+        try FileManager.default.moveItem(at: normalized.url, to: finalURL)
+        #expect(finalURL.pathExtension == format.rawValue)
+        let normalizedProbe = try await BundledMediaRuntime.probe(finalURL, runtimeRoot: runtimeRoot)
+        #expect(normalizedProbe.isCompatibleAudio(with: format))
+        #expect(!normalizedProbe.hasVideo)
+        try? FileManager.default.removeItem(at: finalURL)
+    }
+
     let mp4Output = folder.appendingPathComponent("normalized.tmp")
     try await BundledMediaRuntime.transcodeVideo(videoURL, to: mp4Output, container: .mp4, runtimeRoot: runtimeRoot)
     let mp4Probe = try await BundledMediaRuntime.probe(mp4Output, runtimeRoot: runtimeRoot)

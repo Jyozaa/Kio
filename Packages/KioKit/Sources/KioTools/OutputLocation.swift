@@ -113,16 +113,22 @@ public enum OutputLocation {
     }
 
     private static func destinationFolder(for inputs: [ArtifactRef]) throws -> URL {
+        try resolvedDestinationFolder(for: inputs, customFolder: access.customFolder(), defaultFolder: defaultFolder())
+    }
+
+    static func resolvedDestinationFolder(for inputs: [ArtifactRef], customFolder: URL?, defaultFolder: URL) throws -> URL {
         let fm = FileManager.default
-        let parents = Set(inputs.map { $0.fileURL.deletingLastPathComponent().standardizedFileURL })
-        if let selected = access.customFolder() { return selected }
-        if inputs.allSatisfy({
+        if let customFolder { return customFolder }
+        let userArtifacts = inputs.filter { $0.role != .internalIntermediate }
+        guard !userArtifacts.isEmpty else { return defaultFolder }
+        let parents = Set(userArtifacts.map { $0.fileURL.deletingLastPathComponent().standardizedFileURL })
+        if userArtifacts.allSatisfy({
             let inbox = $0.fileURL.deletingLastPathComponent()
             return inbox.lastPathComponent == "ClipboardInbox" && inbox.deletingLastPathComponent().lastPathComponent == "Kio"
-        }) { return try defaultFolder() }
-        if inputs.allSatisfy({ $0.kind == .url }) { return try defaultFolder() }
+        }) { return defaultFolder }
+        if userArtifacts.allSatisfy({ $0.kind == .url }) { return defaultFolder }
         if parents.count == 1, let parent = parents.first, fm.isWritableFile(atPath: parent.path) { return parent }
-        return try defaultFolder()
+        return defaultFolder
     }
 
     private static func sanitize(_ value: String) -> String {

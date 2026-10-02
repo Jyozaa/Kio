@@ -20,11 +20,12 @@ public struct SemanticIntent: Codable, Sendable, Equatable {
     public let preferredExtension: String
     public let quality: String?
     public let targetSizeBytes: Int64?
+    public let targetWidth: Int?
     public let negated: Bool
 
     public init(action: SemanticAction, domain: SemanticDomain, sourceFormat: SemanticFormat?,
                 targetFormat: SemanticFormat, preferredExtension: String, quality: String? = nil,
-                targetSizeBytes: Int64? = nil, negated: Bool = false) {
+                targetSizeBytes: Int64? = nil, targetWidth: Int? = nil, negated: Bool = false) {
         self.action = action
         self.domain = domain
         self.sourceFormat = sourceFormat
@@ -32,6 +33,7 @@ public struct SemanticIntent: Codable, Sendable, Equatable {
         self.preferredExtension = preferredExtension
         self.quality = quality
         self.targetSizeBytes = targetSizeBytes
+        self.targetWidth = targetWidth
         self.negated = negated
     }
 }
@@ -171,13 +173,17 @@ public enum SemanticIntentParser {
     /// Explicit negation is a hard stop: a language model must not reinterpret it
     /// into the operation the user said not to perform.
     public static func explicitlyNegatesTransformation(_ request: String) -> Bool {
+        explicitlyNegatesAction(request)
+    }
+
+    public static func explicitlyNegatesAction(_ request: String) -> Bool {
         request.lowercased().range(
-            of: #"\b(?:don't|do not|never|must not|not)\s+(?:ever\s+)?(?:convert|turn|make|export|save|change|download|get|acquire)\b"#,
+            of: #"\b(?:don['’]t|do not|never|must not|not)\s+(?:ever\s+)?(?:convert|turn|make|export|save|change|download|get|acquire|move|delete|remove|rename|extract|merge|copy|resize|compress|organize|rotate|trim|split|overwrite)\b"#,
             options: .regularExpression
         ) != nil
     }
 
-    public static func parse(_ request: String) -> SemanticIntentParseResult {
+    public static func parse(_ request: String, artifacts: [ArtifactRef] = []) -> SemanticIntentParseResult {
         let hasArrowRelationship = request.contains("→") || request.contains("->")
         let normalized = request.lowercased()
             .replacingOccurrences(of: "→", with: " to ")
@@ -187,8 +193,8 @@ public enum SemanticIntentParser {
         guard hasArrowRelationship || hasExplicitAction || bareRequestedFormat else {
             return .noMatch
         }
-        if explicitlyNegatesTransformation(normalized) {
-            return .clarify("You said not to convert the file. Should Kio leave it unchanged, or convert it to a specific format?")
+        if explicitlyNegatesAction(normalized) {
+            return .clarify("Understood. I won't perform that operation. What would you like me to do instead?")
         }
 
         let patterns = [
@@ -212,7 +218,10 @@ public enum SemanticIntentParser {
         }
         guard let target else { return .noMatch }
         let preferred = target.rawValue
-        let action: SemanticAction = normalized.range(of: #"\b(?:download|get|acquire)\b"#, options: .regularExpression) != nil ? .download : .convert
+        let explicitlyRemote = normalized.range(of: #"\b(?:download|acquire)\b"#, options: .regularExpression) != nil
+        let contextualGet = normalized.range(of: #"\bget\b"#, options: .regularExpression) != nil
+            && artifacts.contains(where: { $0.kind == .url })
+        let action: SemanticAction = explicitlyRemote || contextualGet ? .download : .convert
         let domain: SemanticDomain
         switch target {
         case .png, .jpeg, .jpg, .heic, .heif, .tiff, .tif, .webp: domain = .image
@@ -221,9 +230,24 @@ public enum SemanticIntentParser {
         case .csv, .json, .xlsx: domain = .table
         }
         let resolvedDomain: SemanticDomain = action == .download ? .remoteMedia : domain
+        let width = captures(#"(?i)\b(?:resize|scale)\b.*?\b(\d{1,5})\s*(?:pixels?|px)\b"#, in: normalized)?.first.flatMap(Int.init)
+        let hasResizeAction = normalized.range(of: #"\b(?:resize|scale)\b"#, options: .regularExpression) != nil
+        if hasResizeAction && (resolvedDomain != .image || width == nil) {
+            return .clarify("I understood the format conversion, but need a supported image width to handle the resize too.")
+        }
+        let hasCompressAction = normalized.range(of: #"\bcompress(?:ion)?\b"#, options: .regularExpression) != nil
+        if hasCompressAction && (resolvedDomain != .image || sizeLimit(in: normalized) == nil) {
+            return .clarify("I understood the format conversion, but need an image size target to handle compression too.")
+        }
+        let unsupportedCompound = normalized.range(of: #"\b(?:rename|move|copy|delete|remove|merge|split|rotate|trim|extract|organize|sort|crop|transcribe|summari[sz]e)\b"#, options: .regularExpression) != nil
+            && !(resolvedDomain == .audio && normalized.range(of: #"\bextract\b"#, options: .regularExpression) != nil)
+        if unsupportedCompound {
+            return .clarify("This request includes another operation I couldn't safely combine with the format change. Please split it into separate requests.")
+        }
         return .resolved(SemanticIntent(action: action, domain: resolvedDomain, sourceFormat: source,
                                          targetFormat: target, preferredExtension: preferred,
-                                         quality: quality(in: normalized), targetSizeBytes: sizeLimit(in: normalized)), confidence: 0.98)
+                                         quality: quality(in: normalized), targetSizeBytes: sizeLimit(in: normalized),
+                                         targetWidth: width), confidence: 0.98)
     }
 
     private static func captures(_ pattern: String, in text: String) -> [String]? {
@@ -260,7 +284,7 @@ public enum CapabilityCompiler {
         let step: TaskStep?
         switch intent.domain {
         case .image:
-            guard intent.targetSizeBytes == nil, matchesSourceFormat(intent.sourceFormat, artifacts: artifacts),
+            guard matchesSourceFormat(intent.sourceFormat, artifacts: artifacts),
                   (1...32).contains(artifacts.count), artifacts.allSatisfy({ $0.kind == .image }) else { return nil }
             let format: String
             switch intent.targetFormat {
@@ -274,7 +298,7 @@ public enum CapabilityCompiler {
             step = TaskStep(operation: artifacts.count == 1 ? .convertImage : .batchConvertImages,
                             source: .artifacts(ids), arguments: .imageConvert(format: format))
         case .audio:
-            guard intent.targetSizeBytes == nil, artifacts.count == 1,
+            guard intent.targetSizeBytes == nil, intent.targetWidth == nil, artifacts.count == 1,
                   matchesSourceFormat(intent.sourceFormat, artifacts: artifacts),
                   let format = AudioTargetFormat(rawValue: intent.targetFormat.rawValue) else { return nil }
             if artifacts[0].kind == .url {
@@ -285,12 +309,14 @@ public enum CapabilityCompiler {
                 step = TaskStep(operation: .convertAudio, source: .artifacts(ids), arguments: .audioConvert(format: format))
             }
         case .video:
-            guard intent.targetSizeBytes == nil,
+            guard intent.targetSizeBytes == nil, intent.targetWidth == nil,
                   artifacts.count == 1, artifacts[0].kind == .video,
-                  matchesSourceFormat(intent.sourceFormat, artifacts: artifacts), intent.targetFormat == .mp4 else { return nil }
-            step = TaskStep(operation: .transcodeVideo, source: .artifacts(ids))
+                  matchesSourceFormat(intent.sourceFormat, artifacts: artifacts),
+                  let format = VideoTargetFormat(rawValue: intent.targetFormat.rawValue),
+                  format != .webm || artifacts[0].fileURL.pathExtension.lowercased() == "webm" else { return nil }
+            step = TaskStep(operation: .transcodeVideo, source: .artifacts(ids), arguments: .videoConvert(format: format))
         case .table:
-            guard intent.targetSizeBytes == nil, artifacts.count == 1,
+            guard intent.targetSizeBytes == nil, intent.targetWidth == nil, artifacts.count == 1,
                   matchesSourceFormat(intent.sourceFormat, artifacts: artifacts) else { return nil }
             let ext = artifacts[0].fileURL.pathExtension.lowercased()
             if intent.targetFormat == .csv, ext == "xlsx" {
@@ -301,7 +327,7 @@ public enum CapabilityCompiler {
                 step = TaskStep(operation: .csvToJSON, source: .artifacts(ids))
             } else { return nil }
         case .remoteMedia:
-            guard intent.targetSizeBytes == nil, artifacts.count == 1, artifacts[0].kind == .url else { return nil }
+            guard intent.targetSizeBytes == nil, intent.targetWidth == nil, artifacts.count == 1, artifacts[0].kind == .url else { return nil }
             if let audio = AudioTargetFormat(rawValue: intent.targetFormat.rawValue) {
                 step = TaskStep(operation: .downloadRemoteAudio, source: .artifacts(ids),
                                 arguments: .remoteMedia(quality: intent.quality, format: audio.rawValue))
@@ -313,9 +339,26 @@ public enum CapabilityCompiler {
             }
         }
         guard let step else { return nil }
-        guard FastPathPlanner.isCompatible(step.operation, inputKinds: artifacts.map(\.kind)),
-              FastPathPlanner.hasValidArguments(step.arguments, for: step.operation) else { return nil }
-        return TaskPlan(request: request, steps: [step])
+        var steps = [step]
+        if intent.domain == .image, let targetWidth = intent.targetWidth {
+            let operation: ToolOperation = artifacts.count == 1 ? .resizeImage : .batchResizeImages
+            let resize = TaskStep(operation: operation, source: .previousStep(steps[0].id),
+                                  arguments: .imageResize(width: targetWidth))
+            steps.append(resize)
+        }
+        if intent.domain == .image, let targetSize = intent.targetSizeBytes {
+            guard artifacts.count == 1 else { return nil }
+            let compress = TaskStep(operation: .compressImage, source: .previousStep(steps.last!.id),
+                                    arguments: .imageCompression(maxBytes: targetSize))
+            steps.append(compress)
+        }
+        guard steps.allSatisfy({ item in
+            let inputKinds = item.source == .artifacts(artifacts.map(\.id))
+                ? artifacts.map(\.kind) : [.image]
+            return FastPathPlanner.isCompatible(item.operation, inputKinds: inputKinds)
+                && FastPathPlanner.hasValidArguments(item.arguments, for: item.operation)
+        }) else { return nil }
+        return TaskPlan(request: request, steps: steps)
     }
 
     private static func matchesSourceFormat(_ source: SemanticFormat?, artifacts: [ArtifactRef]) -> Bool {

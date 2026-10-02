@@ -1,5 +1,47 @@
 # Kio manual acceptance guide
 
+## Reliability hardening: Reel variants, Cue context, and semantic routing
+
+These checks cover the current local reliability changes. Use media you own or have permission to save. Codex did not launch Kio, use the microphone, or access live media, so these checks still need your manual validation.
+
+### Reel: source variants and chat card
+
+1. Paste a public media URL and ask **“download this”**.
+2. Confirm the Reel picker appears in the notch and beside the matching Reel inspection message in normal chat.
+3. Compare both pickers. Choose a quality and format, then change the quality. The format list should update; impossible quality/format pairs should not be offered. A format that needs an encode should say **Convert**. If Kio chooses a lower compatible source to avoid encoding, it should show that source quality.
+4. Choose **1080p MP4**. For a source offering H.264 video and AAC audio, expect those streams to be selected and copied/remuxed without an extra video encode. Open the result and check that both picture and sound work.
+5. From the same Reel card, request **MP3**. Expect an audio-only `.mp3` result and the original Reel card to remain available.
+6. Create another result, then return to the older Reel inspection message. Its inline picker should still work while the inspection file exists.
+7. If you have an internal inspection artifact available, download from it with no custom output folder. The result should go to `Downloads/Kio`, never `Application Support/Kio/ReelInspection`. A configured custom output folder should take precedence.
+
+Use a public URL that Reel supports. This check does not imply universal site support; login-gated and DRM-protected sources remain unsupported.
+
+### Reel: audio and video conversions
+
+Use a local video that contains audio. Ask Kio to get the audio in turn as **MP3**, **M4A**, **WAV**, and **FLAC**. Each result should have the requested final extension, contain only audio, play correctly, and leave the source unchanged. Scratch files should not appear in the destination folder.
+
+For local video conversion, try **MP4**, **MOV**, and **MKV**. Compatible sources should be copied or remuxed when possible. WebM is offered only when Kio can preserve a compatible WebM source; unsupported combinations should return a clear explanation.
+
+### Cue: exact regression script
+
+Paste this exact script into Cue:
+
+> testing, testing, 1, 2, 3, my name is joe and today i am testing cue in my productivity app kio
+
+Read naturally. Explicitly say **“testing testing one two three”**, then **“testing testing 123”**, **“my name is joe”**, and **“kio”**. Also say Kio naturally so recognition may render it as **“kyo”** or **“keo”**.
+
+Expected: `123` can advance through `1, 2, 3` only at that nearby script position; `123` can also mean “one hundred twenty three” when that is what the script says. Kyo/Keo should match nearby Kio. Cue should remain monotonic, should not jump to a distant “testing,” and should not jump from the first “my” to the second “my.” Repeat or revise a partial phrase and confirm it does not independently confirm a large jump.
+
+### Semantic context, compound actions, and negation
+
+1. Attach a local video and ask **“get this as mp3”**. Expect local audio conversion.
+2. Paste a public URL and ask **“get this as mp3”**. Expect Reel audio download.
+3. Attach an image and ask **“convert this to jpeg and resize it to 1200px”**. Expect both steps, in order.
+4. Ask **“convert this to jpeg and compress it”** without a size target. Expect Kio to ask for clarification instead of silently skipping compression.
+5. Try **“don’t move these files,” “don’t rename this,”** and **“don’t extract the audio.”** Expect no corresponding operation to execute; Kio should ask what you want instead.
+
+For automated coverage and build results, see [BUILD_STATUS.md](BUILD_STATUS.md). Visual state, actual remote site behavior, codecs on your files, microphone recognition, and downloaded playback still require this manual acceptance.
+
 This checklist is for the user to run after the code-only verification pass. The app, browser, and microphone were not opened for this pass, so every visual, permission, and live-service item below remains unverified until you perform it.
 
 Use your own files and media you have permission to save. Do not put real provider keys in screenshots, screen recordings, or issue reports. Record the Kio version and build number for any failure.

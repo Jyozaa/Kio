@@ -232,7 +232,11 @@ public struct ToolExecutor: Sendable {
             return [try await resizeVideo(input, width: width)]
         case .transcodeVideo:
             guard inputs.count == 1, let input = inputs.first, input.kind == .video else { throw KioFailure.invalidInput("Choose one video to transcode.") }
-            return [try await transcodeVideo(input)]
+            let format: VideoTargetFormat?
+            if case .videoConvert(let requested) = step.arguments { format = requested }
+            else if step.arguments == .none { format = nil }
+            else { throw KioFailure.invalidInput("Choose MP4, MOV, MKV, or a compatible WebM target.") }
+            return [try await transcodeVideo(input, format: format)]
         case .compressVideo:
             guard inputs.count == 1, let input = inputs.first, input.kind == .video,
                   case .mediaCompression(let maxBytes) = step.arguments else { throw KioFailure.invalidInput("Choose one video to compress.") }
@@ -1894,9 +1898,38 @@ public struct ToolExecutor: Sendable {
                                          expectedDuration: nil, maximumWidth: width)
     }
 
-    private func transcodeVideo(_ input: ArtifactRef) async throws -> ArtifactRef {
-        try await exportVideoCopy(input, preset: AVAssetExportPresetHighestQuality, suffix: "-Converted",
-                                  timeRange: nil, expectedDuration: nil, maximumWidth: nil)
+    private func transcodeVideo(_ input: ArtifactRef, format: VideoTargetFormat? = nil) async throws -> ArtifactRef {
+        if let format {
+            guard let container = ReelVideoContainer(rawValue: format.rawValue) else {
+                throw KioFailure.invalidInput("Choose MP4, MOV, MKV, or WebM.")
+            }
+            let source = try await BundledMediaRuntime.probe(input.fileURL)
+            guard source.hasVideo else { throw KioFailure.invalidInput("This file does not contain a readable video stream.") }
+            if container == .webm && !source.isCompatible(with: .webm) {
+                throw KioFailure.unsupported("The bundled runtime can create WebM only when the source already has WebM-compatible video and audio streams.")
+            }
+            guard let duration = source.duration, duration.isFinite, duration > 0 else {
+                throw KioFailure.verification("The source video has no finite readable duration.")
+            }
+            let output = try OutputLocation.makeURL(for: [input], baseName: Self.base(input.displayName) + "-Converted",
+                                                    fileExtension: format.rawValue)
+            let temporary = OutputLocation.temporaryURL(beside: output)
+            defer { try? FileManager.default.removeItem(at: temporary) }
+            try await BundledMediaRuntime.transcodeVideo(input.fileURL, to: temporary, container: container)
+            let verified = try await BundledMediaRuntime.probe(temporary)
+            let size = Int64((try? temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            guard verified.hasVideo, (!source.hasAudio || verified.hasAudio),
+                  verified.isCompatible(with: container),
+                  verified.duration.map({ $0.isFinite && abs($0 - duration) <= max(1, duration * 0.02) }) == true,
+                  size > 0, size <= BundledMediaRuntime.maximumMediaBytes else {
+                throw KioFailure.verification("The converted video failed its container, stream, duration, or size checks.")
+            }
+            try OutputLocation.commit(temporary, to: output)
+            return try ArtifactRef.inspect(output, parentID: input.id)
+                .withVerificationNote("Verified \(format.rawValue.uppercased()) video with its video and audio tracks.")
+        }
+        return try await exportVideoCopy(input, preset: AVAssetExportPresetHighestQuality, suffix: "-Converted",
+                                         timeRange: nil, expectedDuration: nil, maximumWidth: nil)
     }
 
     private func exportVideoCopy(_ input: ArtifactRef, preset: String, suffix: String,

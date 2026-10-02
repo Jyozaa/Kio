@@ -2,12 +2,19 @@ import Foundation
 
 public struct CueToken: Sendable, Equatable {
     public let text: String
+    public let surface: String
     public let range: NSRange
 }
 
 public enum CueTrackingPolicy: Sendable, Equatable {
     case accurate
     case responsive
+}
+
+public enum CueTranscriptEvidence: Sendable, Equatable {
+    case measuredConfidence(Float)
+    case volatile
+    case final
 }
 
 /// Monotonic word alignment for revised Speech framework partial transcripts.
@@ -20,13 +27,34 @@ public struct CueTextAlignment: Sendable, Equatable {
     private var pendingLargeJumpConfirmations = 0
     private var pendingLargeJumpEvidence = ""
     private var recentTranscript = ""
+    private static let commonFuzzyWords: Set<String> = ["about", "after", "again", "also", "among", "and", "another", "around", "because",
+        "before", "being", "between", "could", "doing", "during", "every", "first", "found", "from", "getting",
+        "going", "great", "have", "here", "important", "into", "just", "large", "little", "maybe", "might", "more",
+        "most", "never", "often", "other", "people", "place", "really", "right", "same", "should", "since", "small",
+        "something", "still", "their", "there", "these", "thing", "think", "those", "through", "today", "under",
+        "until", "using", "very", "want", "were", "what", "when", "where", "which", "while", "will", "with", "would",
+        "your"]
 
     public init(script: String) {
         let ns = script as NSString
         let pattern = try! NSRegularExpression(pattern: "[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)?")
         tokens = pattern.matches(in: script, range: NSRange(location: 0, length: ns.length)).map { match in
-            CueToken(text: Self.normalize(ns.substring(with: match.range)), range: match.range)
+            let surface = ns.substring(with: match.range)
+            return CueToken(text: Self.normalize(surface), surface: surface, range: match.range)
         }
+    }
+
+    @discardableResult
+    public mutating func consume(_ transcript: String, evidence: CueTranscriptEvidence,
+                                 generation callbackGeneration: Int? = nil,
+                                 policy: CueTrackingPolicy = .accurate) -> Int {
+        let confidence: Float
+        switch evidence {
+        case .measuredConfidence(let value): confidence = value
+        case .volatile: confidence = 0.42
+        case .final: confidence = 0.72
+        }
+        return consume(transcript, confidence: confidence, generation: callbackGeneration, policy: policy)
     }
 
     @discardableResult
@@ -35,27 +63,31 @@ public struct CueTextAlignment: Sendable, Equatable {
         if let callbackGeneration, callbackGeneration != generation { return confirmedReadPosition }
         guard confidence >= (policy == .accurate ? 0.30 : 0.16), !tokens.isEmpty else { return confirmedReadPosition }
         recentTranscript = transcript
-        let allHeard = Self.words(transcript)
-        let heard = Array(allHeard.suffix(18))
-        guard !heard.isEmpty else { return confirmedReadPosition }
+        let heardCandidates = Self.contextualAlternatives(Self.words(transcript)).map { Array($0.suffix(18)) }
+        guard let firstHeard = heardCandidates.first, !firstHeard.isEmpty else { return confirmedReadPosition }
         let low = max(0, confirmedReadPosition - 2)
         let searchAhead = policy == .accurate ? 42 : 72
         let high = min(tokens.count, confirmedReadPosition + searchAhead)
         var bestEnd = confirmedReadPosition
         var bestScore = 0
         var bestMatchScore = 0.0
+        var bestHeard = firstHeard
+        var bestHasKioVariant = false
 
         if policy == .accurate {
             // Preserve conservative exact contiguous matching for Word Tracking.
             for start in low..<high {
-                for heardStart in allHeard.indices {
-                    var matched = 0
-                    while heardStart + matched < allHeard.count, start + matched < tokens.count,
-                          tokens[start + matched].text == allHeard[heardStart + matched] { matched += 1 }
-                    let end = start + matched
-                    if matched > bestScore || (matched == bestScore && matched > 0 && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)) {
-                        bestScore = matched
-                        bestEnd = end
+                for heard in heardCandidates {
+                    for heardStart in heard.indices {
+                        var matched = 0
+                        while heardStart + matched < heard.count, start + matched < tokens.count,
+                              tokens[start + matched].text == heard[heardStart + matched] { matched += 1 }
+                        let end = start + matched
+                        if matched > bestScore || (matched == bestScore && matched > 0 && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)) {
+                            bestScore = matched
+                            bestEnd = end
+                            bestHeard = heard
+                        }
                     }
                 }
             }
@@ -63,41 +95,47 @@ public struct CueTextAlignment: Sendable, Equatable {
         } else {
             // Bounded local sequence alignment tolerates small substitutions and omitted/inserted words.
             for start in low..<high {
-                for heardStart in heard.indices {
-                    let phrase = Array(heard[heardStart...])
-                    let minimumLength = max(1, phrase.count - 2)
-                    let maximumLength = min(phrase.count + 2, tokens.count - start, 18)
-                    guard minimumLength <= maximumLength else { continue }
-                    for length in minimumLength...maximumLength {
-                        let scriptSlice = tokens[start..<(start + length)].map(\.text)
-                        let score = Self.sequenceMatch(scriptSlice, phrase)
-                        let exact = zip(scriptSlice, phrase).filter { $0.0 == $0.1 }.count
-                        let end = start + length
-                        if score > bestMatchScore ||
-                            (score == bestMatchScore && score > 0 &&
-                             (exact > bestScore || (exact == bestScore && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)))) {
-                            bestMatchScore = score
-                            bestScore = exact
-                            bestEnd = end
+                for heard in heardCandidates {
+                    for heardStart in heard.indices {
+                        let phrase = Array(heard[heardStart...])
+                        let minimumLength = max(1, phrase.count - 2)
+                        let maximumLength = min(phrase.count + 2, tokens.count - start, 18)
+                        guard minimumLength <= maximumLength else { continue }
+                        for length in minimumLength...maximumLength {
+                            let scriptSlice = tokens[start..<(start + length)].map(\.text)
+                            let score = Self.sequenceMatch(scriptSlice, phrase,
+                                allowLocalKioVariant: start <= confirmedReadPosition + 10)
+                            let exact = zip(scriptSlice, phrase).filter { $0.0 == $0.1 }.count
+                            let hasKioVariant = Self.hasKioVariant(scriptSlice, phrase)
+                            let end = start + length
+                            if score > bestMatchScore ||
+                                (score == bestMatchScore && score > 0 &&
+                                 (exact > bestScore || (exact == bestScore && abs(end - confirmedReadPosition) < abs(bestEnd - confirmedReadPosition)))) {
+                                bestMatchScore = score
+                                bestScore = exact
+                                bestEnd = end
+                                bestHeard = heard
+                                bestHasKioVariant = hasKioVariant
+                            }
                         }
                     }
                 }
             }
         }
-        guard bestScore > 0,
-              bestMatchScore >= (policy == .accurate ? 1 : 0.44),
-              policy == .accurate || bestScore >= 1 else { return confirmedReadPosition }
+        guard (bestScore > 0 || bestHasKioVariant),
+              (bestMatchScore >= (policy == .accurate ? 1 : 0.44) || bestHasKioVariant),
+              policy == .accurate || bestScore >= 1 || bestHasKioVariant else { return confirmedReadPosition }
         let target = max(confirmedReadPosition, bestEnd)
         let jump = target - confirmedReadPosition
-        if heard.count == 1 {
+        if bestHeard.count == 1 {
             let weakTokens: Set<String> = ["a", "an", "the", "is", "and", "to", "my", "it", "of", "in", "on", "for"]
-            let maximumLocalAdvance = weakTokens.contains(heard[0]) ? 3 : 4
+            let maximumLocalAdvance = weakTokens.contains(bestHeard[0]) ? 3 : 4
             guard jump <= maximumLocalAdvance else { return confirmedReadPosition }
         }
         let confirmationThreshold = policy == .accurate ? 8 : 12
         let mediumThreshold = 5
         if jump > confirmationThreshold || (policy == .responsive && jump > mediumThreshold && bestMatchScore < 0.76) {
-            let evidenceKey = Self.words(transcript).suffix(18).joined(separator: " ")
+            let evidenceKey = bestHeard.suffix(18).joined(separator: " ")
             if let pendingLargeJumpPosition, abs(pendingLargeJumpPosition - target) <= 3,
                !evidenceKey.isEmpty, evidenceKey != pendingLargeJumpEvidence {
                 pendingLargeJumpConfirmations += 1
@@ -137,10 +175,13 @@ public struct CueTextAlignment: Sendable, Equatable {
 
     public var upcomingContextWords: [String] {
         var seen = Set<String>()
-        return tokens.dropFirst(confirmedReadPosition).prefix(80).map(\.text).filter { word in
-            guard word.count >= 5, seen.insert(word).inserted else { return false }
+        let commonShortWords: Set<String> = ["a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "for", "from", "go", "has", "have", "he", "her", "here", "him", "his", "how", "i", "if", "in", "is", "it", "its", "me", "my", "no", "not", "of", "on", "or", "our", "she", "so", "the", "their", "them", "then", "there", "these", "they", "this", "to", "up", "us", "was", "we", "were", "what", "when", "who", "will", "with", "you", "your"]
+        return tokens.dropFirst(confirmedReadPosition).prefix(80).filter { token in
+            let word = token.text
+            guard word.count >= 5 || (word.count >= 3 && !commonShortWords.contains(word)),
+                  seen.insert(word).inserted else { return false }
             return true
-        }.prefix(32).map { $0 }
+        }.prefix(32).map(\.text)
     }
 
     public static func normalize(_ text: String) -> String {
@@ -165,7 +206,50 @@ public struct CueTextAlignment: Sendable, Equatable {
         return nil
     }
 
-    private static func sequenceMatch(_ lhs: [String], _ rhs: [String]) -> Double {
+    private static func contextualAlternatives(_ words: [String]) -> [[String]] {
+        let base = Array(words.suffix(18))
+        var results = [base]
+        for index in base.indices where results.count < 5 {
+            guard base[index].count >= 2, base[index].count <= 6,
+                  base[index].allSatisfy(\.isNumber), let number = Int(base[index]),
+                  let digits = spokenDigits(base[index]), let cardinal = cardinalWords(number) else { continue }
+            for replacement in [digits, cardinal] where replacement != [base[index]] {
+                var candidate = base
+                candidate.replaceSubrange(index...index, with: replacement)
+                results.append(candidate)
+                if results.count >= 5 { break }
+            }
+        }
+        return results
+    }
+
+    private static func spokenDigits(_ value: String) -> [String]? {
+        let names = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+        let result = value.compactMap { $0.wholeNumberValue }.map { names[$0] }
+        return result.count == value.count ? result : nil
+    }
+
+    private static func cardinalWords(_ value: Int) -> [String]? {
+        guard (0...999_999).contains(value) else { return nil }
+        let small = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                     "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+        let tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+        func underThousand(_ number: Int) -> [String] {
+            var result: [String] = []
+            var remainder = number
+            if remainder >= 100 { result += [small[remainder / 100], "hundred"]; remainder %= 100 }
+            if remainder >= 20 { result.append(tens[remainder / 10]); remainder %= 10 }
+            if remainder > 0 { result.append(small[remainder]) }
+            return result
+        }
+        if value == 0 { return ["zero"] }
+        var result: [String] = []
+        if value >= 1_000 { result += underThousand(value / 1_000) + ["thousand"] }
+        if value % 1_000 != 0 { result += underThousand(value % 1_000) }
+        return result
+    }
+
+    private static func sequenceMatch(_ lhs: [String], _ rhs: [String], allowLocalKioVariant: Bool) -> Double {
         guard !lhs.isEmpty, !rhs.isEmpty else { return 0 }
         var previous = Array(0...rhs.count).map(Double.init)
         for (row, left) in lhs.enumerated() {
@@ -175,8 +259,9 @@ public struct CueTextAlignment: Sendable, Equatable {
                 let a = left, b = rhs[column - 1]
                 let substitution: Double
                 if a == b { substitution = 0 }
-                else if a.count > 2 && b.count > 2 && (a.hasPrefix(b) || b.hasPrefix(a)) { substitution = 0.55 }
-                else if a.count > 3 && b.count > 3 && Self.editDistanceAtMostOne(a, b) { substitution = 0.7 }
+                else if allowLocalKioVariant && a == "kio" && ["kyo", "keo"].contains(b) { substitution = 0.25 }
+                else if Self.isDistinctive(a) && Self.isDistinctive(b) && (a.hasPrefix(b) || b.hasPrefix(a)) { substitution = 0.55 }
+                else if Self.isDistinctive(a) && Self.isDistinctive(b) && Self.editDistanceAtMostOne(a, b) { substitution = 0.7 }
                 else { substitution = 1 }
                 current[column] = min(previous[column] + 1, current[column - 1] + 0.85, previous[column - 1] + substitution)
             }
@@ -201,6 +286,14 @@ public struct CueTextAlignment: Sendable, Equatable {
             else { i += 1; j += 1 }
         }
         return edits + ((i < a.count || j < b.count) ? 1 : 0) <= 1
+    }
+
+    private static func hasKioVariant(_ lhs: [String], _ rhs: [String]) -> Bool {
+        zip(lhs, rhs).contains { $0.0 == "kio" && ($0.1 == "kyo" || $0.1 == "keo") }
+    }
+
+    private static func isDistinctive(_ word: String) -> Bool {
+        word.count >= 5 && !commonFuzzyWords.contains(word)
     }
 }
 

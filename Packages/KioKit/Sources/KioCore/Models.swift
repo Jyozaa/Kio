@@ -206,18 +206,70 @@ public struct TaskInputSnapshot: Sendable, Equatable {
     }
 }
 
+public struct ReelVariant: Codable, Sendable, Equatable, Identifiable {
+    public let quality: String
+    public let container: String
+    public let videoFormatID: String
+    public let audioFormatID: String?
+    public let videoCodec: String?
+    public let audioCodec: String?
+    public let needsTranscode: Bool
+    public let width: Int?
+    public let height: Int?
+    public let fps: Double?
+    public let bitrate: Double?
+    public let filesize: Int64?
+    public let hasVideo: Bool?
+    public let hasAudio: Bool?
+    public let language: String?
+    public let sourceContainer: String?
+    public let sourceProtocol: String?
+    public let sourceBackend: String?
+
+    public var id: String { [quality, container, videoFormatID, audioFormatID ?? ""].joined(separator: ":") }
+    public var formatSelector: String { videoFormatID + (audioFormatID.map { "+\($0)" } ?? "") }
+
+    public init(quality: String, container: String, videoFormatID: String, audioFormatID: String? = nil,
+                videoCodec: String? = nil, audioCodec: String? = nil, needsTranscode: Bool,
+                width: Int? = nil, height: Int? = nil, fps: Double? = nil, bitrate: Double? = nil,
+                filesize: Int64? = nil, hasVideo: Bool? = true, hasAudio: Bool? = nil,
+                language: String? = nil, sourceContainer: String? = nil,
+                sourceProtocol: String? = nil, sourceBackend: String? = nil) {
+        self.quality = quality
+        self.container = container
+        self.videoFormatID = videoFormatID
+        self.audioFormatID = audioFormatID
+        self.videoCodec = videoCodec
+        self.audioCodec = audioCodec
+        self.needsTranscode = needsTranscode
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.bitrate = bitrate
+        self.filesize = filesize
+        self.hasVideo = hasVideo
+        self.hasAudio = hasAudio
+        self.language = language
+        self.sourceContainer = sourceContainer
+        self.sourceProtocol = sourceProtocol
+        self.sourceBackend = sourceBackend
+    }
+}
+
 public struct ReelInspectionInfo: Codable, Sendable, Equatable {
     public let remoteURL: String
     public let title: String
     public let durationSeconds: Double?
     public let source: String
-    public let isLive: Bool
+    public let isLive: Bool?
     public let qualities: [String]
     public let videoFormats: [String]
-    public let audioAvailable: Bool
+    public let audioAvailable: Bool?
+    public let variants: [ReelVariant]
 
     public init(remoteURL: String, title: String, durationSeconds: Double?, source: String,
-                isLive: Bool, qualities: [String], videoFormats: [String], audioAvailable: Bool) {
+                isLive: Bool?, qualities: [String], videoFormats: [String], audioAvailable: Bool?,
+                variants: [ReelVariant] = []) {
         self.remoteURL = remoteURL
         self.title = title
         self.durationSeconds = durationSeconds
@@ -226,7 +278,42 @@ public struct ReelInspectionInfo: Codable, Sendable, Equatable {
         self.qualities = qualities
         self.videoFormats = videoFormats
         self.audioAvailable = audioAvailable
+        self.variants = Array(variants.prefix(512))
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case remoteURL, title, durationSeconds, source, isLive, qualities, videoFormats, audioAvailable, variants
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(remoteURL: try values.decode(String.self, forKey: .remoteURL),
+                  title: try values.decode(String.self, forKey: .title),
+                  durationSeconds: try values.decodeIfPresent(Double.self, forKey: .durationSeconds),
+                  source: try values.decode(String.self, forKey: .source),
+                  isLive: try values.decodeIfPresent(Bool.self, forKey: .isLive),
+                  qualities: try values.decodeIfPresent([String].self, forKey: .qualities) ?? ["best"],
+                  videoFormats: try values.decodeIfPresent([String].self, forKey: .videoFormats) ?? [],
+                  audioAvailable: try values.decodeIfPresent(Bool.self, forKey: .audioAvailable),
+                  variants: try values.decodeIfPresent([ReelVariant].self, forKey: .variants) ?? [])
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(remoteURL, forKey: .remoteURL)
+        try values.encode(title, forKey: .title)
+        try values.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try values.encode(source, forKey: .source)
+        try values.encode(isLive, forKey: .isLive)
+        try values.encode(qualities, forKey: .qualities)
+        try values.encode(videoFormats, forKey: .videoFormats)
+        try values.encode(audioAvailable, forKey: .audioAvailable)
+        try values.encode(variants, forKey: .variants)
+    }
+}
+
+public enum VideoTargetFormat: String, Codable, Sendable, CaseIterable {
+    case mp4, mov, mkv, webm
 }
 
 public enum ToolOperation: String, Codable, CaseIterable, Sendable {
@@ -336,6 +423,7 @@ public enum ToolArguments: Codable, Sendable, Hashable {
     case imageResize(width: Int)
     case imageConvert(format: String)
     case audioConvert(format: AudioTargetFormat)
+    case videoConvert(format: VideoTargetFormat)
     case remoteMedia(quality: String?, format: String?)
     case imageRotation(degrees: Int)
     case imageCrop(x: Int, y: Int, width: Int, height: Int)

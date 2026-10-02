@@ -68,8 +68,8 @@ import KioCore
     #expect(unicodeArrow.steps.first?.arguments == .imageConvert(format: "heic"))
 
     let unsupportedSizeContract = FastPathPlanner().plan(request: "convert this to jpeg under 3 megs", artifacts: [input])
-    #expect(unsupportedSizeContract.steps.isEmpty)
-    #expect(unsupportedSizeContract.clarification != nil)
+    #expect(unsupportedSizeContract.steps.map(\.operation) == [.convertImage, .compressImage])
+    #expect(unsupportedSizeContract.steps.last?.arguments == .imageCompression(maxBytes: 3_000_000))
 
     let video = try makeArtifact(name: "clip.mp4", kind: .video)
     for target in ["mp3", "m4a", "wav", "flac"] {
@@ -148,6 +148,64 @@ import KioCore
     #expect(plan.clarification != nil)
     #expect(SemanticIntentParser.explicitlyNegatesTransformation("don't convert this to PNG"))
     #expect(!SemanticIntentParser.explicitlyNegatesTransformation("convert this to PNG"))
+}
+
+@Test func artifactContextDisambiguatesGetAsMP3ForLocalVideoAndPublicURL() throws {
+    let video = try makeArtifact(name: "local.mp4", kind: .video)
+    let local = FastPathPlanner().plan(request: "get this as mp3", artifacts: [video])
+    #expect(local.steps.map(\.operation) == [.convertAudio])
+    #expect(local.steps.first?.arguments == .audioConvert(format: .mp3))
+
+    let url = try makeArtifact(name: "media.kio-url", kind: .url)
+    let remote = FastPathPlanner().plan(request: "get this as mp3", artifacts: [url])
+    #expect(remote.steps.map(\.operation) == [.downloadRemoteAudio])
+    #expect(remote.steps.first?.arguments == .remoteMedia(quality: nil, format: "mp3"))
+}
+
+@Test func imageFormatConversionCompilesResizeAndCompressionClausesAsFollowingSteps() throws {
+    let image = try makeArtifact(name: "source.png", kind: .image)
+    let resized = FastPathPlanner().plan(request: "convert this to jpeg and resize it to 1200 px", artifacts: [image])
+    #expect(resized.steps.map(\.operation) == [.convertImage, .resizeImage])
+    #expect(resized.steps[0].arguments == .imageConvert(format: "jpeg"))
+    #expect(resized.steps[1].arguments == .imageResize(width: 1200))
+    if case .previousStep(let id) = resized.steps[1].source { #expect(id == resized.steps[0].id) }
+    else { Issue.record("The resize step must consume the converted image.") }
+
+    let compressed = FastPathPlanner().plan(request: "convert this to jpeg under 1 MB", artifacts: [image])
+    #expect(compressed.steps.map(\.operation) == [.convertImage, .compressImage])
+    #expect(compressed.steps[1].arguments == .imageCompression(maxBytes: 1_000_000))
+}
+
+@Test func unsupportedCompoundClausesAndGeneralNegationNeverBecomePartialPlans() throws {
+    let image = try makeArtifact(name: "source.png", kind: .image)
+    let mixed = FastPathPlanner().plan(request: "convert this to jpeg and rename it final", artifacts: [image])
+    #expect(mixed.steps.isEmpty)
+    #expect(mixed.clarification != nil)
+    let unboundedCompression = FastPathPlanner().plan(request: "convert this to jpeg and compress it", artifacts: [image])
+    #expect(unboundedCompression.steps.isEmpty)
+    #expect(unboundedCompression.clarification != nil)
+
+    let folder = try makeArtifact(name: "folder", kind: .folder)
+    let files = try makeArtifact(name: "a.txt", kind: .text)
+    for request in ["don't move these files", "don’t delete page 7", "do not delete page 7", "don't remove page 7",
+                    "don't rename this", "don't extract the audio", "don't download this", "don't convert this"] {
+        let plan = FastPathPlanner().plan(request: request, artifacts: [files, folder])
+        #expect(plan.steps.isEmpty, "\(request)")
+        #expect(plan.clarification != nil, "\(request)")
+        #expect(SemanticIntentParser.explicitlyNegatesAction(request), "\(request)")
+    }
+}
+
+@Test func localVideoFormatsRemainTypedAndUnsupportedWebMSourceIsNotSelected() throws {
+    let mp4 = try makeArtifact(name: "source.mp4", kind: .video)
+    for format in [VideoTargetFormat.mp4, .mov, .mkv] {
+        let plan = FastPathPlanner().plan(request: "convert this to \(format.rawValue)", artifacts: [mp4])
+        #expect(plan.steps.first?.operation == .transcodeVideo)
+        #expect(plan.steps.first?.arguments == .videoConvert(format: format))
+    }
+    let webm = FastPathPlanner().plan(request: "convert this to webm", artifacts: [mp4])
+    #expect(webm.steps.isEmpty)
+    #expect(webm.clarification != nil)
 }
 
 @Test func modelPlanDecoderKeepsTypedAudioFormatsAndInternalReelStatePrivate() throws {

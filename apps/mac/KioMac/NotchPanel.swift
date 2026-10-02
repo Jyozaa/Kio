@@ -1121,8 +1121,18 @@ struct ReelDownloadCard: View {
     let onDownloadAudio: (String) -> Void
     @State private var quality = "best"
     @State private var videoFormat = "mp4"
-    private var qualities: [String] { info.qualities.isEmpty ? ["best"] : info.qualities }
-    private var videoFormats: [String] { info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats }
+    private var qualities: [String] {
+        let values = Set(info.variants.map(\.quality))
+        return values.isEmpty ? (info.qualities.isEmpty ? ["best"] : info.qualities)
+            : ["best"] + [2160, 1440, 1080, 720, 480, 360].map { "\($0)p" }.filter { values.contains($0) }
+    }
+    private var videoFormats: [String] {
+        guard !info.variants.isEmpty else { return info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats }
+        return Array(Set(info.variants.filter { $0.quality == quality }.map(\.container))).sorted()
+    }
+    private var selectedVariant: ReelVariant? {
+        ReelVariantSelector.select(info.variants, quality: quality, container: videoFormat)
+    }
     private let audioFormats = ["mp3", "m4a", "wav", "flac"]
 
     var body: some View {
@@ -1130,9 +1140,10 @@ struct ReelDownloadCard: View {
             if style == .compact { compactBody } else { expandedBody }
         }
         .foregroundStyle(.white.opacity(0.88))
-        .task(id: info.title) {
+        .task(id: info.remoteURL) {
             quality = qualities.contains("1080p") ? "1080p" : (qualities.first ?? "best")
-            videoFormat = videoFormats.contains("mp4") ? "mp4" : (videoFormats.first ?? "mp4")
+            let initialFormats = formats(for: quality)
+            videoFormat = initialFormats.contains("mp4") ? "mp4" : (initialFormats.first ?? "mp4")
         }
     }
 
@@ -1146,7 +1157,7 @@ struct ReelDownloadCard: View {
             qualityMenu
             videoFormatMenu
             videoButton
-            if info.audioAvailable { audioMenu }
+            if info.audioAvailable == true { audioMenu }
         }
         .font(.system(size: 8, weight: .medium))
         .buttonStyle(.plain)
@@ -1162,7 +1173,7 @@ struct ReelDownloadCard: View {
                 qualityMenu
                 videoFormatMenu
                 videoButton
-                if info.audioAvailable { audioMenu }
+                if info.audioAvailable == true { audioMenu }
             }
             .font(.system(size: 11, weight: .medium))
             .buttonStyle(.bordered)
@@ -1175,20 +1186,48 @@ struct ReelDownloadCard: View {
 
     private var qualityMenu: some View {
         Menu {
-            ForEach(qualities, id: \.self) { value in Button(value) { quality = value } }
+            ForEach(qualities, id: \.self) { value in
+                Button(value) {
+                    quality = value
+                    let available = formats(for: value)
+                    if !available.contains(videoFormat) { videoFormat = available.first ?? videoFormat }
+                }
+            }
         } label: { Label(quality, systemImage: "arrow.up.arrow.down") }
     }
 
     private var videoFormatMenu: some View {
         Menu {
-            ForEach(videoFormats, id: \.self) { value in Button(value.uppercased()) { videoFormat = value } }
+            ForEach(videoFormats, id: \.self) { value in
+                let selection = variant(for: quality, format: value)
+                let suffix = selection?.needsTranscode == true ? " · Convert"
+                    : (quality != "best" && selection?.quality != quality ? " · Use \(selection?.quality ?? "")" : "")
+                Button(value.uppercased() + suffix) { videoFormat = value }
+            }
         } label: { Label(videoFormat.uppercased(), systemImage: "film") }
     }
 
     private var videoButton: some View {
-        Button("Download") { onDownloadVideo(quality, videoFormat) }
+        Button(videoDownloadTitle) { onDownloadVideo(quality, videoFormat) }
             .buttonStyle(.borderedProminent)
             .tint(Color(hex: AgentID.reel.colorHex))
+            .disabled(!info.variants.isEmpty && selectedVariant == nil)
+    }
+
+    private func formats(for quality: String) -> [String] {
+        guard !info.variants.isEmpty else { return info.videoFormats.isEmpty ? ["mp4"] : info.videoFormats }
+        return Array(Set(info.variants.filter { $0.quality == quality }.map(\.container))).sorted()
+    }
+
+    private func variant(for quality: String, format: String) -> ReelVariant? {
+        ReelVariantSelector.select(info.variants, quality: quality, container: format)
+    }
+
+    private var videoDownloadTitle: String {
+        guard let selectedVariant else { return "Download" }
+        if selectedVariant.needsTranscode { return "Convert & Download" }
+        if quality != "best", selectedVariant.quality != quality { return "Use \(selectedVariant.quality) Source" }
+        return "Download"
     }
 
     private var audioMenu: some View {

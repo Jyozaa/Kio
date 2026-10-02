@@ -20,7 +20,10 @@ public struct FastPathPlanner: Sendable {
 
     public func plan(request: String, artifacts: [ArtifactRef], context: PlanningContext = .init()) -> TaskPlan {
         let inputs = artifacts.isEmpty ? context.activeOutput.map { [$0] } ?? [] : artifacts
-        switch SemanticIntentParser.parse(request) {
+        if SemanticIntentParser.explicitlyNegatesAction(request) {
+            return TaskPlan(request: request, steps: [], clarification: "Understood. I won't perform that operation. What would you like me to do instead?")
+        }
+        switch SemanticIntentParser.parse(request, artifacts: inputs) {
         case .clarify(let message):
             return TaskPlan(request: request, steps: [], clarification: message)
         case .resolved(let intent, let confidence) where confidence >= 0.9:
@@ -658,7 +661,7 @@ public struct FastPathPlanner: Sendable {
 
     private static func validArguments(_ arguments: ToolArguments, for operation: ToolOperation) -> Bool {
         switch operation {
-        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .transcodeVideo, .inspectRemoteMedia,
+        case .mergePDFs, .combineMixedPDFInputs, .removeBlankPDFPages, .splitPDF, .extractPDFText, .ocrPDFText, .inspectPDF, .imagesToPDF, .inspectImage, .smartCropImage, .removeImageMetadata, .removeImageBackground, .batchRemoveImageBackground, .compareImages, .findSimilarImages, .imageContactSheet, .createArchive, .inspectArchive, .extractZip, .extractAudio, .transcribeAudio, .generateSubtitles, .inspectMedia, .inspectRemoteMedia,
              .ocrImage, .extractImageTable, .extractReceipt, .extractStructuredText,
              .findDuplicates, .organizeByType, .organizeByDate, .organizeByModulePattern, .organizeDownloads:
             return arguments == .none
@@ -696,6 +699,8 @@ public struct FastPathPlanner: Sendable {
             if case .mediaTrim(let start, let duration) = arguments { return (0...86_400_000).contains(start) && (1...86_400_000).contains(duration) && start + duration <= 86_400_000  } else { return false }
         case .resizeVideo:
             if case .mediaResize(let width) = arguments { return [640, 960, 1280].contains(width)  } else { return false }
+        case .transcodeVideo:
+            if case .videoConvert = arguments { return true } else { return arguments == .none }
         case .compressVideo:
             if case .mediaCompression(let maxBytes) = arguments { return maxBytes.map { (1...10_000_000_000).contains($0) } ?? true  } else { return false }
         case .renameFile:

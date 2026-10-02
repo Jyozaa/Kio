@@ -220,7 +220,7 @@ private enum CueTextSize: String, CaseIterable, Identifiable {
 @MainActor
 private protocol CueSpeechBackend: AnyObject {
     var name: String { get }
-    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+    func start(onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void, generation: Int,
                onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink
     func stop()
 }
@@ -233,7 +233,7 @@ private final class LegacyCueSpeechBackend: CueSpeechBackend {
     private var didStart = false
 
     init(recognizer: SFSpeechRecognizer, hints: [String], generation: Int,
-         onTranscript: @escaping (String, Float, Int) -> Void) {
+         onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void) {
         request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
@@ -242,11 +242,12 @@ private final class LegacyCueSpeechBackend: CueSpeechBackend {
             guard let result else { return }
             let text = result.bestTranscription.formattedString
             let confidence = result.bestTranscription.segments.last?.confidence ?? 0
-            Task { @MainActor in onTranscript(text, confidence, generation) }
+            let evidence: CueTranscriptEvidence = result.isFinal ? .final : .measuredConfidence(confidence)
+            Task { @MainActor in onTranscript(text, evidence, generation) }
         }
     }
 
-    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+    func start(onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void, generation: Int,
                onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink {
         guard !didStart else { throw CueFailure.unavailable("Cue speech recognition has already started.") }
         didStart = true
@@ -274,7 +275,7 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
         self.inputConverter = inputConverter
     }
 
-    static func prepared(locale: Locale, captureFormat: AVAudioFormat) async throws -> ModernCueSpeechBackend {
+    static func prepared(locale: Locale, captureFormat: AVAudioFormat, hints: [String]) async throws -> ModernCueSpeechBackend {
         guard SpeechTranscriber.isAvailable,
               await SpeechTranscriber.supportedLocale(equivalentTo: locale) != nil else {
             throw CueFailure.unavailable("SpeechAnalyzer is unavailable for this language.")
@@ -289,13 +290,16 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
             throw CueFailure.unavailable("SpeechAnalyzer returned an invalid audio format.")
         }
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let context = AnalysisContext()
+        context.contextualStrings[.general] = Array(hints.prefix(32))
+        try await analyzer.setContext(context)
         try await analyzer.prepareToAnalyze(in: analyzerFormat)
         let inputConverter = try CueAnalyzerInputConverterBox(captureFormat: captureFormat, analyzerFormat: analyzerFormat)
         cueLogger.info("SpeechAnalyzer prepared: capture=\(captureFormat.sampleRate, privacy: .public) Hz/\(captureFormat.channelCount, privacy: .public) ch, analyzer=\(analyzerFormat.sampleRate, privacy: .public) Hz/\(analyzerFormat.channelCount, privacy: .public) ch.")
         return ModernCueSpeechBackend(transcriber: transcriber, analyzer: analyzer, inputConverter: inputConverter)
     }
 
-    func start(onTranscript: @escaping (String, Float, Int) -> Void, generation: Int,
+    func start(onTranscript: @escaping (String, CueTranscriptEvidence, Int) -> Void, generation: Int,
                onFailure: @escaping @MainActor (Error) -> Void) throws -> any CueAudioInputSink {
         guard state == .prepared else { throw CueFailure.unavailable("Cue's SpeechAnalyzer input sequence cannot be restarted.") }
         state = .running
@@ -304,7 +308,7 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
         resultTask = Task { @MainActor [transcriber] in
             do {
                 for try await result in transcriber.results {
-                    onTranscript(String(result.text.characters), 1, generation)
+                    onTranscript(String(result.text.characters), result.isFinal ? .final : .volatile, generation)
                 }
             } catch { }
         }
@@ -335,7 +339,7 @@ private final class ModernCueSpeechBackend: CueSpeechBackend {
 
 @MainActor
 private final class CueSpeechRecognizer: ObservableObject {
-    var onTranscript: ((String, Float, Int) -> Void)?
+    var onTranscript: ((String, CueTranscriptEvidence, Int) -> Void)?
     var onPower: ((Float) -> Void)?
     var onFailure: ((String) -> Void)?
     private struct LegacyFallbackConfiguration {
@@ -419,7 +423,9 @@ private final class CueSpeechRecognizer: ObservableObject {
             if recognizeWords {
                 if #available(macOS 26.0, *), SpeechTranscriber.isAvailable {
                     do {
-                        chosenBackend = try await ModernCueSpeechBackend.prepared(locale: locale, captureFormat: captureFormat)
+                        chosenBackend = try await ModernCueSpeechBackend.prepared(locale: locale,
+                                                                                 captureFormat: captureFormat,
+                                                                                 hints: hints)
                     } catch {
                         cueLogger.warning("SpeechAnalyzer setup failed; trying Speech Recognition fallback (\(String(reflecting: type(of: error)), privacy: .public)).")
                     }
@@ -427,8 +433,8 @@ private final class CueSpeechRecognizer: ObservableObject {
                 }
                 if chosenBackend == nil, let selectedRecognizer, selectedRecognizer.isAvailable {
                     chosenBackend = LegacyCueSpeechBackend(recognizer: selectedRecognizer, hints: hints,
-                                                           generation: generation) { [weak self] text, confidence, generation in
-                        self?.onTranscript?(text, confidence, generation)
+                                                           generation: generation) { [weak self] text, evidence, generation in
+                        self?.onTranscript?(text, evidence, generation)
                     }
                 }
                 guard let chosenBackend else {
@@ -442,8 +448,8 @@ private final class CueSpeechRecognizer: ObservableObject {
                 } else {
                     legacyFallbackConfiguration = nil
                 }
-                let sink = try chosenBackend.start(onTranscript: { [weak self] text, confidence, generation in
-                    self?.onTranscript?(text, confidence, generation)
+                let sink = try chosenBackend.start(onTranscript: { [weak self] text, evidence, generation in
+                    self?.onTranscript?(text, evidence, generation)
                 }, generation: generation, onFailure: { [weak self] error in
                     self?.fallbackFromModern(error, attempt: attempt)
                 })
@@ -533,11 +539,11 @@ private final class CueSpeechRecognizer: ObservableObject {
         }
         do {
             let legacy = LegacyCueSpeechBackend(recognizer: configuration.recognizer,
-                hints: configuration.hints, generation: configuration.generation) { [weak self] text, confidence, generation in
-                    self?.onTranscript?(text, confidence, generation)
+                hints: configuration.hints, generation: configuration.generation) { [weak self] text, evidence, generation in
+                    self?.onTranscript?(text, evidence, generation)
                 }
-            let sink = try legacy.start(onTranscript: { [weak self] text, confidence, generation in
-                self?.onTranscript?(text, confidence, generation)
+            let sink = try legacy.start(onTranscript: { [weak self] text, evidence, generation in
+                self?.onTranscript?(text, evidence, generation)
             }, generation: configuration.generation, onFailure: { _ in })
             let context = CueAudioTapContext(audioSink: sink,
                 captureConverter: configuration.captureConverter, captureFormat: configuration.captureFormat) { [weak self] power in
@@ -878,10 +884,10 @@ struct CueSurfaceView: View {
         }
         startTask = Task { @MainActor in
             do {
-                speech.onTranscript = { text, confidence, generation in
+                speech.onTranscript = { text, evidence, generation in
                     guard isActive, !complete, mode != .classic, !paused else { return }
                     let policy: CueTrackingPolicy = mode == .wordTracking ? .accurate : .responsive
-                    let value = alignment.consume(text, confidence: confidence, generation: generation, policy: policy)
+                    let value = alignment.consume(text, evidence: evidence, generation: generation, policy: policy)
                     readPosition = min(max(0, value), max(0, alignment.tokens.count - 1))
                     if alignment.isFinished { finishScript() }
                 }

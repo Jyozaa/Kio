@@ -1,6 +1,7 @@
 import AppKit
 import KioCore
 import KioModel
+import KioTools
 import KioUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -34,13 +35,14 @@ struct KioChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        if let info = workspace.activeReelInspection {
-                            ReelDownloadCard(info: info, style: .expanded,
-                                             onDownloadVideo: { workspace.downloadInspectedReel(quality: $0, format: $1) },
-                                             onDownloadAudio: { workspace.downloadInspectedReelAudio(format: $0) })
-                        }
                         ForEach(filteredConversation) { item in
-                            ConversationRow(item: item)
+                            ConversationRow(item: item,
+                                            onDownloadVideo: { artifact, quality, format in
+                                                workspace.downloadInspectedReel(artifact: artifact, quality: quality, format: format)
+                                            },
+                                            onDownloadAudio: { artifact, format in
+                                                workspace.downloadInspectedReelAudio(artifact: artifact, format: format)
+                                            })
                                 .id(item.id)
                         }
                         if !historySearch.isEmpty && filteredConversation.isEmpty {
@@ -520,6 +522,8 @@ private typealias ChatQuickAction = ContextualQuickAction
 
 private struct ConversationRow: View {
     let item: ConversationItem
+    let onDownloadVideo: (ArtifactRef, String, String) -> Void
+    let onDownloadAudio: (ArtifactRef, String) -> Void
 
     var body: some View {
         if item.speaker == "You" {
@@ -539,7 +543,15 @@ private struct ConversationRow: View {
                     Text(item.speaker).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.primary.opacity(0.63))
                     Text(item.message).font(.system(size: 14)).foregroundStyle(Color.primary.opacity(0.88)).textSelection(.enabled)
                     if let artifact = item.artifact {
-                        if artifact.role == .internalIntermediate { EmptyView() }
+                        if artifact.role == .internalIntermediate,
+                           let info = try? ReelInspectionStore.readInfo(from: artifact) {
+                            ReelDownloadCard(info: info, style: .expanded,
+                                             onDownloadVideo: { onDownloadVideo(artifact, $0, $1) },
+                                             onDownloadAudio: { onDownloadAudio(artifact, $0) })
+                        } else if artifact.role == .internalIntermediate {
+                            Label("Historical Reel inspection is no longer available", systemImage: "film")
+                                .font(.system(size: 11)).foregroundStyle(Color.secondary)
+                        }
                         else if artifact.refreshedFromDisk() != nil { ArtifactCard(artifact: artifact) }
                         else {
                             Label("Historical result · \(artifact.displayName) is no longer available", systemImage: "doc.questionmark")
