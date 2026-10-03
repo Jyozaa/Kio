@@ -3,7 +3,6 @@ import Foundation
 import KioCore
 import KioModel
 import os
-import ZIPFoundation
 
 public enum ReelBackend: String, Sendable, Equatable {
     case directHTTP, ytDlp, streamlink
@@ -21,7 +20,7 @@ public enum ReelMediaRouter {
     }
 
     public static func safeURL(_ url: URL) throws -> URL {
-        try ScoutURLPolicy.publicHTTPURL(url.absoluteString, resolveDNS: true)
+        try PublicHTTPURLPolicy.publicHTTPURL(url.absoluteString, resolveDNS: true)
     }
 
     public static func normalizedQualities(_ values: [Int?]) -> [String] {
@@ -48,10 +47,10 @@ public enum ReelRedirectPolicy {
 
     public static func validateDestination(_ destination: URL?, redirectsFollowed: Int) throws -> URL {
         guard redirectsFollowed < maximumRedirects, let destination,
-              ScoutURLPolicy.isHTTPURL(destination) else {
+              PublicHTTPURLPolicy.isHTTPURL(destination) else {
             throw KioFailure.invalidInput("The media URL redirected to an unsafe destination.")
         }
-        try ScoutURLPolicy.validatePublicHost(destination.host ?? "")
+        try PublicHTTPURLPolicy.validatePublicHost(destination.host ?? "")
         return destination
     }
 }
@@ -137,7 +136,7 @@ private final class BoundedReelDownloader: NSObject, URLSessionDownloadDelegate,
                 downloadTask.cancel()
                 return
             }
-            do { try ScoutURLPolicy.validatePublicHost(http.url?.host ?? "") }
+            do { try PublicHTTPURLPolicy.validatePublicHost(http.url?.host ?? "") }
             catch { terminalError = error; downloadTask.cancel(); return }
             response = http
         }
@@ -163,7 +162,7 @@ private final class BoundedReelDownloader: NSObject, URLSessionDownloadDelegate,
                 terminalError = KioFailure.processing("The media source returned an unsuccessful response.")
                 return
             }
-            do { try ScoutURLPolicy.validatePublicHost(http.url?.host ?? "") }
+            do { try PublicHTTPURLPolicy.validatePublicHost(http.url?.host ?? "") }
             catch { terminalError = error; return }
             response = http
         }
@@ -1014,7 +1013,7 @@ enum ReelWorkflow {
         let url: URL
         let inspection: ReelInspectionInfo?
         if input.kind == .url {
-            url = try ScoutInputStore.readURL(from: input)
+            url = try ReelURLReference.readURL(from: input)
             inspection = nil
         }
         else {

@@ -1,6 +1,0 @@
-{
-  "after_stop": "ready",
-  "after_restart": "ready",
-  "direct_command": "completed",
-  "gemini_calls": 0
-}

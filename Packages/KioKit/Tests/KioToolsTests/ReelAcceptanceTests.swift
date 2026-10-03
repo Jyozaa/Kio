@@ -61,6 +61,17 @@ import KioCore
     }
 }
 
+@Test func reelBestQualityPickerOffersContainersAcrossConcreteVariantHeights() throws {
+    let remoteURL = URL(string: "https://media.example/watch")!
+    let fixture = Data(#"{"formats":[{"format_id":"2160-webm","height":2160,"ext":"webm","vcodec":"vp9","acodec":"none"},{"format_id":"1080-mp4","height":1080,"ext":"mp4","vcodec":"h264","acodec":"aac"}]}"#.utf8)
+    let info = try ReelInspectionDecoder.decode(fixture, remoteURL: remoteURL)
+
+    #expect(info.availableQualities == ["best", "2160p", "1080p"])
+    #expect(info.availableVideoFormats(for: "best") == ["mp4", "webm"])
+    #expect(info.availableVideoFormats(for: "2160p") == ["webm"])
+    #expect(info.availableVideoFormats(for: "1080p") == ["mp4"])
+}
+
 @Test func streamlinkInspectionIsProviderNeutralAndItsSelectedQualityIsPreserved() throws {
     let url = URL(string: "https://media.example/watch/123")!
     let fixture = Data(#"{"plugin":"plugins.generic","metadata":{"title":"A live title"},"streams":{"best":{"type":"HLSStream"},"720p":{"type":"HLSStream"},"720p_alt":{"type":"HLSStream"},"480p":{"type":"HLSStream"}}}"#.utf8)

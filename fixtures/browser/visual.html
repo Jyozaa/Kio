@@ -1,8 +1,0 @@
-<!doctype html><html><meta charset="utf-8"><title>Kio visual fixture</title>
-<style>body{margin:30px;font:20px system-ui;background:#eef3f8}svg{border:2px solid #ccd;border-radius:12px;cursor:none}</style>
-<svg width="580" height="420" id="surface" aria-hidden="true" viewBox="0 0 580 420"><rect x="120" y="150" width="340" height="90" rx="10" fill="#163a60"/><text id="label" x="290" y="207" text-anchor="middle" dominant-baseline="middle" fill="white" font-family="sans-serif" font-size="32" font-weight="700">Settings</text><circle id="icon-only" cx="520" cy="195" r="28" fill="#2b6cb0"/><path d="M508 195h24M520 183v24" stroke="white" stroke-width="5" stroke-linecap="round"/></svg><output id="verification"></output>
-<script>
-const surface=document.getElementById('surface'),label=document.getElementById('label');
-const labels=['Settings','Continue','Option B','Success'];let step=0;
-surface.addEventListener('click',event=>{const r=surface.getBoundingClientRect(),x=(event.clientX-r.left)*580/r.width,y=(event.clientY-r.top)*420/r.height;if(x>=120&&x<=460&&y>=150&&y<=240){step=Math.min(3,step+1);label.textContent=labels[step];if(step===3){document.getElementById('verification').textContent='Verified visual success';document.title='Success';}}});
-</script></html>

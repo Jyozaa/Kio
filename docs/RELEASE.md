@@ -1,9 +1,9 @@
 # Release
 
-Kio's project version has one source in `apps/mac/KioMac.xcodeproj/KioVersion.xcconfig`. Local packages use that version (currently `0.1.0`). A release tag such as `v0.2.0` automatically sets the app marketing version and produces `Kio-0.2.0.dmg` plus `Kio-0.2.0.dmg.sha256`. `KIO_VERSION_OVERRIDE=0.2.0` can be used to build a local versioned artifact without a Git tag; otherwise packaging falls back to the project version.
+The app version is maintained in `apps/mac/KioMac.xcodeproj/KioVersion.xcconfig` (currently `0.1.0`). `scripts/package-dmg.sh` prepares the pinned Reel runtime, builds and verifies a Release app bundle, creates `build/release/Kio-<version>.dmg`, verifies the disk image, and writes a SHA-256 checksum beside it. This packaging path does not open Kio.
 
-Run `scripts/package-dmg.sh` to build a Release `.app`, verify its signature, create a compressed DMG, and write a SHA-256 checksum. On 2026-09-30 this produced `build/release/Kio-0.1.0.dmg`; `hdiutil verify` and `shasum -a 256 -c` both passed. `scripts/check.sh` is the canonical local/CI verification command and installs the locked npm dependencies before building the PWA and relay.
+Run `scripts/check.sh` before packaging. It runs package tests, helper checks, runtime verification, and noninteractive Debug and Release builds; it does not launch the app. A local DMG uses ad-hoc signing and is not notarized. Public distribution requires the appropriate Developer ID signing and notarization process.
 
-Local development and public packaging use separate identities. `scripts/dev-run.sh` selects the already-existing stable local **Kio Local Development** identity and installs `~/Applications/Kio.app`; it does not generate or import signing keys. `scripts/package-dmg.sh` builds ad-hoc and does not require an Apple Development certificate. That DMG is not notarized and may require a local Gatekeeper override to run; public distribution requires the appropriate Developer ID signing and notarization workflow.
+`scripts/dev-run.sh` is an explicit local developer workflow that installs and opens the app with an already-existing stable local signing identity. Do not use it for build-only verification. `scripts/build-mac.sh` builds and verifies the app bundle and prints its location without opening it.
 
-GitHub Actions publishes a tagged release only after the full check and packaging steps succeed. No release is created by local packaging. The latest DMG is a local build artifact, not a published release.
+GitHub Actions runs macOS build and test checks for pushes to `main` and pull requests. A push of a `v*` tag runs those checks, packages the DMG and checksum, then creates a GitHub release with generated notes.

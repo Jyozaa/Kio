@@ -2,40 +2,50 @@
 
 ## Mac app
 
-`apps/mac/KioMac` is the SwiftUI/AppKit host. A stable transparent host panel anchors to the notched display when available; an animatable silhouette expands inside it. The notch and the full conversation window observe one workspace and history. The menu bar exposes the conversation window, settings, and shortcut. `Packages/KioKit` contains:
+`apps/mac/KioMac` is a SwiftUI/AppKit accessory app whose primary window is a borderless status-level notch panel. `NotchPanelController` sizes the black shell for collapsed, ambient-event, and expanded states. `NotchEventCoordinator` arbitrates transient events by priority and suppresses News events unless a topic alert was explicitly enabled. Dashboard selection is stored in `UserDefaults`.
 
-- `KioCore`: artifact references, typed plans, operation identities, and validation.
-- `KioModel`: deterministic fast paths and strict decoding of local-model plans against registered operations and actual artifact indexes.
-- `KioTools`: native PDFKit, ImageIO, AVFoundation, and system zlib implementations, with conflict-safe output files and post-operation verification.
-- `KioInference`: MLX Swift LM, Hugging Face model cache/download, and local planning.
-- `KioSync`: Keychain-backed Mac identity, secure phone pairing, encrypted relay envelopes, and encrypted file transfers.
-- `KioUI`: shared design tokens and character rendering.
+`DashboardView.swift` composes the four spaces—Kio, Sessions, Clipboard, and News—inside the notch. `DashboardRuntime.swift` owns the single `KioDashboardModel`, conversion/Reel dispatch, local stores, pasteboard polling, and session-inbox processing. `SettingsView.swift` configures motion, output location, shortcuts, hooks, clipboard retention, and News enablement. There is no full chat scene or conversation store.
 
-The deterministic planner handles known requests first. The one local model is used only when a request needs broader planning. It receives a `submit_plan` tool schema through the pinned Qwen3.5 tool-call format; Kio never dispatches that synthetic tool. The result is decoded into a bounded `TaskPlan`, with at most one repair attempt. The model receives request text plus file names, types, sizes, and indexes. The executor alone resolves local URLs. The model cannot invoke shell commands or add tools.
+Kio has one small ribbon/bookmark mascot. Convert, Reel, and Cue are features. Shell motion uses a spring unless macOS Reduce Motion or Kio's override requests a short ease transition. Cue text uses a separate non-bouncy whole-document movement policy.
 
-Conversation entries and artifact references are persisted with SwiftData on the Mac. The last verified workflow and a bounded remote task-ID ledger are stored locally for safe follow-ups and relay redelivery handling. Each plan uses a stable snapshot of its original inputs and records outputs per step. Original input files are never overwritten by the registered transformations.
+## Swift packages
 
-Execution status carries the task plan, current step and operation, active `AgentID`, progress text, counts, latest output, and failure/cancellation state. The notch and full chat share this state; remote progress envelopes carry the actual speaker and agent ID.
+- `KioCore`: artifact references, supported operation/argument types, and safe output helpers.
+- `KioModel`: deterministic Convert request parsing; dashboard/session/clipboard/news models; bounded local stores; safe public HTTP URL policy; Cue tracking and stable document layout.
+- `KioTools`: image, PDF, media conversion, and Reel operations.
 
-## Phone and relay
+There is no LLM client, model download, generic planner/repair loop, phone relay, chat persistence, archive product, or specialist ownership registry. `TaskStep` represents a typed native operation boundary, not a generated multi-step semantic plan.
 
-`apps/mobile` is a static React PWA. Pairing is initiated by the Mac and completed with a short-lived, single-use QR invitation. The phone creates a P-256 keypair. The Mac private key and bearer token are stored in Keychain; the phone private key is stored as a non-extractable `CryptoKey` in IndexedDB. Both sides derive AES-GCM keys with ECDH and HKDF.
+## Convert engines
 
-`apps/relay` is a Cloudflare Worker backed by a single D1 database on the Workers Free plan. D1 stores device public keys, hashed bearer credentials, pairings, encrypted message envelopes, and encrypted file chunks. Downloads are acknowledged and deleted; uncollected transfers expire after 24 hours. File transfers are capped at 50 MiB each, 64 MiB of active encrypted files per workspace, and 384 MiB globally. A source IP can create up to five workspaces per UTC day; each paired device can upload up to twelve files per hour. The relay stores a hash, not a raw IP, for this limiter. Each D1 BLOB chunk is 1,000,000 bytes, below the platform's 2 MB row limit.
+Convert dispatches typed requests to retained native image, media, or PDF routines in `ToolExecutor`. Local files are inspected as `ArtifactRef`; scoped access is released after work. Existing files remain untouched. Output paths are conflict-safe and selected through `OutputLocation`. Media operations use the pinned bundled runtime described in `Packages/KioKit/Sources/KioTools/Resources/ReelRuntime.json`.
 
-The Mac polls the relay and is the only executor. Offline phone requests remain queued. The Worker never runs a model or reads envelope/file plaintext. A deployed PWA and relay URL must be entered in Mac Settings before pairing; local Mac workflows do not depend on deployment.
+The parser recognizes a small supported vocabulary—format names, pixel width, target size, audio extraction, PDF merge/compression, and images-to-PDF. It rejects requests outside the implemented operations; it does not use an LLM.
 
-## Earlier experimental implementation
+## Reel
 
-The prior CUA-based assistant is retained separately in `apps/macos` and `agent` on the integrated repository branch. The new product does not import or execute that architecture.
+Reel shares typed operations with Convert but keeps a dedicated inspector/downloader path. Safe URL validation, exact inspected variants, audio language preference, runtime selection, destination validation, and output verification remain in the Reel engine. The bundled runtime is installed into app resources during an explicit build, never downloaded during normal app use.
 
-## Assistant capabilities in the current tree
+## Cue stable presentation
 
-`AgentID` has 12 members: Kio, Pip, Pixel, Zip, Echo, Clerk, Courier, Scribe, Table, Lens, Scout, and Patch. The current typed operation registry has 87 `ToolOperation` cases. Plans may compose registered operations into bounded pipelines; each step receives only validated artifact references and typed arguments.
+`CueTextAlignment` continues to map speech progress to canonical word tokens. `CueStableDocumentLayout` measures and wraps all tokens for a fixed script and available width, stores each token's line, and justifies qualifying non-final lines. The SwiftUI view renders every prelaid line with regular 17.5 pt text; current-word color is the only per-token visual change. The offset is derived from the current line, so it stays still within a line and advances by one line with a 0.55 s ease.
 
-- **Scribe** sends bounded text from supported local text files to the local model for summaries, rewrites, proofreading, translation, key points, action items, Markdown conversion, comparison, or plain-language explanation. The output is a separate Markdown file.
-- **Table** parses CSV/TSV and JSON for inspection, statistics, sorting, filtering, column selection/renaming/reordering, normalization, merge, deduplication, comparison, and format conversion. Its XLSX path reads cached cell values from bounded workbooks and creates CSV; it does not run Excel macros or recalculate formulas.
-- **Lens** uses Apple Vision locally for image OCR, receipt extraction, table extraction, and structured text. **Scout** fetches readable content and links from permitted public HTTP(S) URLs. **Patch** uses the local model to explain or propose bounded text/code changes, then writes a separate copy and diff for review; it does not apply changes to the source or execute code.
-- Explicit clipboard paste accepts text, URLs, images, and files. Screenshot capture is user-initiated. Finder Services can send selected files to the composer. Searchable history, recent-artifact references, contextual actions, and saved workflow templates are local Mac features.
-- Pip combines selected PDF and image inputs in their original order into a bounded, verified PDF. The notch and full chat use the same type-aware quick-action catalog and planner route.
-- The optional PWA supports multiple attachments, camera/share input, encrypted retry, specialist progress, result download, and opt-in browser notifications. The Mac remains the planner and executor. Changes in `apps/mobile` must be deployed separately before they appear at the public PWA origin.
+Follow My Voice uses the existing Apple Speech/SpeechAnalyzer lifecycle. Classic is a timed mode. Microphone and Speech Recognition permissions are requested only after the user presses Start in Follow My Voice.
+
+## Sessions
+
+Each integration writes an atomic, mode-0600 JSON record into `~/Library/Application Support/Kio/Sessions/Inbox`. The shared Python/JavaScript hook record contains only normalized lifecycle metadata. The app consumes and removes inbox files, normalizes them through `SessionHookAdapter`, and saves at most 80 recent sessions and 1,000 event identifiers in `Sessions.json`.
+
+Provider hooks are opt-in and separate: Claude Code and Codex use command hooks; Cursor uses its hooks configuration; OpenCode uses a local plugin. Kio never scrapes terminals, reads shell history, or browses provider transcript storage. Existing provider configuration is backed up once before Kio edits its hook entries.
+
+## Clipboard
+
+When enabled, the app polls `NSPasteboard.general` for change-count updates. It skips macOS concealed/transient types and user-excluded app identifiers, then stores plain text, up to 32 file URLs, or bounded local PNG copies with a SHA-256 fingerprint. `ClipboardStore` keeps up to the configured number of recent entries plus pinned entries, with a 500-entry hard cap. Captured image copies have a 128 MB total budget and are removed when history entries are deleted or pruned. No clipboard data is synchronized or sent to a model.
+
+## News
+
+The user supplies public HTTPS RSS or Atom sources, topic labels, and optional alert-topic labels. `NewsStore` fetches only on explicit refresh, validates public source hosts, parses feed XML, filters configured topics, de-duplicates by article URL, and retains at most 160 items. Normal cache changes do not create notch events. Only a new item in an explicitly enabled alert topic can enter `NotchEventCoordinator`.
+
+## Build verification
+
+`scripts/check.sh` runs package tests, helper checks, Reel runtime validation, and noninteractive Debug/Release Xcode builds. It does not launch Kio. The user performs all visual, microphone, live-feed, clipboard UI, and provider-hook acceptance checks; see [Manual acceptance](MANUAL_ACCEPTANCE.md).

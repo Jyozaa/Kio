@@ -2,7 +2,6 @@ import AVFoundation
 import AppKit
 import KioCore
 import KioModel
-import KioUI
 @preconcurrency import Speech
 import os
 import SwiftUI
@@ -195,7 +194,6 @@ private func cueAudioTapBlock(context: CueAudioTapContext) -> AVAudioNodeTapBloc
 }
 
 private enum CueMode: String, CaseIterable, Identifiable {
-    case wordTracking = "Word Tracking"
     case classic = "Classic"
     case followMyVoice = "Follow My Voice"
 
@@ -203,28 +201,10 @@ private enum CueMode: String, CaseIterable, Identifiable {
         switch rawValue {
         case "Classic": self = .classic
         case "Follow My Voice", "Voice-Paced": self = .followMyVoice
-        case "Word Tracking": self = .wordTracking
         default: return nil
         }
     }
     var id: String { rawValue }
-}
-
-private enum CueTextSize: String, CaseIterable, Identifiable {
-    case small = "Small"
-    case medium = "Medium"
-    case large = "Large"
-    case extraLarge = "Extra Large"
-
-    var id: String { rawValue }
-    var points: CGFloat {
-        switch self {
-        case .small: 17
-        case .medium: 21
-        case .large: 25
-        case .extraLarge: 29
-        }
-    }
 }
 
 @MainActor
@@ -709,7 +689,6 @@ struct CueSurfaceView: View {
     @State private var script = ""
     @AppStorage("kio.cue.mode") private var savedMode = CueMode.followMyVoice.rawValue
     @State private var mode: CueMode = .followMyVoice
-    @State private var textSize: CueTextSize = .medium
     @State private var speed: Double = 150
     @State private var languageIdentifier = "system"
     @State private var isActive = false
@@ -733,6 +712,7 @@ struct CueSurfaceView: View {
     @State private var fileImporter = false
     @StateObject private var speech = CueSpeechRecognizer()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("kio.reduceMotion") private var userReduceMotion = false
 
     var body: some View {
         Group {
@@ -768,7 +748,7 @@ struct CueSurfaceView: View {
     private var setup: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                AgentBlob(.cue, mood: .curious, size: 25)
+                KioRibbon(action: 0, reduceMotion: true).frame(width: 24, height: 26)
                 Text("Cue").font(.system(size: 11, weight: .semibold))
                 Spacer(minLength: 4)
                 Button { fileImporter = true } label: { Image(systemName: "doc.badge.plus") }
@@ -803,8 +783,7 @@ struct CueSurfaceView: View {
 
             HStack(spacing: 6) {
                 modeMenu
-                textSizeMenu
-                if mode == .wordTracking { languageMenu }
+                languageMenu
                 Spacer(minLength: 0)
             }
             HStack {
@@ -818,7 +797,7 @@ struct CueSurfaceView: View {
                 Spacer(minLength: 3)
                 Button(isStarting ? "Starting…" : "Start") { begin() }
                     .buttonStyle(.borderedProminent)
-                    .tint(Color(hex: AgentID.cue.colorHex))
+                    .tint(cueAccent)
                     .controlSize(.small)
                     .disabled(isStarting || script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -827,10 +806,8 @@ struct CueSurfaceView: View {
                     if errorMessage.localizedCaseInsensitiveContains("access") || errorMessage.localizedCaseInsensitiveContains("permission") {
                         Button("Microphone Settings") { openPrivacyPane("Privacy_Microphone") }
                             .font(.system(size: 8)).buttonStyle(.plain)
-                        if mode == .wordTracking {
-                            Button("Speech Settings") { openPrivacyPane("Privacy_SpeechRecognition") }
-                                .font(.system(size: 8)).buttonStyle(.plain)
-                        }
+                        Button("Speech Settings") { openPrivacyPane("Privacy_SpeechRecognition") }
+                            .font(.system(size: 8)).buttonStyle(.plain)
                     }
                 }
             }
@@ -842,38 +819,27 @@ struct CueSurfaceView: View {
     private var teleprompter: some View {
         VStack(spacing: 0) {
             if complete {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(hex: AgentID.cue.colorHex))
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(cueAccent)
                 Text("Script complete").font(.system(size: 12, weight: .semibold))
                 HStack { Button("Restart") { restart() }; Button("Done") { exitCue() } }
                     .buttonStyle(.bordered).controlSize(.small)
             } else {
-                ScrollViewReader { proxy in
-                    ZStack(alignment: .top) {
-                        ScrollView {
-                            cueText
-                                .padding(.vertical, 12)
-                        }
-                        .scrollIndicators(.hidden)
-                        .onChange(of: visiblePosition) { _, value in
-                            guard alignment.tokens.indices.contains(value) else { return }
-                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { proxy.scrollTo(value, anchor: .center) }
-                        }
-                        if controlsVisible {
-                            controlsOverlay
-                                .padding(.top, 2)
-                                .transition(.opacity)
-                                .zIndex(2)
-                                .onHover { hovering in
-                                    controlsHovered = hovering
-                                    if !hovering { scheduleControlsHide() }
-                                }
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        if case .active = phase { revealControls() }
+                ZStack(alignment: .top) {
+                    cueText
+                        .padding(.top, 2)
+                    if controlsVisible {
+                        controlsOverlay
+                            .padding(.top, 2)
+                            .transition(.opacity)
+                            .zIndex(2)
+                            .onHover { hovering in
+                                controlsHovered = hovering
+                                if !hovering { scheduleControlsHide() }
+                            }
                     }
                 }
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in if case .active = phase { revealControls() } }
                 statusStrip
             }
         }
@@ -910,7 +876,7 @@ struct CueSurfaceView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: paused ? "pause.fill" : mode == .classic ? "text.alignleft" : "mic.fill")
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(paused || mode == .classic ? .white.opacity(0.42) : Color(hex: AgentID.cue.colorHex))
+                .foregroundStyle(paused || mode == .classic ? .white.opacity(0.42) : cueAccent)
                 .accessibilityLabel(paused ? "Paused" : mode == .classic ? "Classic scrolling" : "Listening")
             Button { exitCue() } label: { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(.plain).foregroundStyle(.white.opacity(0.7)).help("Done and close Cue")
@@ -925,7 +891,6 @@ struct CueSurfaceView: View {
         HStack(spacing: 7) {
             Button(paused ? "Resume" : "Pause") { paused.toggle(); lastTick = .now }
             Button("Restart") { restart() }
-            textSizeMenu
             if mode == .classic {
                 Slider(value: $speed, in: 60...260, step: 10).frame(maxWidth: 82).help("Reading speed")
             }
@@ -955,28 +920,9 @@ struct CueSurfaceView: View {
     }
 
     private var cueText: some View {
-        let ns = script as NSString
-        let start = max(0, visiblePosition - 14)
-        let end = min(alignment.tokens.count, max(visiblePosition + 24, 32))
-        let window = start..<end
-        return CueFlowLayout(spacing: 4, lineSpacing: 8) {
-            ForEach(Array(window), id: \.self) { index in
-                let token = alignment.tokens[index]
-                let end = index + 1 < alignment.tokens.count ? alignment.tokens[index + 1].range.location : ns.length
-                let range = NSRange(location: token.range.location, length: max(0, end - token.range.location))
-                let fragment = range.location <= ns.length && NSMaxRange(range) <= ns.length ? ns.substring(with: range) : token.text
-                Text(fragment)
-                    .font(.system(size: textSize.points, weight: .regular, design: .rounded))
-                    .foregroundStyle(index < visiblePosition ? .white.opacity(0.62) :
-                                     index == visiblePosition ? Color(hex: AgentID.cue.colorHex) :
-                                     index <= visiblePosition + 8 ? .white.opacity(0.87) : .white.opacity(0.59))
-                    .lineSpacing(8)
-                    .id(index)
-                    .onTapGesture { jump(to: index) }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 90, maxHeight: .infinity, alignment: .center)
+        CueStableTextView(script: script, tokens: alignment.tokens, readPosition: visiblePosition,
+                          reduceMotion: reduceMotion || userReduceMotion, onSelect: { jump(to: $0) })
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func begin() {
@@ -1009,8 +955,7 @@ struct CueSurfaceView: View {
             do {
                 speech.onTranscript = { text, evidence, generation in
                     guard isActive, !complete, mode != .classic, !paused else { return }
-                    let policy: CueTrackingPolicy = mode == .wordTracking ? .accurate : .responsive
-                    let value = alignment.consume(text, evidence: evidence, generation: generation, policy: policy)
+                    let value = alignment.consume(text, evidence: evidence, generation: generation, policy: .responsive)
                     readPosition = min(max(0, value), max(0, alignment.tokens.count - 1))
                     let confirmed = alignment.confirmedReadPosition
                     if CueContextVocabulary.shouldRefresh(from: lastContextPosition, to: confirmed) {
@@ -1126,18 +1071,6 @@ struct CueSurfaceView: View {
         .accessibilityLabel("Cue mode: \(mode.rawValue)")
     }
 
-    private var textSizeMenu: some View {
-        Menu {
-            ForEach(CueTextSize.allCases) { option in
-                Button(option.rawValue) { textSize = option }
-            }
-        } label: {
-            compactMenuLabel("Text: \(textSize.rawValue)")
-        }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel("Text size: \(textSize.rawValue)")
-    }
-
     private var languageMenu: some View {
         Menu {
             Button("System Default") { languageIdentifier = "system" }
@@ -1184,6 +1117,8 @@ struct CueSurfaceView: View {
     }
 }
 
+private let cueAccent = Color(red: 0.60, green: 0.79, blue: 0.98)
+
 private extension View {
     func cueIconButton(_ title: String) -> some View {
         self
@@ -1197,31 +1132,59 @@ private extension View {
     }
 }
 
-private struct CueFlowLayout: Layout {
-    var spacing: CGFloat
-    var lineSpacing: CGFloat
+private struct CueStableTextView: View {
+    let script: String
+    let tokens: [CueToken]
+    let readPosition: Int
+    let reduceMotion: Bool
+    let onSelect: (Int) -> Void
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? 420
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0 && x + size.width > width { x = 0; y += rowHeight + lineSpacing; rowHeight = 0 }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+    var body: some View {
+        GeometryReader { geometry in
+            let font = NSFont.systemFont(ofSize: CueStableDocumentLayout.fontSize, weight: .regular)
+            let availableWidth = max(80, geometry.size.width - 10)
+            let layout = CueStableDocumentLayout.build(script: script, tokens: tokens,
+                availableWidth: Double(availableWidth), lineHeight: CueStableDocumentLayout.fontSize + CueStableDocumentLayout.lineSpacing,
+                measure: { surface in
+                    Double((surface as NSString).size(withAttributes: [.font: font]).width)
+                })
+            let targetLine = layout.scrollTargetLine(forToken: readPosition)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(layout.lines.enumerated()), id: \.offset) { lineIndex, line in
+                    HStack(alignment: .firstTextBaseline, spacing: CGFloat(line.interWordGap)) {
+                        ForEach(line.words, id: \.index) { word in
+                            Text(word.surface)
+                                .font(.system(size: CueStableDocumentLayout.fontSize, weight: .regular))
+                                .foregroundStyle(color(for: word.index))
+                                .frame(width: CGFloat(word.width), height: CGFloat(layout.lineHeight), alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onSelect(word.index) }
+                        }
+                    }
+                    .frame(width: availableWidth, height: CGFloat(layout.lineHeight), alignment: .leading)
+                    .padding(.bottom, paragraphEnds(after: lineIndex, in: layout.lines)
+                        ? CueStableDocumentLayout.paragraphSpacing : CueStableDocumentLayout.lineSpacing)
+                }
+            }
+            .frame(width: availableWidth, alignment: .leading)
+            .offset(y: -CGFloat(layout.scrollOffset(forToken: readPosition)))
+            .animation(.easeInOut(duration: reduceMotion ? 0.24 : 0.55), value: targetLine)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
         }
-        return CGSize(width: width, height: y + rowHeight)
+        .clipped()
+        .accessibilityLabel("Cue script, current word \(readPosition + 1) of \(tokens.count)")
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + lineSpacing; rowHeight = 0 }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+    private func color(for index: Int) -> Color {
+        if index < readPosition { return .white.opacity(0.36) }
+        if index == readPosition { return cueAccent }
+        return .white.opacity(0.9)
+    }
+
+    private func paragraphEnds(after index: Int, in lines: [CueDocumentLine]) -> Bool {
+        guard lines.indices.contains(index + 1) else { return false }
+        return lines[index].paragraph != lines[index + 1].paragraph
     }
 }
 
@@ -1234,7 +1197,7 @@ private struct CueWaveform: View {
             guard !levels.isEmpty else { return }
             let gap: CGFloat = 2
             let barWidth = max(1, (size.width - CGFloat(levels.count - 1) * gap) / CGFloat(levels.count))
-            let accent = Color(hex: AgentID.cue.colorHex)
+            let accent = cueAccent
             for (index, value) in levels.enumerated() {
                 let normalized = value.isFinite ? min(1, max(0, value)) : 0
                 let height = max(2, CGFloat(normalized) * size.height)

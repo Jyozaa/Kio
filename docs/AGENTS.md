@@ -1,22 +1,14 @@
-# Kio's local specialist roster
+# Product component inventory
 
-Kio's agents are UI and workflow roles over one local task executor. The role decides which registered tools may handle a task; it does not start a separate model. The optional local planner selects among typed operations, and native code validates and executes each step.
+Kio has one mascot and four dashboard spaces. Convert, Reel, and Cue are features of Kio, not autonomous agents.
 
-| Agent | Role | Current registered work |
-| --- | --- | --- |
-| Kio | Coordinator | Fast-path answers, workflow planning, and handoff status. |
-| Pip | PDF specialist | PDF operations, selectable text search, extraction, and OCR. |
-| Pixel | Image specialist | Image conversion and inspection, comparisons, Vision background removal, and attention-based smart crop. |
-| Zip | Archive specialist | ZIP creation, inspection, and safe extraction; PDF compression. |
-| Echo | Media specialist | Audio/video trim and clip extraction, audio conversion to M4A, and optional on-device speech transcription/subtitles. |
-| Clerk | File specialist | File copying/organization, duplicate reports, and confirmed moves. |
-| Courier | Phone/file transfer | Optional encrypted PWA relay tasks and output delivery. |
-| Scribe | Text specialist | Local-model text transformations and document summaries. |
-| Table | Data specialist | CSV/TSV/JSON tables and bounded XLSX-to-CSV import. |
-| Lens | Visual specialist | On-device OCR, receipt fields, and image table extraction. |
-| Scout | Web specialist | Public HTTP(S) page text and link extraction. |
-| Patch | Bounded source helper | Explanations, JSON formatting, and a separate proposed source copy with diff. |
+| Surface | Purpose |
+|---|---|
+| Kio → Convert | Transform supported local images, audio/video, and PDFs with typed native operations. |
+| Kio → Reel | Inspect and download supported public media URLs. |
+| Kio → Cue | Present a script with voice-following or Classic pacing. |
+| Sessions | Observe lifecycle metadata from explicitly enabled local development-tool hooks. |
+| Clipboard | Local, bounded clipboard history controlled by the user. |
+| News | Quiet RSS/Atom headlines from configured feeds. |
 
-The Mac remains the execution authority. Remote task messages contain no shell or arbitrary code capability. A specialist handoff is shown only when it comes from a real `TaskExecution` operation.
-
-See [Workflow templates](WORKFLOWS.md), [Architecture](KIO_ARCHITECTURE.md), and [Security](SECURITY.md).
+The app has no agent selector, general chat, model provider, phone mode, or remote task runner. See [Architecture](KIO_ARCHITECTURE.md) for implementation boundaries and [Privacy](PRIVACY.md) for stored data.

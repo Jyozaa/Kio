@@ -1,2 +1,0 @@
-Kio local upload fixture sample.
-This file contains no personal or secret data.

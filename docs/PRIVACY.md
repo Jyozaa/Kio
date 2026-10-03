@@ -1,27 +1,33 @@
 # Privacy
 
-## Intelligence providers
+Kio v2 is a local Mac utility. It has no account, cloud model, phone companion, relay, or chat history. File transformations run on the Mac. Kio does not send file contents to an LLM because it has no LLM provider integration.
 
-Deterministic / No AI, OpenAI, Anthropic, Gemini, OpenRouter, Groq, and Local Qwen are selectable in Settings → Intelligence. Opening Kio and deterministic fast paths do not load Qwen. BYOK credentials are stored only in the macOS Keychain; provider selection, model identifiers, and the content-privacy choice are saved in preferences. Cloud provider requests travel directly from the Mac to the selected provider over HTTPS. The phone relay never receives provider credentials or provider requests. Kio does not silently fall back to a different provider.
+## Files and Reel
 
-The default content mode is **Ask before sending contents**. Ordinary planning sends the request and bounded file metadata, not file bytes. A semantic operation that needs document contents asks before sending them. **Metadata only** blocks that cloud content operation; **Allow contents** removes the per-operation confirmation. Choosing Local Qwen keeps inference on the Mac. The provider receives any text Kio sends under its own service terms and privacy practices.
+Convert reads the files the user drops into Kio and writes new output files. Source files are preserved. Reel connects to a public media URL only when the user inspects or downloads it; its bundled yt-dlp, Streamlink, FFmpeg/ffprobe, and Python helpers do not download software at app runtime. Normal source network metadata is visible to the site contacted by Reel.
 
-## Mac use without mobile relay
+## Sessions
 
-The app does not require an account or network service for local file workflows. File bytes stay on the Mac unless the user explicitly chooses a cloud provider/content mode or requests a network workflow. Local Qwen is downloaded from Hugging Face only after the user chooses **Download model**; once prepared and selected, inference runs on the Mac. Planning sends the request and file names, types, sizes, and indexes, not file contents or local paths. When Local Qwen is selected, Scribe reads bounded text from the selected source locally. Lens uses Apple Vision locally. Cloud-provider behavior is described above.
+Session monitoring is opt-in per provider. Enabling an integration modifies a provider's local hook configuration and preserves one `.kio-backup` copy of its original JSON settings where that applies. Hook events are normalized to provider, opaque session id, project name, working directory, event kind, and timestamp. Kio intentionally drops prompts, transcript text, tool names, tool arguments, and terminal output. Hook inbox files are local, mode-restricted, and capped; processed events are removed. The bounded session cache is stored at `~/Library/Application Support/Kio/Sessions.json`.
 
-Conversation text and artifact metadata are stored in the user's local SwiftData store. Searchable history, the last verified workflow, and a bounded list of processed remote task IDs stay in local preferences/storage for references, follow-ups, and duplicate suppression. Clearing history removes conversation and last-workflow context; the small task-ID ledger remains to prevent a relayed request from being run again. The Mac's P-256 private key and relay bearer token are stored in Keychain.
+The working directory and project name may identify private local projects. Users can remove any hook in Sessions or Settings. Provider hook delivery depends on starting or continuing sessions in that provider after the hook is enabled.
 
-Clipboard content is read only when the user explicitly pastes into Kio. Screenshot capture is user-initiated and can require Screen Recording permission. Finder Services receive only the files the user selected. Scout fetches public web pages only when requested; those requests go to the selected websites and expose the normal network metadata to them.
+## Clipboard
 
-Reel contacts a public media URL only when the user requests inspection or download. Its pinned helper binaries, Python runtime, and Streamlink wheels ship inside `Kio.app/Contents/Resources/Reel`; Kio does not download or install helper software at runtime. Media downloads connect directly to their public source. Reel does not read browser cookies, accept login credentials, or bypass DRM. Use only media you are allowed to save. The optional gallery-dl GPL-2.0-only helper is not bundled because this repository does not declare compatible app redistribution terms.
+Clipboard history is off by default. When enabled, Kio polls the system pasteboard for changes and stores supported plain text, file URLs, and local PNG copies of images in `~/Library/Application Support/Kio`. It skips pasteboard items carrying `org.nspasteboard.ConcealedType` or `org.nspasteboard.TransientType` and can skip app identifiers the user lists. Kio does not transmit clipboard content. Text and file metadata are stored in `Clipboard.json`; image copies are stored under `Clipboard/Images` and removed when their entries are pruned, deleted, or cleared.
 
-Cue keeps its script on the Mac. Classic mode needs no microphone. Follow My Voice and Word Tracking ask for microphone and Speech Recognition permission only when started. Kio does not request either permission at launch. Cue uses SpeechAnalyzer/SpeechTranscriber on supported macOS versions and falls back to SFSpeechRecognizer where required; audio and recognition processing follow Apple's Speech framework behavior for the selected OS and locale.
+The history is bounded by entry count and captured image bytes; individual clipboard text is capped. Pinned items survive normal retention, but the hard entry cap and image-storage budget still apply and may evict an image entry if needed to stay within the image cap. Users can disable capture, set retention and count, exclude apps, unpin/delete entries, or clear the full store from Settings/Clipboard.
 
-## Optional phone relay
+macOS does not provide a universally reliable API for identifying which process last wrote every pasteboard change. Kio uses the frontmost application's bundle identifier at capture time as a best-effort exclusion signal. Password managers that mark data concealed/transient are skipped; users should also add sensitive apps to the exclusion list.
 
-Pairing is opt-in and uses the URL supplied in Settings. Before data reaches the relay, Mac and phone encrypt request/reply messages and file bytes using ECDH-derived AES-GCM keys. The relay stores public keys, opaque device IDs, hashed credentials, routing/timing metadata, file byte sizes, and ciphertext. The relay cannot decrypt message or file contents. Cloudflare receives the connecting IP as part of serving the Worker. Kio hashes that address for its workspace-creation limiter and stores only the hash in D1; Cloudflare's own infrastructure handling remains subject to its privacy policy.
+## News
 
-Envelopes expire after 24 hours or earlier when acknowledged. File chunks are removed on acknowledgement or by the 24-hour expiry cleanup. Revoking a phone removes its pending envelopes, file transfers, and transfer-rate records. The Worker does not run the model or any file-processing tool.
+News does not scrape pages or run in the background. Kio contacts the configured HTTPS RSS/Atom feed URLs only when the user refreshes or saves feed settings. Those servers receive ordinary network metadata such as the Mac's public IP address. Kio stores bounded local headlines, publisher/topic labels, dates, and article URLs in `News.json`. Headlines stay silent by default; a notch alert is possible only for a topic the user explicitly enables.
 
-The phone keeps its private key and conversation history in browser IndexedDB. Multiple attachments are encrypted before relay upload; the phone can also send from its camera or share target. Clearing site data or unpairing removes that phone's local copy. Completion notifications are opt-in, and closed-app Web Push is not configured. Mac history is stored in the local macOS user account and is not encrypted by Kio beyond the platform's normal file protections. Do not pair on a device or relay URL you do not control.
+## Cue and permissions
+
+Cue scripts remain in local app memory. Classic mode does not use the microphone. Follow My Voice requests microphone and Speech Recognition permission only after the user chooses Start. It uses Apple Speech/SpeechAnalyzer frameworks on the Mac according to the selected macOS version and locale.
+
+## Local storage
+
+Dashboard preference, provider status, clipboard entries, News cache, and Cue settings are kept in the user's local macOS account. Kio does not provide cloud sync or encrypt these stores separately from the platform's normal user-account protections. Removing an integration stops future hook events; the user may remove or retain previously recorded session summaries from local storage.
